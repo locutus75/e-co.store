@@ -53,5 +53,8 @@ export default async function ProductsPage() {
 
   // The fallback test product has been removed so you can freely empty the database.
 
-  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} fieldPermissions={fieldPermissions} />;
+  const { getFormLayoutAction } = await import('@/app/actions/layout');
+  const layout = await getFormLayoutAction();
+
+  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} fieldPermissions={fieldPermissions} layout={layout} />;
 }

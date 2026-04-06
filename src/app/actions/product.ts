@@ -2,6 +2,33 @@
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
+export async function getSupplierProductsAction(supplierId: string, currentArticleId: string) {
+  if (!supplierId) return [];
+  try {
+    return await prisma.product.findMany({
+      where: { 
+        supplierId: supplierId,
+        internalArticleNumber: { not: currentArticleId }
+      },
+      select: { internalArticleNumber: true, title: true }
+    });
+  } catch(e) {
+    console.error("Failed to get supplier products", e);
+    return [];
+  }
+}
+
+export async function getProductDataAction(internalId: string) {
+  try {
+    return await prisma.product.findUnique({
+      where: { internalArticleNumber: internalId }
+    });
+  } catch(e) {
+    console.error("Failed to get product data", e);
+    return null;
+  }
+}
+
 export async function bulkAssignAction(internalIds: string[], userId: string) {
   if (!internalIds || internalIds.length === 0) return { success: false, error: 'Geen ID\'s meegegeven' };
   
@@ -86,7 +113,7 @@ export async function updateProductAction(internalId: string, formData: FormData
   const textFields = [
     'title', 'ean', 'seoTitle', 'longDescription', 'color', 'mainMaterial', 
     'ingredients', 'allergens', 'critMensSocial', 'supplierContacted', 
-    'critCircular', 'critTransportVehicle', 'critOther'
+    'critCircular', 'critTransportVehicle', 'critOther', 'status'
   ];
   for(const field of textFields) {
     const val = formData.get(field);

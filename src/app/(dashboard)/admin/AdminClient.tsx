@@ -2,7 +2,7 @@
 import React, { useState, useTransition } from 'react';
 import { createUserAction, deleteUserAction, updateUserAction } from '@/app/actions/user';
 
-export default function AdminClient({ users }: { users: any[] }) {
+export default function AdminClient({ users, availableRoles }: { users: any[], availableRoles: any[] }) {
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -128,9 +128,10 @@ export default function AdminClient({ users }: { users: any[] }) {
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>Rol / Rechten</label>
-                <select name="role" className="input" defaultValue={editingUser?.userRoles?.[0]?.role?.name || 'EDITOR'}>
-                  <option value="EDITOR">Editor (Content beheren)</option>
-                  <option value="ADMIN">Admin (Volledige toegang)</option>
+                <select name="role" className="input" defaultValue={editingUser?.userRoles?.[0]?.role?.name || ''}>
+                  {availableRoles.map(r => (
+                    <option key={r.id} value={r.name}>{r.name}</option>
+                  ))}
                 </select>
               </div>
               

@@ -12,7 +12,7 @@ export async function getProductImagesAction(articleNumber: string) {
   
   const files = fs.readdirSync(dir);
   return files
-    .filter(f => /\.(jpg|jpeg|png|webp|gif)$/i.test(f))
+    .filter(f => /\.(jpg|jpeg|png|webp|gif|avif|heic)$/i.test(f))
     .map(f => ({
       name: f,
       url: `/uploads/products/${articleNumber}/${f}`

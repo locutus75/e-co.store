@@ -18,5 +18,8 @@ export default async function RolesPage() {
     orderBy: { name: 'asc' }
   });
 
-  return <RolesClient roles={roles} />;
+  const { getFormLayoutAction } = await import('@/app/actions/layout');
+  const layout = await getFormLayoutAction();
+
+  return <RolesClient roles={roles} layout={layout} />;
 }

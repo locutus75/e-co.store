@@ -4,34 +4,58 @@ import ProductDrawer from '@/components/ProductDrawer';
 import ExcelImportWizard from '@/components/ExcelImportWizard';
 import { deleteProductsAction, updateReadyForImportAction, updateProductStatusAction, bulkAssignAction } from '@/app/actions/product';
 
+export const getStatusColor = (status: string) => {
+  switch (status.toUpperCase()) {
+    case 'NEW': return 'var(--primary)';
+    case 'EDIT': return 'var(--color-mustard)';
+    case 'CHECK': return '#3b82f6';
+    case 'DONE': return '#10b981';
+    default: return 'var(--text-muted)';
+  }
+};
+
 function InlineStatusToggle({ product }: { product: any }) {
   const [isPending, startTransition] = useTransition();
   const currentStatus = (product.status || 'NEW').toUpperCase();
 
-  const handleToggle = () => {
-    const nextStatus = currentStatus === 'NEW' ? 'CHECK' : 'NEW';
+  const handleSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextStatus = e.target.value;
     startTransition(async () => {
       await updateProductStatusAction(product.internalArticleNumber, nextStatus);
     });
   }
 
   return (
-    <span 
-      onClick={(e) => { e.stopPropagation(); handleToggle(); }}
+    <select 
+      value={currentStatus}
+      onChange={handleSelect}
+      onClick={(e) => e.stopPropagation()}
+      disabled={isPending}
       style={{ 
-        padding: '0.35rem 0.85rem', 
+        padding: '0.35rem 1.75rem 0.35rem 0.85rem', 
         borderRadius: '1rem', 
         fontSize: '0.75rem', 
         fontWeight: 600, 
-        backgroundColor: currentStatus === 'CHECK' ? '#3b82f6' : 'var(--primary)', 
+        backgroundColor: getStatusColor(currentStatus), 
         color: 'white',
         cursor: isPending ? 'wait' : 'pointer',
         opacity: isPending ? 0.6 : 1,
         transition: 'all 0.2s',
-        display: 'inline-block'
+        display: 'inline-block',
+        border: 'none',
+        outline: 'none',
+        WebkitAppearance: 'none',
+        MozAppearance: 'none',
+        appearance: 'none',
+        backgroundImage: `url('data:image/svg+xml;utf8,<svg fill="white" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/><path d="M0 0h24v24H0z" fill="none"/></svg>')`,
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right 2px center',
+        backgroundSize: '16px'
       }}>
-      {isPending ? '...' : currentStatus}
-    </span>
+      {['NEW', 'EDIT', 'CHECK', 'DONE'].map(s => (
+        <option key={s} value={s} style={{ color: 'var(--text)', backgroundColor: 'white' }}>{s}</option>
+      ))}
+    </select>
   );
 }
 
@@ -76,7 +100,7 @@ function InlineReadyToggle({ product, isAdmin }: { product: any, isAdmin: boolea
   );
 }
 
-export default function ProductsClient({ initialProducts, systemUsers = [], isAdmin = false, fieldPermissions = {} }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, fieldPermissions?: Record<string, string> }) {
+export default function ProductsClient({ initialProducts, systemUsers = [], isAdmin = false, fieldPermissions = {}, layout = [] }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, fieldPermissions?: Record<string, string>, layout?: any[] }) {
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [isDeleting, startTransition] = useTransition();
@@ -364,6 +388,8 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
         isOpen={!!selectedProduct} 
         onClose={() => setSelectedProduct(null)} 
         fieldPermissions={isAdmin ? undefined : fieldPermissions}
+        isAdmin={isAdmin}
+        layout={layout}
       />
     </div>
   );
