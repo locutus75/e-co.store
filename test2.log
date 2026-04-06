@@ -1,0 +1,7 @@
+FAILED D: 
+ Error: Invariant: static generation store missing in revalidatePath /products
+    at revalidate (C:\Dev\e-co.store\node_modules\next\src\server\web\spec-extension\revalidate.ts:127:11)
+    at revalidatePath (C:\Dev\e-co.store\node_modules\next\src\server\web\spec-extension\revalidate.ts:117:10)
+    at updateProductAction (C:\Dev\e-co.store\src\app\actions\product.ts:63:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async test (C:\Dev\e-co.store\test_action2.ts:11:5)

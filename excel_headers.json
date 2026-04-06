@@ -1,0 +1,266 @@
+{
+  "E": {
+    "row1": {
+      "val": "Mens",
+      "note": "Is een product onder goede arbeidsomstandigheden geproduceerd?\n"
+    },
+    "row3": {
+      "val": "Veilige werkomgeving",
+      "note": "Slaafvrij/kindvrij\n"
+    }
+  },
+  "I": {
+    "row1": {
+      "val": "Dier",
+      "note": "Is het product diervrij/diervriendelijk geproduceerd?"
+    },
+    "row3": {
+      "val": "Diervrij",
+      "note": "Veganistisch"
+    }
+  },
+  "L": {
+    "row1": {
+      "val": "Milieu",
+      "note": "Hoe groot is de CO2 impact van een product?\n"
+    },
+    "row2": {
+      "val": "Verpakking",
+      "note": ""
+    },
+    "row3": {
+      "val": "Verpakkingsvrij",
+      "note": "Zonder verpakking\n"
+    }
+  },
+  "Q": {
+    "row2": {
+      "val": "Transport",
+      "note": ""
+    },
+    "row3": {
+      "val": "Afstand (km)",
+      "note": "Mate van lokaalheid, hoeveel kilometer tussen Utrecht en productielocatie. Alleen een cijfer invullen, geen km erachter\n"
+    }
+  },
+  "T": {
+    "row2": {
+      "val": "Bewerking",
+      "note": ""
+    },
+    "row3": {
+      "val": "Handgemaakt",
+      "note": "Niet machinaal gemaakt maar met de hand\n"
+    }
+  },
+  "A": {
+    "row3": {
+      "val": "Compleet/klaar voor import?",
+      "note": "Is het product helemaal ingevuld en klaar om geïmporteerd te worden? Dan mag deze kolom op JA. Nog niet helemaal compleet? Kolom op NEE. Als het product is geïmporteerd, staat in deze kolom IMP. Verander je iets in het product nadat deze al is geïmporteerd? Deze kolom wijzigen naar JA en seintje naar Egbert dat het product opnieuw geïmporteerd moet worden\n"
+    },
+    "row4": {
+      "val": "Hieronder",
+      "note": ""
+    }
+  },
+  "B": {
+    "row3": {
+      "val": "A.Nummer",
+      "note": "Nummer van het product in ons systeem MPluskassa\n"
+    },
+    "row4": {
+      "val": "drie",
+      "note": ""
+    }
+  },
+  "C": {
+    "row3": {
+      "val": "A.Omschrijving",
+      "note": "Productomschrijving van het product in ons systeem \n"
+    },
+    "row4": {
+      "val": "voorbeelden van ingevulde producten",
+      "note": ""
+    }
+  },
+  "D": {
+    "row3": {
+      "val": "CRITERIUM MENS",
+      "note": "Is minimaal één van de kolommen van MENS ingevuld? Vul hier dan Ja in \n"
+    }
+  },
+  "F": {
+    "row3": {
+      "val": "Eerlijk loon",
+      "note": ""
+    }
+  },
+  "G": {
+    "row3": {
+      "val": "Maatschappelijk betrokkenheid",
+      "note": "Maatschappelijk betrokken op een van deze gebieden: gezondheid/scholing/voeding/welvaart/gelijkheid. Is het product bv. gemaakt in een sociale werkplaats?\n"
+    }
+  },
+  "H": {
+    "row3": {
+      "val": "CRITERIUM DIER",
+      "note": "Is minimaal één van de kolommen van DIER ingevuld? Vul hier dan Ja in \n"
+    }
+  },
+  "J": {
+    "row3": {
+      "val": "Diervriendelijk",
+      "note": "Biologisch/dierproefvrij"
+    }
+  },
+  "K": {
+    "row3": {
+      "val": "CRITERIUM MILIEU",
+      "note": "Is minimaal één van de kolommen van MILIEU ingevuld? Vul hier dan Ja in \n"
+    }
+  },
+  "M": {
+    "row3": {
+      "val": "Plastic vrij",
+      "note": "Geen plastic verpakking\n"
+    }
+  },
+  "N": {
+    "row3": {
+      "val": "Recyclebaar",
+      "note": "Via sortering iets nieuws van produceren verwerking nodig voor geheel of deel en het is dus niet hergebruik"
+    }
+  },
+  "O": {
+    "row3": {
+      "val": "Afbreekbaar",
+      "note": "Terug als mineralen of basisstoffen\n"
+    }
+  },
+  "P": {
+    "row3": {
+      "val": "Composteerbaar",
+      "note": "Terug als voedingsstoffen dus compost\n"
+    }
+  },
+  "R": {
+    "row3": {
+      "val": "Vervoersmiddel",
+      "note": "Wat voor soort vervoersmiddel (Boot, Vrachtwagen, Auto etc.)\nEerste letter voertuig met een hoofdletter schrijven."
+    }
+  },
+  "S": {
+    "row3": {
+      "val": "Uitstootcompensatie",
+      "note": "CO2 uitstoot gecompenseerd?\n"
+    }
+  },
+  "U": {
+    "row3": {
+      "val": "Natuurlijk",
+      "note": "Bewerking is beperkt door natuurlijke ingrediënten/grondstoffen, zoals plastic vrij\n"
+    }
+  },
+  "V": {
+    "row3": {
+      "val": "Hergebruik/gerecycled",
+      "note": "= Tweedehands / Circulair = geheel wordt gebruikt, er gaat geen kwaliteit verloren in proces en alle grondstoffen zijn oneindig herbruikbaar en levert dus nooit afval op want het afval is de nieuwe grondstof / Upcycled = opgeknapt en/of modulair gerepareerd \n"
+    }
+  },
+  "W": {
+    "row3": {
+      "val": "Overige vermelding",
+      "note": "Alle overige informatie die een leverancier kwijt wil over een product"
+    }
+  },
+  "X": {
+    "row3": {
+      "val": "Leverancier benaderd voor criteria Ja/Nee",
+      "note": "Is de leverancier al gemaild met de vraag om de duurzaamheidscriteria in te vullen? Vul JA in. Na een tweede keer mailen met herinnering kun je JA, 2x neerzetten. \n"
+    }
+  },
+  "Y": {
+    "row3": {
+      "val": "A.Actief",
+      "note": "Is het product in het systeem actief?\n"
+    }
+  },
+  "Z": {
+    "row3": {
+      "val": "A.Webshop",
+      "note": "Is een product af, wordt deze geïmporteerd en komt deze op de webshop? Dan mag deze kolom op JA. Is een voorwaarde voor Egbert om het product op de webshop te krijgen. \n"
+    }
+  },
+  "AA": {
+    "row3": {
+      "val": "A.Web omschrijving",
+      "note": "Lets get creative! In deze kolom schrijven wij de (lange) productomschrijving die een product krijgt op onze webshop. Vaak google ik eerst naar hoe het product wordt omschreven op een andere webshop en gebruik ik dat tekstje als basis. \n"
+    }
+  },
+  "AB": {
+    "row3": {
+      "val": "A.Web titel",
+      "note": "De titel van een product op onze webshop. Deze moet geschreven worden als: Merk - Productomschrijving (extra informatie zoals aantal stuks, gr of ml tussen haakjes). Ook een Engelse naam vertalen naar het Nederlands. Vaak kan je de productomschrijving uit kolom C gewoon hier plakken, maar soms staan daar nog gekke letters of nummers in die we niet op de webshop willen hebben. \n"
+    }
+  },
+  "AC": {
+    "row3": {
+      "val": "A.Gewicht (gr)",
+      "note": "Gewicht (in gr) van het product inclusief verpakking, afgerond naar boven in hele getallen. Dit is voor onze eigen systemen, zodat we straks weten hoe zwaar een pakketje is als we die moeten verzenden. \n"
+    }
+  },
+  "AD": {
+    "row3": {
+      "val": "A.Lengte (cm)",
+      "note": "Lengte van het product inclusief verpakking (in cm), afgerond naar boven in hele getallen. \n"
+    }
+  },
+  "AE": {
+    "row3": {
+      "val": "A.Breedte (cm)",
+      "note": "Breedte van het product inclusief verpakking (in cm), afgerond naar boven in hele getallen. \n"
+    }
+  },
+  "AF": {
+    "row3": {
+      "val": "A.Hoogte (cm)",
+      "note": "Hoogte van het product inclusief verpakking (in cm), afgerond naar boven in hele getallen. \n"
+    }
+  },
+  "AG": {
+    "row3": {
+      "val": "A.Inhoud (ml)",
+      "note": "Bij een vloeibaar food- of verzorgingsproduct: inhoud van het product in ml.\n"
+    }
+  },
+  "AH": {
+    "row3": {
+      "val": "A.Inhoud (gr)",
+      "note": "Inhoud van een food- of verzorgingsproduct in gr.\n"
+    }
+  },
+  "AI": {
+    "row3": {
+      "val": "A.Ingrediënten",
+      "note": "Ingrediënten van een food- of verzorgingsproduct\n"
+    }
+  },
+  "AJ": {
+    "row3": {
+      "val": "A.Allergenen",
+      "note": "Allergenen bij een food- of verzorgingsproduct\n"
+    }
+  },
+  "AK": {
+    "row3": {
+      "val": "A.Hoofdmateriaal",
+      "note": "Het hoofdmateriaal van het product. Is ook een filter op de webshop, dus echt alleen een hoofdmateriaal noteren en dit consistent houden. Bijvoorbeeld: wel 'hout', 'glas' of 'plastic', maar niet 'bioplastic', 'deels gerecyled plastic' of iets dergelijks \n"
+    }
+  },
+  "AL": {
+    "row3": {
+      "val": "A.Kleur",
+      "note": "Kleur van een product, alleen invullen als relevant. Bv. wel relevant bij een t-shirt, maar niet relevant bij een chocoladereep. Ook hierbij alleen basiskleuren noteren, en niet bijvoorbeeld 'licht mosgroen' of iets dergelijks\n"
+    }
+  }
+}

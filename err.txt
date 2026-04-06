@@ -1,0 +1,3 @@
+Γùç injecting env (3) from .env // tip: Γùê secrets for agents [www.dotenvx.com]
+Cleared products.
+Success! Product id: cmnlum84t0000mglkj85yuvyo

@@ -1,0 +1,199 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  userRoles           UserRole[]
+  productAssignments  ProductAssignment[]
+  statusHistories     ProductStatusHistory[]
+  auditLogs           AuditLog[]
+  assignedProducts    Product[]
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  createdAt   DateTime @default(now())
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+}
+
+model UserRole {
+  id      String @id @default(cuid())
+  userId  String
+  roleId  String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+}
+
+model RolePermission {
+  id           String @id @default(cuid())
+  roleId       String
+  module       String
+  action       String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, module])
+}
+
+model Brand {
+  id   String @id @default(cuid())
+  name String @unique
+  
+  products Product[]
+}
+
+model Supplier {
+  id   String @id @default(cuid())
+  name String @unique
+
+  products Product[]
+}
+
+model Category {
+  id       String @id @default(cuid())
+  name     String
+  parentId String?
+
+  parent   Category?  @relation("Subcategories", fields: [parentId], references: [id])
+  children Category[] @relation("Subcategories")
+
+  productsAsCategory    Product[] @relation("CategoryToProduct")
+  productsAsSubcategory Product[] @relation("SubcategoryToProduct")
+}
+
+model Product {
+  id                    String   @id @default(cuid())
+  internalArticleNumber String   @unique
+  ean                   String?
+  title                 String
+  status                String   @default("new")
+  
+  brandId               String?
+  supplierId            String?
+  categoryId            String?
+  subcategoryId         String?
+  assignedUserId        String?
+
+  shortDescription      String?
+  longDescription       String?
+  color                 String?
+  size                  String?
+  material              String?
+  tags                  String?
+  webshopSlug           String?  @unique
+  
+  weightGr              Int?
+  lengthCm              Int?
+  widthCm               Int?
+  heightCm              Int?
+  volumeMl              Int?
+  volumeGr              Int?
+  ingredients           String?
+  allergens             String?
+  mainMaterial          String?
+
+  readyForImport        String   @default("NEE")
+  webshopActive         Boolean  @default(false)
+  systemActive          Boolean  @default(true)
+  supplierContacted     String?
+
+  critMensSafeWork      String?
+  critMensFairWage      String?
+  critMensSocial        String?
+  critDierCrueltyFree   String?
+  critDierFriendly      String?
+  critMilieuPackagingFree String?
+  critMilieuPlasticFree   String?
+  critMilieuRecyclable    String?
+  critMilieuBiodegradable String?
+  critMilieuCompostable   String?
+  critMilieuCarbonCompensated String?
+  critTransportDistance   Int?
+  critTransportVehicle    String?
+  critHandmade          String?
+  critNatural           String?
+  critCircular          String?
+  critOther             String?
+
+  seoTitle              String?
+  seoMetaDescription    String?
+  
+  basePrice             Float?
+  
+  qualityControlStatus  String?
+  exportStatus          String?
+  publicationReady      Boolean  @default(false)
+  internalNotes         String?
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  brand             Brand?    @relation(fields: [brandId], references: [id])
+  supplier          Supplier? @relation(fields: [supplierId], references: [id])
+  category          Category? @relation("CategoryToProduct", fields: [categoryId], references: [id])
+  subcategory       Category? @relation("SubcategoryToProduct", fields: [subcategoryId], references: [id])
+  assignedUser      User?     @relation(fields: [assignedUserId], references: [id])
+
+  assignments       ProductAssignment[]
+  statusHistories   ProductStatusHistory[]
+}
+
+model ProductAssignment {
+  id           String    @id @default(cuid())
+  productId    String
+  userId       String
+  assignedAt   DateTime  @default(now())
+  unassignedAt DateTime?
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ProductStatusHistory {
+  id           String   @id @default(cuid())
+  productId    String
+  oldStatus    String
+  newStatus    String
+  changedById  String
+  changedAt    DateTime @default(now())
+
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  changedBy   User    @relation(fields: [changedById], references: [id])
+}
+
+model ConfigurableField {
+  id          String  @id @default(cuid())
+  entity      String
+  fieldName   String
+  isRequired  Boolean @default(false)
+
+  @@unique([entity, fieldName])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  entity    String
+  entityId  String
+  changes   String?
+  timestamp DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}

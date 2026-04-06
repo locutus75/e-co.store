@@ -1,0 +1,164 @@
+"use server";
+import { prisma } from "@/lib/prisma";
+import { revalidatePath } from "next/cache";
+
+export async function bulkAssignAction(internalIds: string[], userId: string) {
+  if (!internalIds || internalIds.length === 0) return { success: false, error: 'Geen ID\'s meegegeven' };
+  
+  try {
+    const res = await prisma.product.updateMany({
+      where: {
+        internalArticleNumber: {
+          in: internalIds
+        }
+      },
+      data: {
+        assignedUserId: userId === 'NONE' ? null : userId
+      }
+    });
+
+    // Option: Insert History tracking into ProductAssignment here if desired.
+    if (userId !== 'NONE') {
+      const histories = internalIds.map(pid => ({
+        productId: pid, // wait, product has an internal article number, but the relation might be the CUID. Let's just blindly update `assignedUserId` on the Product directly, which is clean.
+      }))
+    }
+    
+    revalidatePath('/products');
+    return { success: true, count: res.count };
+  } catch(e: any) {
+    console.error("ASSIGN ERROR", e);
+    return { success: false, error: e.message };
+  }
+}
+
+export async function deleteProductsAction(internalIds: string[]) {
+  if (!internalIds || internalIds.length === 0) return { success: false, error: 'Geen ID\'s meegegeven' };
+  
+  try {
+    const res = await prisma.product.deleteMany({
+      where: {
+        internalArticleNumber: {
+          in: internalIds
+        }
+      }
+    });
+    revalidatePath('/products');
+    return { success: true, count: res.count };
+  } catch(e: any) {
+    console.error("DELETE ERROR", e);
+    return { success: false, error: e.message };
+  }
+}
+
+export async function updateReadyForImportAction(internalId: string, status: string) {
+  try {
+    await prisma.product.update({
+      where: { internalArticleNumber: internalId },
+      data: { readyForImport: status }
+    });
+    revalidatePath('/products');
+    return { success: true };
+  } catch (e: any) {
+    console.error("Update readyForImport failed:", e);
+    return { success: false, error: e.message };
+  }
+}
+
+export async function updateProductStatusAction(internalId: string, status: string) {
+  try {
+    await prisma.product.update({
+      where: { internalArticleNumber: internalId },
+      data: { status: status }
+    });
+    revalidatePath('/products');
+    return { success: true };
+  } catch (e: any) {
+    console.error("Update status failed:", e);
+    return { success: false, error: e.message };
+  }
+}
+
+export async function updateProductAction(internalId: string, formData: FormData) {
+  const data: any = {};
+  
+  // Safe extraction of text fields
+  const textFields = [
+    'title', 'ean', 'seoTitle', 'longDescription', 'color', 'mainMaterial', 
+    'ingredients', 'allergens', 'critMensSocial', 'supplierContacted', 
+    'critCircular', 'critTransportVehicle', 'critOther'
+  ];
+  for(const field of textFields) {
+    const val = formData.get(field);
+    if(val !== null) data[field] = val === '' ? null : val.toString();
+  }
+  
+  // Safe extraction of float fields
+  if (formData.has('basePrice')) {
+      const pVal = formData.get('basePrice');
+      if (pVal === '') {
+          data.basePrice = null;
+      } else {
+          const parsed = parseFloat(pVal as string);
+          if (!Number.isNaN(parsed)) {
+             data.basePrice = parsed;
+          }
+      }
+  }
+
+  // Safe extraction of Number fields
+  const numberFields = [
+    'weightGr', 'lengthCm', 'widthCm', 'heightCm', 
+    'volumeMl', 'volumeGr', 'critTransportDistance'
+  ];
+  for(const field of numberFields) {
+    const val = formData.get(field);
+    if(val !== null && val !== '') {
+      const parsed = parseInt(val.toString(), 10);
+      if (Number.isNaN(parsed)) {
+        throw new Error(`Field ${field} is not a valid number! Received: "${val.toString()}"`);
+      }
+      data[field] = parsed;
+    } else if (val === '') {
+      data[field] = null;
+    }
+  }
+
+  // Safe extraction of True/False flags
+  data.webshopActive = formData.has('webshopActive');
+  data.systemActive = formData.has('systemActive');
+
+  // Excel mapping 'Ja' for sustainability arrays
+  const criteriaBoxes = [
+    'critMensSafeWork', 'critMensFairWage', 'critMensSocialCheck',
+    'critDierCrueltyFree', 'critDierFriendly', 'critMilieuPackagingFree',
+    'critMilieuPlasticFree', 'critMilieuRecyclable', 'critMilieuBiodegradable',
+    'critMilieuCompostable', 'critHandmade', 'critNatural', 'critMilieuCarbonCompensated'
+  ];
+  
+  for(const field of criteriaBoxes) {
+    // If it's a special rename we fix it, else keep name
+    const targetField = field === 'critMensSocialCheck' ? 'critMensSocial' : field;
+    if(formData.has(field)) {
+      // If it's the custom social string input, don't overwrite it with 'Ja' if the checkbox holds
+      // Wait, the user wants 'Maatschappelijke betrokkenheid' to be a checkbox JUST LIKE the rest.
+      // And no input box anymore!
+      data[targetField] = 'Ja';
+    } else {
+      data[targetField] = null; 
+    }
+  }
+
+  try {
+    await prisma.product.update({
+      where: { internalArticleNumber: internalId },
+      data
+    });
+    revalidatePath('/products');
+  } catch (e: any) {
+    const fs = require('fs');
+    fs.writeFileSync('prisma_debug_err.log', "Error:\n" + String(e.message) + "\n\nPayload:\n" + JSON.stringify(data, null, 2));
+    console.error("PRISMA VALIDATION ERROR", JSON.stringify(data), e.message);
+    throw new Error(`Data Validation Failed! Error: ${e.message.slice(0, 150)}... // More written to prisma_debug_err.log`);
+  }
+}

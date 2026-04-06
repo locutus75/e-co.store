@@ -1,0 +1,110 @@
+Error:
+
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].product.update()` invocation in
+C:\Dev\e-co.store\.next\dev\server\chunks\ssr\[root-of-the-server]__0f4l1at._.js:131:150
+
+  128     }
+  129 }
+  130 try {
+→ 131     await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].product.update({
+            where: {
+              internalArticleNumber: "2061"
+            },
+            data: {
+              seoTitle: "Test title",
+              longDescription: "Deze sleutelhanger is verkrijgbaar in 11 kleuren en helpt mee aan een duurzamere wereld.",
+              color: "Oranje",
+              mainMaterial: null,
+              ~~~~~~~~~~~~
+              ingredients: null,
+              allergens: null,
+              supplierContacted: null,
+              critCircular: null,
+              critTransportVehicle: null,
+              critOther: null,
+              weightGr: 1,
+              lengthCm: null,
+              widthCm: null,
+              heightCm: null,
+              volumeMl: null,
+              volumeGr: null,
+              critTransportDistance: null,
+              webshopActive: false,
+              systemActive: false,
+              critMensSafeWork: null,
+              critMensFairWage: null,
+              critMensSocial: null,
+              critDierCrueltyFree: null,
+              critDierFriendly: null,
+              critMilieuPackagingFree: null,
+              critMilieuPlasticFree: null,
+              critMilieuRecyclable: null,
+              critMilieuBiodegradable: null,
+              critMilieuCompostable: null,
+              critHandmade: null,
+              critNatural: null,
+              critMilieuCarbonCompensated: null,
+          ?   id?: String | StringFieldUpdateOperationsInput,
+          ?   internalArticleNumber?: String | StringFieldUpdateOperationsInput,
+          ?   ean?: String | NullableStringFieldUpdateOperationsInput | Null,
+          ?   title?: String | StringFieldUpdateOperationsInput,
+          ?   status?: String | StringFieldUpdateOperationsInput,
+          ?   shortDescription?: String | NullableStringFieldUpdateOperationsInput | Null,
+          ?   size?: String | NullableStringFieldUpdateOperationsInput | Null,
+          ?   material?: String | NullableStringFieldUpdateOperationsInput | Null,
+          ?   tags?: String | NullableStringFieldUpdateOperationsInput | Null,
+          ?   webshopSlug?: String | NullableStringFieldUpdateOperationsInput | Null,
+          ?   seoMetaDescription?: String | NullableStringFieldUpdateOperationsInput | Null,
+          ?   qualityControlStatus?: String | NullableStringFieldUpdateOperationsInput | Null,
+          ?   exportStatus?: String | NullableStringFieldUpdateOperationsInput | Null,
+          ?   publicationReady?: Boolean | BoolFieldUpdateOperationsInput,
+          ?   internalNotes?: String | NullableStringFieldUpdateOperationsInput | Null,
+          ?   createdAt?: DateTime | DateTimeFieldUpdateOperationsInput,
+          ?   updatedAt?: DateTime | DateTimeFieldUpdateOperationsInput,
+          ?   brand?: BrandUpdateOneWithoutProductsNestedInput,
+          ?   supplier?: SupplierUpdateOneWithoutProductsNestedInput,
+          ?   category?: CategoryUpdateOneWithoutProductsAsCategoryNestedInput,
+          ?   subcategory?: CategoryUpdateOneWithoutProductsAsSubcategoryNestedInput,
+          ?   assignedUser?: UserUpdateOneWithoutAssignedProductsNestedInput,
+          ?   assignments?: ProductAssignmentUpdateManyWithoutProductNestedInput,
+          ?   statusHistories?: ProductStatusHistoryUpdateManyWithoutProductNestedInput
+            }
+          })
+
+Unknown argument `mainMaterial`. Available options are marked with ?.
+
+Payload:
+{
+  "seoTitle": "Test title",
+  "longDescription": "Deze sleutelhanger is verkrijgbaar in 11 kleuren en helpt mee aan een duurzamere wereld.",
+  "color": "Oranje",
+  "mainMaterial": null,
+  "ingredients": null,
+  "allergens": null,
+  "supplierContacted": null,
+  "critCircular": null,
+  "critTransportVehicle": null,
+  "critOther": null,
+  "weightGr": 1,
+  "lengthCm": null,
+  "widthCm": null,
+  "heightCm": null,
+  "volumeMl": null,
+  "volumeGr": null,
+  "critTransportDistance": null,
+  "webshopActive": false,
+  "systemActive": false,
+  "critMensSafeWork": null,
+  "critMensFairWage": null,
+  "critMensSocial": null,
+  "critDierCrueltyFree": null,
+  "critDierFriendly": null,
+  "critMilieuPackagingFree": null,
+  "critMilieuPlasticFree": null,
+  "critMilieuRecyclable": null,
+  "critMilieuBiodegradable": null,
+  "critMilieuCompostable": null,
+  "critHandmade": null,
+  "critNatural": null,
+  "critMilieuCarbonCompensated": null
+}

@@ -1,0 +1,370 @@
+"use client";
+import React, { useState, useMemo, useTransition } from 'react';
+import ProductDrawer from '@/components/ProductDrawer';
+import ExcelImportWizard from '@/components/ExcelImportWizard';
+import { deleteProductsAction, updateReadyForImportAction, updateProductStatusAction, bulkAssignAction } from '@/app/actions/product';
+
+function InlineStatusToggle({ product }: { product: any }) {
+  const [isPending, startTransition] = useTransition();
+  const currentStatus = (product.status || 'NEW').toUpperCase();
+
+  const handleToggle = () => {
+    const nextStatus = currentStatus === 'NEW' ? 'CHECK' : 'NEW';
+    startTransition(async () => {
+      await updateProductStatusAction(product.internalArticleNumber, nextStatus);
+    });
+  }
+
+  return (
+    <span 
+      onClick={(e) => { e.stopPropagation(); handleToggle(); }}
+      style={{ 
+        padding: '0.35rem 0.85rem', 
+        borderRadius: '1rem', 
+        fontSize: '0.75rem', 
+        fontWeight: 600, 
+        backgroundColor: currentStatus === 'CHECK' ? '#3b82f6' : 'var(--primary)', 
+        color: 'white',
+        cursor: isPending ? 'wait' : 'pointer',
+        opacity: isPending ? 0.6 : 1,
+        transition: 'all 0.2s',
+        display: 'inline-block'
+      }}>
+      {isPending ? '...' : currentStatus}
+    </span>
+  );
+}
+
+
+
+function InlineReadyToggle({ product, isAdmin }: { product: any, isAdmin: boolean }) {
+  const [isPending, startTransition] = useTransition();
+
+  const handleUpdate = (val: string) => {
+    if (!isAdmin) return; // Enforce authorization
+    if (product.readyForImport === val) return;
+    startTransition(async () => {
+      await updateReadyForImportAction(product.internalArticleNumber, val);
+    });
+  }
+
+  const readyMode = product.readyForImport?.toUpperCase() || 'NEE';
+
+  const btnStyle = (val: string, color: string) => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '26px',
+    height: '26px',
+    borderRadius: '4px',
+    fontWeight: 'bold',
+    fontSize: '0.85rem',
+    cursor: !isAdmin ? 'not-allowed' : (isPending ? 'wait' : 'pointer'),
+    backgroundColor: readyMode === val ? color : 'var(--surface)',
+    color: readyMode === val ? 'white' : (!isAdmin ? 'var(--border)' : 'var(--text-muted)'),
+    border: readyMode === val ? 'none' : '1px solid var(--border)',
+    transition: 'all 0.2s',
+    opacity: (!isAdmin && readyMode !== val) ? 0.3 : (isPending ? 0.5 : 1)
+  });
+
+  return (
+    <div style={{ display: 'flex', gap: '0.4rem' }} onClick={e => e.stopPropagation()}>
+      <div style={btnStyle('NEE', 'var(--error)')} onClick={() => handleUpdate('NEE')} title="No">N</div>
+      <div style={btnStyle('REVIEW', '#3b82f6')} onClick={() => handleUpdate('REVIEW')} title="Review">R</div>
+      <div style={btnStyle('JA', 'var(--success)')} onClick={() => handleUpdate('JA')} title="Yes">Y</div>
+    </div>
+  );
+}
+
+export default function ProductsClient({ initialProducts, systemUsers = [], isAdmin = false, fieldPermissions = {} }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, fieldPermissions?: Record<string, string> }) {
+  const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
+  const [showImportWizard, setShowImportWizard] = useState(false);
+  const [isDeleting, startTransition] = useTransition();
+
+  // Search & Filter State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [supplierFilter, setSupplierFilter] = useState('');
+  const [brandFilter, setBrandFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [webshopReadyFilter, setWebshopReadyFilter] = useState('');
+  const [assignedUserFilter, setAssignedUserFilter] = useState('');
+
+  // Multi-select State
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Unique Lists for Dropdowns
+  const uniqueSuppliers = useMemo(() => {
+    const names = initialProducts.map(p => p.supplier?.name).filter(Boolean);
+    return Array.from(new Set(names)).sort();
+  }, [initialProducts]);
+
+  const uniqueBrands = useMemo(() => {
+    const names = initialProducts.map(p => p.brand?.name).filter(Boolean);
+    return Array.from(new Set(names)).sort();
+  }, [initialProducts]);
+
+  // Filtered resulting list
+  const filteredProducts = useMemo(() => {
+    return initialProducts.filter(p => {
+      const matchSearch = searchQuery === '' || 
+        p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        p.internalArticleNumber.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchSupplier = supplierFilter === '' || p.supplier?.name === supplierFilter;
+      const matchBrand = brandFilter === '' || p.brand?.name === brandFilter;
+      const matchStatus = statusFilter === '' || (p.status || 'NEW').toUpperCase() === statusFilter;
+      const matchReady = webshopReadyFilter === '' || (p.readyForImport || 'NEE').toUpperCase() === webshopReadyFilter;
+      
+      const matchAssigned = assignedUserFilter === '' ||
+                            (assignedUserFilter === 'UNASSIGNED' ? !p.assignedUserId : p.assignedUserId === assignedUserFilter);
+
+      return matchSearch && matchSupplier && matchBrand && matchStatus && matchReady && matchAssigned;
+    });
+  }, [initialProducts, searchQuery, supplierFilter, brandFilter, statusFilter, webshopReadyFilter, assignedUserFilter]);
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredProducts.length && filteredProducts.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredProducts.map(p => p.internalArticleNumber)));
+    }
+  };
+
+  const toggleSelect = (id: string, e?: React.ChangeEvent) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const executeBulkDelete = () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Weet je zeker dat je ${selectedIds.size} producten permanent wilt verwijderen?`)) return;
+
+    startTransition(async () => {
+      const idsArray = Array.from(selectedIds);
+      const res = await deleteProductsAction(idsArray);
+      if (res.success) {
+        setSelectedIds(new Set());
+      } else {
+        alert("Fout bij verwijderen: " + res.error);
+      }
+    });
+  };
+
+  const handleBulkAssign = (userId: string) => {
+    if (selectedIds.size === 0) return;
+    startTransition(async () => {
+      const idsArray = Array.from(selectedIds);
+      const res = await bulkAssignAction(idsArray, userId);
+      if (res.success) {
+        setSelectedIds(new Set());
+      } else {
+        alert("Fout bij toewijzen: " + res.error);
+      }
+    });
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%', maxWidth: '1600px' }}>
+      {showImportWizard && (
+        <ExcelImportWizard onClose={() => setShowImportWizard(false)} />
+      )}
+      
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)' }}>Products Database</h1>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          {selectedIds.size > 0 && isAdmin && (
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: 'var(--surface-hover)', padding: '0.2rem 0.5rem', borderRadius: 'var(--radius)' }}>
+              <select 
+                className="input"
+                style={{ cursor: isDeleting ? 'wait' : 'pointer', border: 'none', backgroundColor: 'transparent', fontWeight: 600, fontSize: '0.85rem' }}
+                disabled={isDeleting}
+                value=""
+                onChange={(e) => handleBulkAssign(e.target.value)}
+              >
+                <option value="" disabled>Aantal ({selectedIds.size}) toewijzen aan...</option>
+                <option value="NONE">-- Ontkoppelen (Unassign) --</option>
+                {systemUsers.map(su => (
+                  <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>
+                ))}
+              </select>
+              
+              <button 
+                className="btn" 
+                style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', backgroundColor: 'var(--error)', border: 'none', cursor: isDeleting ? 'wait' : 'pointer', color: 'white' }}
+                onClick={executeBulkDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? '...' : `🗑 Verwijder`}
+              </button>
+            </div>
+          )}
+          {isAdmin && (
+            <button 
+               className="btn" 
+               style={{ padding: '0.6rem 1.2rem', fontSize: '0.9rem', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text)' }}
+               onClick={() => setShowImportWizard(true)}
+            >
+              📥 Import Excel
+            </button>
+          )}
+          <button className="btn btn-primary" style={{ padding: '0.6rem 1.2rem', fontSize: '0.9rem' }}>+ New Product</button>
+        </div>
+      </div>
+
+      {/* Filter Toolbar */}
+      <div className="glass" style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', padding: '1rem', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+        <input 
+          type="text" 
+          placeholder="🔍 Zoek Artikel of ID..." 
+          className="input" 
+          style={{ flex: '1 1 300px', padding: '0.5rem 1rem', borderRadius: 'var(--radius)' }}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        <select 
+          className="input" 
+          style={{ flex: '1 1 150px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
+          value={supplierFilter}
+          onChange={(e) => setSupplierFilter(e.target.value)}
+        >
+          <option value="">-- Leveranciers --</option>
+          {uniqueSuppliers.map(sup => (
+            <option key={sup} value={sup as string}>{sup}</option>
+          ))}
+        </select>
+        <select 
+          className="input" 
+          style={{ flex: '1 1 150px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
+          value={brandFilter}
+          onChange={(e) => setBrandFilter(e.target.value)}
+        >
+          <option value="">-- Merken --</option>
+          {uniqueBrands.map(b => (
+            <option key={b} value={b as string}>{b}</option>
+          ))}
+        </select>
+        <select 
+          className="input" 
+          style={{ flex: '1 1 120px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          <option value="">-- Status --</option>
+          <option value="NEW">NEW</option>
+          <option value="CHECK">CHECK</option>
+        </select>
+        <select 
+          className="input" 
+          style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
+          value={webshopReadyFilter}
+          onChange={(e) => setWebshopReadyFilter(e.target.value)}
+        >
+          <option value="">-- Webshop Ready --</option>
+          <option value="NEE">No (N)</option>
+          <option value="REVIEW">Review (R)</option>
+          <option value="JA">Yes (Y)</option>
+        </select>
+        <select 
+          className="input" 
+          style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
+          value={assignedUserFilter}
+          onChange={(e) => setAssignedUserFilter(e.target.value)}
+        >
+          <option value="">-- Toegewezen --</option>
+          <option value="UNASSIGNED">[ Niet Toegewezen ]</option>
+          {systemUsers.map(su => (
+             <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>
+          ))}
+        </select>
+      </div>
+      
+      <div className="glass" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+          <thead>
+            <tr style={{ backgroundColor: 'rgba(0,0,0,0.02)', borderBottom: '1px solid var(--border)' }}>
+              <th style={{ padding: '1.25rem', width: '40px' }}>
+                <input 
+                  type="checkbox" 
+                  checked={selectedIds.size > 0 && selectedIds.size === filteredProducts.length}
+                  ref={input => {
+                    if (input) {
+                      input.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredProducts.length;
+                    }
+                  }}
+                  onChange={toggleSelectAll}
+                  style={{ cursor: 'pointer' }}
+                />
+              </th>
+              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Article ID</th>
+              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Toewijzing</th>
+              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Leverancier</th>
+              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Merk</th>
+              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Title</th>
+              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status</th>
+              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Webshop Ready</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredProducts.map(product => (
+              <tr 
+                key={product.id} 
+                onClick={() => setSelectedProduct(product)}
+                style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background-color 0.2s', backgroundColor: selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'transparent' }}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'var(--surface-hover)'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'transparent'}
+              >
+                <td style={{ padding: '1.25rem', width: '40px' }} onClick={e => e.stopPropagation()}>
+                  <input 
+                    type="checkbox" 
+                    checked={selectedIds.has(product.internalArticleNumber)}
+                    onChange={() => toggleSelect(product.internalArticleNumber)}
+                    style={{ cursor: 'pointer' }}
+                  />
+                </td>
+                <td style={{ padding: '1.25rem', fontWeight: 600, color: 'var(--text)' }}>{product.internalArticleNumber}</td>
+                <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
+                  <select 
+                    value={product.assignedUserId || 'NONE'}
+                    disabled={!isAdmin}
+                    onChange={(e) => {
+                      startTransition(async () => { await bulkAssignAction([product.internalArticleNumber], e.target.value); });
+                    }}
+                    style={{ border: 'none', backgroundColor: 'transparent', color: product.assignedUserId ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', cursor: isAdmin ? 'pointer' : 'not-allowed' }}
+                  >
+                    <option value="NONE">-</option>
+                    {systemUsers.map(su => (
+                      <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>
+                    ))}
+                  </select>
+                </td>
+                <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.supplier?.name || '-'}</td>
+                <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.brand?.name || '-'}</td>
+                <td style={{ padding: '1.25rem', color: 'var(--text)', fontWeight: 500 }}>{product.title}</td>
+                <td style={{ padding: '1.25rem' }}>
+                  <InlineStatusToggle product={product} />
+                </td>
+                <td style={{ padding: '1.25rem' }}>
+                  <InlineReadyToggle product={product} isAdmin={isAdmin} />
+                </td>
+              </tr>
+            ))}
+            {filteredProducts.length === 0 && (
+              <tr>
+                <td colSpan={8} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>Geen producten gevonden die voldoen aan je filters.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <ProductDrawer 
+        product={selectedProduct} 
+        isOpen={!!selectedProduct} 
+        onClose={() => setSelectedProduct(null)} 
+        fieldPermissions={isAdmin ? undefined : fieldPermissions}
+      />
+    </div>
+  );
+}
