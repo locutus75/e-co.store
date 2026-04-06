@@ -112,7 +112,7 @@ model Product {
   webshopActive         Boolean  @default(false)
   systemActive          Boolean  @default(true)
   supplierContacted     String?
-
+  internalRemarks       String? // Interne Communicatie
   critMensSafeWork      String?
   critMensFairWage      String?
   critMensSocial        String?

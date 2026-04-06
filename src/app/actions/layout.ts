@@ -107,7 +107,8 @@ const DEFAULT_PRODUCT_LAYOUT: FormSection[] = [
       { id: "FIELD:critTransportDistance", label: "Afstand (km)", type: "number" },
       { id: "FIELD:critTransportVehicle", label: "Vervoersmiddel", type: "text" },
       { id: "FIELD:critMilieuCarbonCompensated", label: "Uitstootcompensatie", type: "checkbox" },
-      { id: "FIELD:critOther", label: "Overige vermelding", type: "textarea" }
+      { id: "FIELD:critOther", label: "Overige vermelding", type: "textarea" },
+      { id: "FIELD:internalRemarks", label: "Interne Communicatie", type: "textarea", width: 12 }
     ]
   }
 ];

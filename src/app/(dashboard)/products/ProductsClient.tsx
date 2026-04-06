@@ -14,11 +14,15 @@ export const getStatusColor = (status: string) => {
   }
 };
 
-function InlineStatusToggle({ product }: { product: any }) {
+function InlineStatusToggle({ product, isAdmin }: { product: any, isAdmin: boolean }) {
   const [isPending, startTransition] = useTransition();
   const currentStatus = (product.status || 'NEW').toUpperCase();
 
+  const lockStatus = (product.readyForImport || '').toUpperCase();
+  const isGloballyLocked = !isAdmin && (lockStatus === 'JA' || lockStatus === 'REVIEW' || lockStatus === 'R' || lockStatus === 'Y');
+
   const handleSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (isGloballyLocked) return;
     const nextStatus = e.target.value;
     startTransition(async () => {
       await updateProductStatusAction(product.internalArticleNumber, nextStatus);
@@ -30,7 +34,7 @@ function InlineStatusToggle({ product }: { product: any }) {
       value={currentStatus}
       onChange={handleSelect}
       onClick={(e) => e.stopPropagation()}
-      disabled={isPending}
+      disabled={isPending || isGloballyLocked}
       style={{ 
         padding: '0.35rem 1.75rem 0.35rem 0.85rem', 
         borderRadius: '1rem', 
@@ -38,8 +42,8 @@ function InlineStatusToggle({ product }: { product: any }) {
         fontWeight: 600, 
         backgroundColor: getStatusColor(currentStatus), 
         color: 'white',
-        cursor: isPending ? 'wait' : 'pointer',
-        opacity: isPending ? 0.6 : 1,
+        cursor: (isPending || isGloballyLocked) ? 'not-allowed' : 'pointer',
+        opacity: (isPending || isGloballyLocked) ? 0.6 : 1,
         transition: 'all 0.2s',
         display: 'inline-block',
         border: 'none',
@@ -367,7 +371,7 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
                 <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.brand?.name || '-'}</td>
                 <td style={{ padding: '1.25rem', color: 'var(--text)', fontWeight: 500 }}>{product.title}</td>
                 <td style={{ padding: '1.25rem' }}>
-                  <InlineStatusToggle product={product} />
+                  <InlineStatusToggle product={product} isAdmin={isAdmin} />
                 </td>
                 <td style={{ padding: '1.25rem' }}>
                   <InlineReadyToggle product={product} isAdmin={isAdmin} />

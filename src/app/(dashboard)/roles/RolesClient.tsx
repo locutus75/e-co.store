@@ -38,6 +38,7 @@ const FIELD_MODULES = [
   { module: 'FIELD:allergens', label: 'Allergenen' },
   { module: 'FIELD:mainMaterial', label: 'Hoofdmateriaal' },
   { module: 'FIELD:readyForImport', label: 'Klaar voor Import' },
+  { module: 'FIELD:internalRemarks', label: 'Interne Communicatie' },
   { module: 'FIELD:webshopActive', label: 'Webshop Actief' },
   { module: 'FIELD:systemActive', label: 'Systeem Actief' },
   { module: 'FIELD:supplierContacted', label: 'Leverancier Gecontacteerd' },

@@ -45,6 +45,9 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   const currentStatus = (product?.status || 'NEW').toUpperCase();
   const [activeStatus, setActiveStatus] = useState(currentStatus);
 
+  const lockStatus = (product?.readyForImport || '').toUpperCase();
+  const isGloballyLocked = !isAdmin && (lockStatus === 'JA' || lockStatus === 'REVIEW' || lockStatus === 'R' || lockStatus === 'Y');
+
   // Deep clone data to allow programmatic UI refreshes without mutations
   const [localProductData, setLocalProductData] = useState<any>(product);
   const [formKey, setFormKey] = useState(0);
@@ -104,6 +107,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
 
   const renderField = (moduleName: string, label: string, val: string, inputComponent: React.ReactNode, isCheckbox: boolean = false) => {
     let action = isAdmin ? 'WRITE' : (fieldPermissions?.[moduleName] ?? 'READ');
+    if (isGloballyLocked) action = 'READ';
 
     // internalArticleNumber is explicitly READ-only even for Admins usually
     if (moduleName === 'FIELD:internalArticleNumber') {
@@ -208,6 +212,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                   <select 
                     name="status"
                     value={activeStatus}
+                    disabled={isGloballyLocked}
                     onChange={(e) => {
                       setStatusOverridden(true);
                       setActiveStatus(e.target.value);
@@ -236,26 +241,28 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                     ))}
                   </select>
                   
-                  <button 
-                    type="button"
-                    title="Kopieer data van product (zelfde leverancier)"
-                    onClick={() => setShowCopyModal(true)}
-                    style={{ 
-                      padding: '0.25rem 0.6rem', 
-                      borderRadius: '4px', 
-                      fontSize: '0.75rem', 
-                      fontWeight: 600, 
-                      backgroundColor: 'transparent', 
-                      color: 'var(--text-muted)',
-                      border: '1px solid var(--border)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center', gap: '0.3rem',
-                      marginLeft: '0.5rem'
-                    }}
-                  >
-                    🖨 Kopieer Data
-                  </button>
+                  {!isGloballyLocked && (
+                    <button 
+                      type="button"
+                      title="Kopieer data van product (zelfde leverancier)"
+                      onClick={() => setShowCopyModal(true)}
+                      style={{ 
+                        padding: '0.25rem 0.6rem', 
+                        borderRadius: '4px', 
+                        fontSize: '0.75rem', 
+                        fontWeight: 600, 
+                        backgroundColor: 'transparent', 
+                        color: 'var(--text-muted)',
+                        border: '1px solid var(--border)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center', gap: '0.3rem',
+                        marginLeft: '0.5rem'
+                      }}
+                    >
+                      🖨 Kopieer Data
+                    </button>
+                  )}
                 </div>
               </div>
               <button type="button" onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.75rem', color: 'var(--text-muted)' }}>✕</button>
@@ -273,10 +280,16 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
             </div>
 
             <div style={{ padding: '2rem 3rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '1rem', position: 'sticky', bottom: 0, backgroundColor: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)', zIndex: 10 }}>
-              <button type="button" onClick={onClose} className="btn" style={{ padding: '1rem 2rem', border: '1px solid var(--border)', background: 'transparent' }}>Annuleren</button>
-              <button type="submit" disabled={isPending} className="btn btn-primary" style={{ padding: '1rem 3rem', boxShadow: '0 4px 14px rgba(225, 191, 220, 0.4)' }}>
-                {isPending ? 'Bezig met opslaan...' : 'Opslaan'}
-              </button>
+              <button type="button" onClick={onClose} className="btn" style={{ padding: '1rem 2rem', border: '1px solid var(--border)', background: 'transparent' }}>{isGloballyLocked ? 'Sluiten' : 'Annuleren'}</button>
+              {isGloballyLocked ? (
+                <div style={{ color: 'var(--error)', fontWeight: 600, display: 'flex', alignItems: 'center', padding: '0 1rem' }}>
+                  🔒 Product is vergrendeld voor review/export
+                </div>
+              ) : (
+                <button type="submit" disabled={isPending} className="btn btn-primary" style={{ padding: '1rem 3rem', boxShadow: '0 4px 14px rgba(225, 191, 220, 0.4)' }}>
+                  {isPending ? 'Bezig met opslaan...' : 'Opslaan'}
+                </button>
+              )}
             </div>
           </>
         )}

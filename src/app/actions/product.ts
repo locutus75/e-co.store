@@ -1,6 +1,28 @@
 "use server";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+
+async function assertProductLock(internalId: string) {
+  const session = await getServerSession(authOptions);
+  const roles = (session?.user as any)?.roles || [];
+  const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
+  
+  if (isAdmin) return; // Admins bypass locks
+  
+  const existingProduct = await prisma.product.findUnique({
+    where: { internalArticleNumber: internalId },
+    select: { readyForImport: true }
+  });
+  
+  if (existingProduct) {
+    const readyStatus = (existingProduct.readyForImport || '').toUpperCase();
+    if (readyStatus === 'JA' || readyStatus === 'REVIEW' || readyStatus === 'R' || readyStatus === 'Y') {
+      throw new Error('Unauthorized: Product is locked for review/export and cannot be modified.');
+    }
+  }
+}
 
 export async function getSupplierProductsAction(supplierId: string, currentArticleId: string) {
   if (!supplierId) return [];
@@ -94,6 +116,7 @@ export async function updateReadyForImportAction(internalId: string, status: str
 
 export async function updateProductStatusAction(internalId: string, status: string) {
   try {
+    await assertProductLock(internalId);
     await prisma.product.update({
       where: { internalArticleNumber: internalId },
       data: { status: status }
@@ -107,13 +130,14 @@ export async function updateProductStatusAction(internalId: string, status: stri
 }
 
 export async function updateProductAction(internalId: string, formData: FormData) {
+  await assertProductLock(internalId);
   const data: any = {};
   
   // Safe extraction of text fields
   const textFields = [
     'title', 'ean', 'seoTitle', 'longDescription', 'color', 'mainMaterial', 
     'ingredients', 'allergens', 'critMensSocial', 'supplierContacted', 
-    'critCircular', 'critTransportVehicle', 'critOther', 'status'
+    'critCircular', 'critTransportVehicle', 'critOther', 'status', 'internalRemarks'
   ];
   for(const field of textFields) {
     const val = formData.get(field);

@@ -13,6 +13,7 @@ export const PRISMA_FIELDS = [
   { key: 'critTransportVehicle', label: 'Vervoersmiddel', type: 'string' },
   { key: 'critOther', label: 'Overige vermelding', type: 'string' },
   { key: 'readyForImport', label: 'Klaar voor import', type: 'string' },
+  { key: 'internalRemarks', label: 'Interne Communicatie', type: 'string' },
   // Numbers
   { key: 'weightGr', label: 'Gewicht (gr)', type: 'number' },
   { key: 'lengthCm', label: 'Lengte (cm)', type: 'number' },
