@@ -1,28 +1,32 @@
 Error:
 
 Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].product.update()` invocation in
-C:\Dev\e-co.store\.next\dev\server\chunks\ssr\[root-of-the-server]__0f4l1at._.js:131:150
+C:\Dev\e-co.store\.next\dev\server\chunks\ssr\[root-of-the-server]__036-0wb._.js:606:150
 
-  128     }
-  129 }
-  130 try {
-→ 131     await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].product.update({
+  603     }
+  604 }
+  605 try {
+→ 606     await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].product.update({
             where: {
-              internalArticleNumber: "2061"
+              internalArticleNumber: "16389"
             },
             data: {
-              seoTitle: "Test title",
-              longDescription: "Deze sleutelhanger is verkrijgbaar in 11 kleuren en helpt mee aan een duurzamere wereld.",
-              color: "Oranje",
+              title: "30x40 - Notepad Reunion - Papagaaiduiker (10x21 cm)",
+              ean: null,
+              seoTitle: null,
+              longDescription: "1",
+              color: null,
               mainMaterial: null,
-              ~~~~~~~~~~~~
               ingredients: null,
               allergens: null,
               supplierContacted: null,
               critCircular: null,
               critTransportVehicle: null,
               critOther: null,
-              weightGr: 1,
+              status: "EDIT",
+              internalRemarks: null,
+              ~~~~~~~~~~~~~~~
+              weightGr: null,
               lengthCm: null,
               widthCm: null,
               heightCm: null,
@@ -30,7 +34,7 @@ C:\Dev\e-co.store\.next\dev\server\chunks\ssr\[root-of-the-server]__0f4l1at._.js
               volumeGr: null,
               critTransportDistance: null,
               webshopActive: false,
-              systemActive: false,
+              systemActive: true,
               critMensSafeWork: null,
               critMensFairWage: null,
               critMensSocial: null,
@@ -46,15 +50,14 @@ C:\Dev\e-co.store\.next\dev\server\chunks\ssr\[root-of-the-server]__0f4l1at._.js
               critMilieuCarbonCompensated: null,
           ?   id?: String | StringFieldUpdateOperationsInput,
           ?   internalArticleNumber?: String | StringFieldUpdateOperationsInput,
-          ?   ean?: String | NullableStringFieldUpdateOperationsInput | Null,
-          ?   title?: String | StringFieldUpdateOperationsInput,
-          ?   status?: String | StringFieldUpdateOperationsInput,
           ?   shortDescription?: String | NullableStringFieldUpdateOperationsInput | Null,
           ?   size?: String | NullableStringFieldUpdateOperationsInput | Null,
           ?   material?: String | NullableStringFieldUpdateOperationsInput | Null,
           ?   tags?: String | NullableStringFieldUpdateOperationsInput | Null,
           ?   webshopSlug?: String | NullableStringFieldUpdateOperationsInput | Null,
+          ?   readyForImport?: String | StringFieldUpdateOperationsInput,
           ?   seoMetaDescription?: String | NullableStringFieldUpdateOperationsInput | Null,
+          ?   basePrice?: Float | NullableFloatFieldUpdateOperationsInput | Null,
           ?   qualityControlStatus?: String | NullableStringFieldUpdateOperationsInput | Null,
           ?   exportStatus?: String | NullableStringFieldUpdateOperationsInput | Null,
           ?   publicationReady?: Boolean | BoolFieldUpdateOperationsInput,
@@ -71,13 +74,15 @@ C:\Dev\e-co.store\.next\dev\server\chunks\ssr\[root-of-the-server]__0f4l1at._.js
             }
           })
 
-Unknown argument `mainMaterial`. Available options are marked with ?.
+Unknown argument `internalRemarks`. Available options are marked with ?.
 
 Payload:
 {
-  "seoTitle": "Test title",
-  "longDescription": "Deze sleutelhanger is verkrijgbaar in 11 kleuren en helpt mee aan een duurzamere wereld.",
-  "color": "Oranje",
+  "title": "30x40 - Notepad Reunion - Papagaaiduiker (10x21 cm)",
+  "ean": null,
+  "seoTitle": null,
+  "longDescription": "1",
+  "color": null,
   "mainMaterial": null,
   "ingredients": null,
   "allergens": null,
@@ -85,7 +90,9 @@ Payload:
   "critCircular": null,
   "critTransportVehicle": null,
   "critOther": null,
-  "weightGr": 1,
+  "status": "EDIT",
+  "internalRemarks": null,
+  "weightGr": null,
   "lengthCm": null,
   "widthCm": null,
   "heightCm": null,
@@ -93,7 +100,7 @@ Payload:
   "volumeGr": null,
   "critTransportDistance": null,
   "webshopActive": false,
-  "systemActive": false,
+  "systemActive": true,
   "critMensSafeWork": null,
   "critMensFairWage": null,
   "critMensSocial": null,
