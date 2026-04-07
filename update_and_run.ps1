@@ -13,10 +13,16 @@ if (-Not $SkipPull) {
     Write-Host "`n[1/5] Syncing latest code from GitHub..." -ForegroundColor Yellow
     git pull origin main
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Warning: Git pull encountered an issue. Proceeding anyway..." -ForegroundColor Red
+        Write-Host "CRITICAL ERROR: Git pull failed or this is not a valid git repository! Exiting..." -ForegroundColor Red
+        exit 1
     }
 } else {
     Write-Host "`n[1/5] Skipping Git Pull..." -ForegroundColor Yellow
+}
+
+if (-Not (Test-Path "package.json")) {
+    Write-Host "CRITICAL ERROR: 'package.json' not found. Ensure you have cloned the repository correctly into this folder. Exiting..." -ForegroundColor Red
+    exit 1
 }
 
 # 2. Install Dependencies
