@@ -329,8 +329,24 @@ export default function AdminSystemClient() {
                       <p><strong>Message:</strong></p>
                       <pre style={{ backgroundColor: 'rgba(0,0,0,0.05)', padding: '1rem', borderRadius: 'var(--radius)', whiteSpace: 'pre-wrap', marginTop: '0.5rem', fontFamily: 'monospace' }}>{updateInfo.localMessage || 'No local commits'}</pre>
                     </div>
-                  ))} style={{ background: 'transparent', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: 0, fontSize: 'inherit', fontWeight: 'inherit', textDecoration: 'underline' }}>
-                    {updateInfo.localHash ? updateInfo.localHash.substring(0, 7) : 'Unknown'}
+                  ))} style={{ 
+                    background: updateInfo.updateAvailable ? '#451a03' : '#064e3b', 
+                    color: updateInfo.updateAvailable ? '#fde047' : '#86efac', 
+                    border: `1px solid ${updateInfo.updateAvailable ? '#854d0e' : '#166534'}`,
+                    padding: '0.35rem 1rem', 
+                    borderRadius: '9999px',
+                    fontSize: '0.9rem', 
+                    fontWeight: 700, 
+                    cursor: 'pointer', 
+                    textDecoration: 'none',
+                    letterSpacing: '0.05em',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-1px)'}
+                  onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                  >
+                    {updateInfo.localHash ? updateInfo.localHash.substring(0, 7).toUpperCase() : 'UNKNOWN'}
                   </button>
                 </div>
               </div>
@@ -347,8 +363,24 @@ export default function AdminSystemClient() {
                       <p><strong>Message:</strong></p>
                       <pre style={{ backgroundColor: 'rgba(0,0,0,0.05)', padding: '1rem', borderRadius: 'var(--radius)', whiteSpace: 'pre-wrap', marginTop: '0.5rem', fontFamily: 'monospace' }}>{updateInfo.remoteMessage || 'No remote commits'}</pre>
                     </div>
-                  ))} style={{ background: 'transparent', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: 0, fontSize: 'inherit', fontWeight: 'inherit', textDecoration: 'underline' }}>
-                    {updateInfo.remoteHash ? updateInfo.remoteHash.substring(0, 7) : 'Unknown'}
+                  ))} style={{ 
+                    background: '#064e3b', 
+                    color: '#86efac', 
+                    border: '1px solid #166534',
+                    padding: '0.35rem 1rem', 
+                    borderRadius: '9999px',
+                    fontSize: '0.9rem', 
+                    fontWeight: 700, 
+                    cursor: 'pointer', 
+                    textDecoration: 'none',
+                    letterSpacing: '0.05em',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-1px)'}
+                  onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                  >
+                    {updateInfo.remoteHash ? updateInfo.remoteHash.substring(0, 7).toUpperCase() : 'UNKNOWN'}
                   </button>
                 </div>
               </div>
