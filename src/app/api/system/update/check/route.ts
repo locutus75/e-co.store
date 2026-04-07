@@ -10,9 +10,13 @@ export async function GET() {
     // 1. Get Local Commit Hash
     let localHash = '';
     let localMessage = '';
+    let localDate = '';
+    let localAuthor = '';
     try {
       localHash = execSync('git rev-parse HEAD').toString().trim();
       localMessage = execSync('git log -1 --pretty=%B').toString().trim();
+      localDate = execSync('git log -1 --format=%cd').toString().trim();
+      localAuthor = execSync('git log -1 --format=%an').toString().trim();
     } catch (e) {
       console.warn("Could not get local git commit:", e);
       localHash = 'Unknown';
@@ -21,6 +25,8 @@ export async function GET() {
     // 2. Get Remote Commit Hash from GitHub API
     let remoteHash = '';
     let remoteMessage = '';
+    let remoteDate = '';
+    let remoteAuthor = '';
     try {
       const response = await fetch(
         `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/commits/${REPO_BRANCH}`,
@@ -38,6 +44,8 @@ export async function GET() {
         const data = await response.json();
         remoteHash = data.sha;
         remoteMessage = data.commit.message;
+        remoteDate = data.commit.author.date;
+        remoteAuthor = data.commit.author.name;
       } else {
         console.warn("GitHub API error:", response.statusText);
       }
@@ -51,8 +59,12 @@ export async function GET() {
     return NextResponse.json({
       localHash,
       localMessage,
+      localDate,
+      localAuthor,
       remoteHash,
       remoteMessage,
+      remoteDate,
+      remoteAuthor,
       updateAvailable,
       checkedAt: new Date().toISOString()
     });

@@ -27,6 +27,7 @@ export default function AdminSystemClient() {
   const [modalActionText, setModalActionText] = useState('Confirm');
   const [modalActionClass, setModalActionClass] = useState('btn-primary');
   const [modalAction, setModalAction] = useState<() => void>(() => {});
+  const [modalIsInfoOnly, setModalIsInfoOnly] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -41,10 +42,21 @@ export default function AdminSystemClient() {
     setModalBody(body);
     setModalActionText(actionText);
     setModalActionClass(actionClass);
+    setModalIsInfoOnly(false);
     setModalAction(() => () => {
       setModalOpen(false);
       onConfirm();
     });
+    setModalOpen(true);
+  };
+
+  const openInfoModal = (title: string, body: React.ReactNode) => {
+    setModalTitle(title);
+    setModalBody(body);
+    setModalActionText('Close');
+    setModalActionClass('btn');
+    setModalIsInfoOnly(true);
+    setModalAction(() => () => setModalOpen(false));
     setModalOpen(true);
   };
 
@@ -280,7 +292,7 @@ export default function AdminSystemClient() {
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text)', marginBottom: '1rem' }}>{modalTitle}</h2>
             <div style={{ marginBottom: '2rem' }}>{modalBody}</div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-              <button className="btn" style={{ backgroundColor: 'var(--background)' }} onClick={closeModal}>Cancel</button>
+              {!modalIsInfoOnly && <button className="btn" style={{ backgroundColor: 'var(--background)' }} onClick={closeModal}>Cancel</button>}
               <button className={`btn ${modalActionClass}`} onClick={modalAction}>{modalActionText}</button>
             </div>
           </div>
@@ -307,14 +319,38 @@ export default function AdminSystemClient() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div style={{ padding: '1.5rem', backgroundColor: 'var(--background)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
                 <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Current Version</div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text)' }}>{updateInfo.localHash ? updateInfo.localHash.substring(0, 7) : 'Unknown'}</div>
-                <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '0.5rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{updateInfo.localMessage || 'No local commits'}</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text)' }}>
+                  <button onClick={() => openInfoModal('Local Build Details', (
+                    <div>
+                      <p><strong>Version Hash:</strong> {updateInfo.localHash}</p>
+                      <p><strong>Commit Date:</strong> {updateInfo.localDate ? new Date(updateInfo.localDate).toLocaleString() : 'N/A'}</p>
+                      <p><strong>Author:</strong> {updateInfo.localAuthor || 'N/A'}</p>
+                      <hr style={{ margin: '1rem 0', borderColor: 'var(--border)' }} />
+                      <p><strong>Message:</strong></p>
+                      <pre style={{ backgroundColor: 'rgba(0,0,0,0.05)', padding: '1rem', borderRadius: 'var(--radius)', whiteSpace: 'pre-wrap', marginTop: '0.5rem', fontFamily: 'monospace' }}>{updateInfo.localMessage || 'No local commits'}</pre>
+                    </div>
+                  ))} style={{ background: 'transparent', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: 0, fontSize: 'inherit', fontWeight: 'inherit', textDecoration: 'underline' }}>
+                    {updateInfo.localHash ? updateInfo.localHash.substring(0, 7) : 'Unknown'}
+                  </button>
+                </div>
               </div>
 
               <div style={{ padding: '1.5rem', backgroundColor: updateInfo.updateAvailable ? 'rgba(59, 130, 246, 0.05)' : 'var(--background)', borderRadius: 'var(--radius)', border: `1px solid ${updateInfo.updateAvailable ? 'var(--primary)' : 'var(--border)'}` }}>
                 <div style={{ fontSize: '0.85rem', fontWeight: 600, color: updateInfo.updateAvailable ? 'var(--primary)' : 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Latest Available</div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text)' }}>{updateInfo.remoteHash ? updateInfo.remoteHash.substring(0, 7) : 'Unknown'}</div>
-                <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '0.5rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{updateInfo.remoteMessage || 'Unable to fetch remote commit'}</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text)' }}>
+                  <button onClick={() => openInfoModal('Remote Update Details', (
+                    <div>
+                      <p><strong>Version Hash:</strong> {updateInfo.remoteHash}</p>
+                      <p><strong>Commit Date:</strong> {updateInfo.remoteDate ? new Date(updateInfo.remoteDate).toLocaleString() : 'N/A'}</p>
+                      <p><strong>Author:</strong> {updateInfo.remoteAuthor || 'N/A'}</p>
+                      <hr style={{ margin: '1rem 0', borderColor: 'var(--border)' }} />
+                      <p><strong>Message:</strong></p>
+                      <pre style={{ backgroundColor: 'rgba(0,0,0,0.05)', padding: '1rem', borderRadius: 'var(--radius)', whiteSpace: 'pre-wrap', marginTop: '0.5rem', fontFamily: 'monospace' }}>{updateInfo.remoteMessage || 'No remote commits'}</pre>
+                    </div>
+                  ))} style={{ background: 'transparent', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: 0, fontSize: 'inherit', fontWeight: 'inherit', textDecoration: 'underline' }}>
+                    {updateInfo.remoteHash ? updateInfo.remoteHash.substring(0, 7) : 'Unknown'}
+                  </button>
+                </div>
               </div>
             </div>
 
