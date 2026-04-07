@@ -228,7 +228,7 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
               <input 
                 value={sec.title}
                 onChange={(e) => updateSectionTitle(secIdx, e.target.value)}
-                style={{ fontSize: '1.25rem', fontWeight: 600, color: sec.color, borderBottom: `2px solid ${sec.color}`, paddingBottom: '0.4rem', borderTop: 'none', borderLeft: 'none', borderRight: 'none', outlin: 'none', background: 'transparent', margin: 0, minWidth: '300px' }}
+                style={{ fontSize: '1.25rem', fontWeight: 600, color: sec.color, borderBottom: `2px solid ${sec.color}`, paddingBottom: '0.4rem', borderTop: 'none', borderLeft: 'none', borderRight: 'none', outline: 'none', background: 'transparent', margin: 0, minWidth: '300px' }}
               />
               <div style={{ display: 'flex', gap: '0.2rem' }}>
                 <button onClick={() => moveSection(secIdx, -1)} disabled={secIdx === 0} style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', padding: '0.2rem 0.4rem' }}>↑</button>

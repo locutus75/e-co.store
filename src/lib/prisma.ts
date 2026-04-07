@@ -5,12 +5,12 @@ import { Pool } from "pg"
 const globalForPrisma = global as unknown as { prisma: PrismaClient, __prismaDbVersion?: number }
 
 export const prisma =
-  (globalForPrisma.prisma && globalForPrisma.__prismaDbVersion === 2) ? globalForPrisma.prisma :
+  (globalForPrisma.prisma && globalForPrisma.__prismaDbVersion === 3) ? globalForPrisma.prisma :
   new PrismaClient({
     adapter: new PrismaPg(new Pool({ connectionString: process.env.DATABASE_URL }))
   })
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma
-  globalForPrisma.__prismaDbVersion = 2;
+  globalForPrisma.__prismaDbVersion = 3;
 }

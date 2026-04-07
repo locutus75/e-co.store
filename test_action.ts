@@ -1,4 +1,4 @@
-import { updateProductAction } from './src/app/actions/product.ts';
+import { updateProductAction } from './src/app/actions/product';
 
 const fd = new FormData();
 fd.append("weightGr", "20");

@@ -8,10 +8,10 @@ C:\Dev\e-co.store\.next\dev\server\chunks\ssr\[root-of-the-server]__036-0wb._.js
   605 try {
 → 606     await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].product.update({
             where: {
-              internalArticleNumber: "16389"
+              internalArticleNumber: "16229"
             },
             data: {
-              title: "30x40 - Notepad Reunion - Papagaaiduiker (10x21 cm)",
+              title: "Yellowlilac - Oorbellen",
               ean: null,
               seoTitle: null,
               longDescription: "1",
@@ -78,7 +78,7 @@ Unknown argument `internalRemarks`. Available options are marked with ?.
 
 Payload:
 {
-  "title": "30x40 - Notepad Reunion - Papagaaiduiker (10x21 cm)",
+  "title": "Yellowlilac - Oorbellen",
   "ean": null,
   "seoTitle": null,
   "longDescription": "1",

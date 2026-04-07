@@ -5,13 +5,13 @@ dotenv.config();
 const prisma = new PrismaClient();
 
 async function run() {
-  const records = await prisma.$queryRaw`SELECT "key", "value" FROM "SystemSetting" WHERE "key" = 'product_form_layout' LIMIT 1`;
+  const records = await prisma.$queryRaw<any[]>`SELECT "key", "value" FROM "SystemSetting" WHERE "key" = 'product_form_layout' LIMIT 1`;
   if (records && records.length > 0) {
     const layout = JSON.parse(records[0].value);
     
     let found = false;
-    layout.forEach(sec => {
-      sec.fields.forEach(f => {
+    layout.forEach((sec: any) => {
+      sec.fields.forEach((f: any) => {
         if (f.id === 'FIELD:internalRemarks') found = true;
       });
     });

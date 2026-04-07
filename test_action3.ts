@@ -1,6 +1,7 @@
 import 'dotenv/config';
 
 // Mock Next.js cache to prevent revalidation error outside Next.js
+declare var jest: any;
 jest = require('jest-mock');
 jest.mock('next/cache', () => ({
   revalidatePath: () => {}

@@ -12,7 +12,7 @@ export async function setRolePermissionAction(roleId: string, module: string, ac
     } else {
       // Upsert the new permission
       await prisma.rolePermission.upsert({
-        where: { roleId_module_action: { roleId, module, action } }, // Wait, action is part of the unique constraint. That means a role could technically have READ and WRITE records for the same module.
+        where: { roleId_module: { roleId, module } }, // Wait, action is part of the unique constraint. That means a role could technically have READ and WRITE records for the same module.
         // Let's delete existing module records first to ensure only 1 action per module per role.
         create: { roleId, module, action },
         update: { action }

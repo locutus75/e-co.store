@@ -124,7 +124,7 @@ async function main() {
         supplierId: supplier.id,
         brandId: brand.id,
         assignedUserId: emp1.id,
-        webTitle: 'Zero Waste Club Theedoek (40x40 cm)',
+        seoTitle: 'Zero Waste Club Theedoek (40x40 cm)',
         longDescription: 'Luxe theedoek geweven van 100% GOTS organisch katoen.',
         weightGr: 150,
         lengthCm: 40,

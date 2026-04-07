@@ -44,7 +44,7 @@ async function test() {
       data: payload
     });
     console.log("SUCCESS!");
-  } catch(e) {
+  } catch(e: any) {
     console.error("FAILED D: \n", e.message);
   }
 }
