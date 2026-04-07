@@ -16,6 +16,12 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
   const [resizeStartSpan, setResizeStartSpan] = useState<number>(0);
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
 
+  // Custom Field Modal State
+  const [showCustomModal, setShowCustomModal] = useState<number | null>(null);
+  const [customName, setCustomName] = useState('');
+  const [customType, setCustomType] = useState('text');
+  const [customOptions, setCustomOptions] = useState('');
+
   const moveSection = (index: number, direction: -1 | 1) => {
     if (index + direction < 0 || index + direction >= layout.length) return;
     setLayout(prev => {
@@ -45,6 +51,18 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
     });
   };
 
+  const updateFieldOptions = (secIdx: number, fieldIdx: number, optionsStr: string) => {
+    setLayout(prevLayout => {
+      const newLayout = [...prevLayout];
+      newLayout[secIdx] = { ...newLayout[secIdx], fields: [...newLayout[secIdx].fields] };
+      newLayout[secIdx].fields[fieldIdx] = { 
+        ...newLayout[secIdx].fields[fieldIdx], 
+        options: optionsStr.split(',').map(o => o.trim()).filter(Boolean)
+      };
+      return newLayout;
+    });
+  };
+
   const updateSectionTitle = (secIdx: number, title: string) => {
     setLayout(prevLayout => {
       const newLayout = [...prevLayout];
@@ -62,6 +80,19 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
     });
   };
 
+  const removeField = (secIdx: number, fieldIdx: number) => {
+    setLayout(prevLayout => {
+      const newLayout = [...prevLayout];
+      const newFields = [...newLayout[secIdx].fields];
+      newFields.splice(fieldIdx, 1);
+      newLayout[secIdx] = {
+        ...newLayout[secIdx],
+        fields: newFields
+      };
+      return newLayout;
+    });
+  };
+
   const addSection = () => {
     setLayout(prevLayout => [
       ...prevLayout,
@@ -72,6 +103,38 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
         fields: []
       }
     ]);
+  };
+
+  const addCustomField = () => {
+    if (showCustomModal === null) return;
+    if (!customName.trim()) return alert("Vul een naam in");
+    
+    // Generate a unique ID that starts with CUSTOM:
+    const randomHex = Math.floor(Math.random()*16777215).toString(16);
+    const id = `FIELD:custom_${randomHex}_${Date.now()}`;
+    
+    setLayout(prevLayout => {
+      const newLayout = [...prevLayout];
+      const newField: FormField = {
+        id,
+        label: customName.trim(),
+        type: customType,
+        width: 12
+      };
+      if (customType === 'picklist' && customOptions.trim()) {
+        newField.options = customOptions.split(',').map(o => o.trim()).filter(Boolean);
+      }
+      newLayout[showCustomModal] = {
+        ...newLayout[showCustomModal],
+        fields: [...newLayout[showCustomModal].fields, newField]
+      };
+      return newLayout;
+    });
+
+    setShowCustomModal(null);
+    setCustomName('');
+    setCustomType('text');
+    setCustomOptions('');
   };
 
   // Resizing Effect
@@ -241,6 +304,12 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                 >
                   ⨉ Verwijder
                 </button>
+                <button 
+                  onClick={() => setShowCustomModal(secIdx)} 
+                  style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', padding: '0.2rem 0.6rem', marginLeft: '0.5rem' }}
+                >
+                  + Velden Toevegen
+                </button>
               </div>
             </div>
 
@@ -305,7 +374,17 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                           onFocus={(e) => e.target.style.borderBottom = '1px dashed var(--border)'}
                           onBlur={(e) => e.target.style.borderBottom = '1px dashed transparent'}
                         />
-                        <span style={{ fontSize: '0.7rem', color: '#999', fontFamily: 'monospace' }}>{f.id}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontSize: '0.7rem', color: '#999', fontFamily: 'monospace' }}>{f.id}</span>
+                          {f.id.startsWith('FIELD:custom_') && (
+                            <button 
+                              onClick={() => removeField(secIdx, fieldIdx)}
+                              style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: '0.7rem', cursor: 'pointer', textDecoration: 'underline' }}
+                            >
+                              Verwijder Veld
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <div style={{ padding: '0.2rem 0.5rem', backgroundColor: 'var(--surface-hover)', borderRadius: '4px', fontSize: '0.7rem', color: 'var(--text)', border: '1px solid var(--border)' }}>
                         {f.type || 'text'}
@@ -320,6 +399,22 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                       border: '1px dashed rgba(0,0,0,0.1)', 
                       borderRadius: '4px' 
                     }} />
+
+                    {f.type === 'picklist' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginTop: '-0.2rem' }}>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>Opties (komma gescheiden):</label>
+                        <input
+                          defaultValue={f.options?.join(', ') || ''}
+                          onBlur={(e) => updateFieldOptions(secIdx, fieldIdx, e.target.value)}
+                          onMouseDown={(e) => e.stopPropagation()} // Prevent dragging the layout element when typing inside this field
+                          placeholder="Bijv. Optie 1, Optie 2, Optie 3"
+                          style={{
+                            width: '90%', padding: '0.4rem 0.5rem', border: '1px solid var(--border)', 
+                            borderRadius: '4px', fontSize: '0.75rem', backgroundColor: 'white'
+                          }}
+                        />
+                      </div>
+                    )}
 
                     {/* Visual Drag-to-Resize Handle */}
                     <div
@@ -367,6 +462,43 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
           </button>
         </div>
       </div>
+
+      {showCustomModal !== null && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ backgroundColor: 'white', padding: '2rem', borderRadius: 'var(--radius)', width: '400px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1.5rem', color: 'var(--primary)' }}>Nieuw Aangepast Veld</h3>
+            
+            <label style={{ display: 'block', marginBottom: '1rem' }}>
+              <span style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.3rem' }}>Veld Naam</span>
+              <input value={customName} onChange={e => setCustomName(e.target.value)} className="input" placeholder="Bijv. Promotie Code" autoFocus />
+            </label>
+            
+            <label style={{ display: 'block', marginBottom: '1rem' }}>
+              <span style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.3rem' }}>Type Code</span>
+              <select value={customType} onChange={e => setCustomType(e.target.value)} className="input">
+                <option value="text">Tekst Veld</option>
+                <option value="number">Getal (Cijfers)</option>
+                <option value="textarea">Lange Tekst (Textarea)</option>
+                <option value="checkbox">2-Standen Schakelaar (Ja/Nee)</option>
+                <option value="threeway">3-Standen Schakelaar (Ja/Leeg/Nee)</option>
+                <option value="picklist">Keuzelijst (Dropdown)</option>
+              </select>
+            </label>
+
+            {customType === 'picklist' && (
+              <label style={{ display: 'block', marginBottom: '1.5rem' }}>
+                <span style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.3rem' }}>Opties (scheiden met komma)</span>
+                <input value={customOptions} onChange={e => setCustomOptions(e.target.value)} className="input" placeholder="Optie 1, Optie 2, Optie 3" />
+              </label>
+            )}
+
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
+              <button className="btn ghost" onClick={() => setShowCustomModal(null)}>Annuleren</button>
+              <button className="btn btn-primary" onClick={addCustomField}>Toevoegen</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -190,14 +190,28 @@ export async function updateProductAction(internalId: string, formData: FormData
   for(const field of criteriaBoxes) {
     // If it's a special rename we fix it, else keep name
     const targetField = field === 'critMensSocialCheck' ? 'critMensSocial' : field;
-    if(formData.has(field)) {
-      // If it's the custom social string input, don't overwrite it with 'Ja' if the checkbox holds
-      // Wait, the user wants 'Maatschappelijke betrokkenheid' to be a checkbox JUST LIKE the rest.
-      // And no input box anymore!
-      data[targetField] = 'Ja';
+    
+    // The UI now submits an explicit string: 'Ja', 'Nee', or 'Leeg' via hidden inputs
+    const val = formData.get(field);
+    
+    if (val === 'Ja' || val === 'Nee') {
+      data[targetField] = val as string;
     } else {
+      // It's 'Leeg' or wasn't even rendered
       data[targetField] = null; 
     }
+  }
+
+  // Harvest Dynamic Custom Fields
+  const customData: Record<string, string | null> = {};
+  for(const [key, val] of Array.from(formData.entries())) {
+    if (key.startsWith('custom_')) {
+      customData[key.replace('custom_', '')] = (val as string) || null;
+    }
+  }
+  
+  if (Object.keys(customData).length > 0) {
+    data.customData = customData;
   }
 
   try {

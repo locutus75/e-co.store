@@ -65,6 +65,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           {canAccess('MENU:roles') && (
             <Link href="/roles" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Roles & Security</Link>
           )}
+          {canAccess('MENU:system') && (
+            <Link href="/admin/system" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>System Settings</Link>
+          )}
         </nav>
       </aside>
 

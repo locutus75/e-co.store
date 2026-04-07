@@ -113,6 +113,8 @@ model Product {
   systemActive          Boolean  @default(true)
   supplierContacted     String?
   internalRemarks       String? // Interne Communicatie
+  customData            Json?   // Dynamic user-generated custom fields
+
   critMensSafeWork      String?
   critMensFairWage      String?
   critMensSocial        String?

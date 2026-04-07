@@ -1,31 +1,31 @@
 Error:
 
 Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].product.update()` invocation in
-C:\Dev\e-co.store\.next\dev\server\chunks\ssr\[root-of-the-server]__036-0wb._.js:606:150
+C:\Dev\e-co.store\.next\dev\server\chunks\ssr\[root-of-the-server]__07ovk6a._.js:623:150
 
-  603     }
-  604 }
-  605 try {
-→ 606     await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].product.update({
+  620     data.customData = customData;
+  621 }
+  622 try {
+→ 623     await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$prisma$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["prisma"].product.update({
             where: {
-              internalArticleNumber: "16229"
+              internalArticleNumber: "136"
             },
             data: {
-              title: "Yellowlilac - Oorbellen",
+              title: "Benecos - Lipgloss Flamingo",
               ean: null,
               seoTitle: null,
-              longDescription: "1",
+              longDescription: null,
               color: null,
               mainMaterial: null,
               ingredients: null,
               allergens: null,
+              critMensSocial: null,
               supplierContacted: null,
               critCircular: null,
               critTransportVehicle: null,
               critOther: null,
               status: "EDIT",
-              internalRemarks: null,
-              ~~~~~~~~~~~~~~~
+              internalRemarks: "1",
               weightGr: null,
               lengthCm: null,
               widthCm: null,
@@ -37,7 +37,6 @@ C:\Dev\e-co.store\.next\dev\server\chunks\ssr\[root-of-the-server]__036-0wb._.js
               systemActive: true,
               critMensSafeWork: null,
               critMensFairWage: null,
-              critMensSocial: null,
               critDierCrueltyFree: null,
               critDierFriendly: null,
               critMilieuPackagingFree: null,
@@ -48,6 +47,10 @@ C:\Dev\e-co.store\.next\dev\server\chunks\ssr\[root-of-the-server]__036-0wb._.js
               critHandmade: null,
               critNatural: null,
               critMilieuCarbonCompensated: null,
+              customData: {
+              ~~~~~~~~~~
+                6d772e_1775561876801: "Leeg"
+              },
           ?   id?: String | StringFieldUpdateOperationsInput,
           ?   internalArticleNumber?: String | StringFieldUpdateOperationsInput,
           ?   shortDescription?: String | NullableStringFieldUpdateOperationsInput | Null,
@@ -74,24 +77,25 @@ C:\Dev\e-co.store\.next\dev\server\chunks\ssr\[root-of-the-server]__036-0wb._.js
             }
           })
 
-Unknown argument `internalRemarks`. Available options are marked with ?.
+Unknown argument `customData`. Available options are marked with ?.
 
 Payload:
 {
-  "title": "Yellowlilac - Oorbellen",
+  "title": "Benecos - Lipgloss Flamingo",
   "ean": null,
   "seoTitle": null,
-  "longDescription": "1",
+  "longDescription": null,
   "color": null,
   "mainMaterial": null,
   "ingredients": null,
   "allergens": null,
+  "critMensSocial": null,
   "supplierContacted": null,
   "critCircular": null,
   "critTransportVehicle": null,
   "critOther": null,
   "status": "EDIT",
-  "internalRemarks": null,
+  "internalRemarks": "1",
   "weightGr": null,
   "lengthCm": null,
   "widthCm": null,
@@ -103,7 +107,6 @@ Payload:
   "systemActive": true,
   "critMensSafeWork": null,
   "critMensFairWage": null,
-  "critMensSocial": null,
   "critDierCrueltyFree": null,
   "critDierFriendly": null,
   "critMilieuPackagingFree": null,
@@ -113,5 +116,8 @@ Payload:
   "critMilieuCompostable": null,
   "critHandmade": null,
   "critNatural": null,
-  "critMilieuCarbonCompensated": null
+  "critMilieuCarbonCompensated": null,
+  "customData": {
+    "6d772e_1775561876801": "Leeg"
+  }
 }

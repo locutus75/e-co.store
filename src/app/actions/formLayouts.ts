@@ -7,6 +7,7 @@ export type FormField = {
   label: string;
   type?: string;
   width?: number; // 1 to 12
+  options?: string[]; // For picklist dropdowns
 };
 
 export type FormSection = {
@@ -105,7 +106,7 @@ const DEFAULT_PRODUCT_LAYOUT: FormSection[] = [
     color: "var(--color-sage)",
     fields: [
       { id: "FIELD:critTransportDistance", label: "Afstand (km)", type: "number" },
-      { id: "FIELD:critTransportVehicle", label: "Vervoersmiddel", type: "text" },
+      { id: "FIELD:critTransportVehicle", label: "Vervoersmiddel", type: "picklist", options: ["Vrachtwagen", "Bestelbus", "Trein", "Boot", "Vliegtuig"] },
       { id: "FIELD:critMilieuCarbonCompensated", label: "Uitstootcompensatie", type: "checkbox" },
       { id: "FIELD:critOther", label: "Overige vermelding", type: "textarea" },
       { id: "FIELD:internalRemarks", label: "Interne Communicatie", type: "textarea", width: 12 }

@@ -4,8 +4,14 @@ import ProductGallery from './ProductGallery';
 import { updateProductAction } from '@/app/actions/product';
 import ProductCopyModal from './ProductCopyModal';
 
-const JaNeeToggle = ({ name, defaultChecked, disabled }: { name?: string, defaultChecked: boolean, disabled?: boolean }) => {
+const JaNeeToggle = ({ name, defaultChecked, disabled, onChange }: { name?: string, defaultChecked: boolean, disabled?: boolean, onChange?: () => void }) => {
   const [checked, setChecked] = useState(defaultChecked);
+
+  const handleToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (disabled) return;
+    setChecked(e.target.checked);
+    if (onChange) onChange();
+  };
 
   return (
     <label style={{ display: 'flex', alignItems: 'center', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1, position: 'relative', width: 'fit-content' }}>
@@ -13,7 +19,7 @@ const JaNeeToggle = ({ name, defaultChecked, disabled }: { name?: string, defaul
         type="checkbox" 
         name={name} 
         checked={checked} 
-        onChange={(e) => !disabled && setChecked(e.target.checked)}
+        onChange={handleToggle}
         style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }}
         disabled={disabled}
       />
@@ -39,6 +45,71 @@ const JaNeeToggle = ({ name, defaultChecked, disabled }: { name?: string, defaul
   );
 };
 
+const ThreeWayToggle = ({ name, defaultValue, disabled, onChange }: { name?: string, defaultValue?: string | null, disabled?: boolean, onChange?: () => void }) => {
+  // 'Ja', 'Nee', or null (Leeg)
+  const [val, setVal] = useState<'Ja'|'Nee'|'Leeg'>(defaultValue === 'Ja' ? 'Ja' : (defaultValue === 'Nee' ? 'Nee' : 'Leeg'));
+
+  let bg = '#94a3b8'; // Leeg (grey)
+  let pos = '50%'; // center
+  let transform = 'translate(-50%, 0)';
+
+  if (val === 'Ja') { bg = '#10b981'; pos = 'calc(100% - 2px)'; transform = 'translate(-100%, 0)'; }
+  else if (val === 'Nee') { bg = '#ef4444'; pos = '2px'; transform = 'translate(0, 0)'; }
+
+  // Clicking cycles logic
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (disabled) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const third = rect.width / 3;
+    let newVal: 'Ja'|'Nee'|'Leeg' = 'Leeg';
+    if (x < third) newVal = 'Nee';
+    else if (x > third * 2) newVal = 'Ja';
+    
+    setVal(newVal);
+    if (onChange) onChange();
+  };
+
+  return (
+    <div 
+      onClick={handleClick}
+      style={{ 
+        position: 'relative', width: '84px', height: '28px', backgroundColor: bg, 
+        borderRadius: '30px', transition: 'background-color 0.2s', cursor: disabled ? 'not-allowed' : 'pointer', 
+        opacity: disabled ? 0.6 : 1, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.1)',
+        display: 'flex', alignItems: 'center', padding: '0 8px'
+      }}
+    >
+      <input type="hidden" name={name} value={val} />
+      
+      {/* Background Labels Context */}
+      <div style={{ position: 'absolute', inset: '0 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', pointerEvents: 'none', zIndex: 0 }}>
+        {val === 'Leeg' && (
+          <>
+            <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.8)', fontWeight: 700 }}>N</span>
+            <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.8)', fontWeight: 700 }}>J</span>
+          </>
+        )}
+        {val === 'Ja' && (
+          <span style={{ fontSize: '0.65rem', color: 'white', fontWeight: 700, textShadow: '0 1px 1px rgba(0,0,0,0.2)', width: '100%', textAlign: 'left', paddingLeft: '4px' }}>JA</span>
+        )}
+        {val === 'Nee' && (
+          <span style={{ fontSize: '0.65rem', color: 'white', fontWeight: 700, textShadow: '0 1px 1px rgba(0,0,0,0.2)', width: '100%', textAlign: 'right', paddingRight: '4px' }}>NEE</span>
+        )}
+      </div>
+
+      {/* Thumb */}
+      <div style={{
+        position: 'absolute', top: '2px', left: pos, transform: transform,
+        width: '24px', height: '24px', backgroundColor: 'white',
+        borderRadius: '50%', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)', zIndex: 1
+      }} />
+    </div>
+  );
+};
+
+
 export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, layout = [] }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, layout?: any[] }) {
   const [isPending, startTransition] = useTransition();
   const [statusOverridden, setStatusOverridden] = useState(false);
@@ -54,18 +125,35 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   const [showCopyModal, setShowCopyModal] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
 
+  const [isDirty, setIsDirty] = useState(false);
+  const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
+  const formRef = React.useRef<HTMLFormElement>(null);
+
   useEffect(() => {
-    setActiveStatus((product?.status || 'NEW').toUpperCase());
-    setStatusOverridden(false);
-    setLocalProductData(product ? JSON.parse(JSON.stringify(product)) : null);
-    setFormKey(k => k + 1);
-  }, [product]);
+    if (isOpen) {
+      setActiveStatus((product?.status || 'NEW').toUpperCase());
+      setStatusOverridden(false);
+      setLocalProductData(product ? JSON.parse(JSON.stringify(product)) : null);
+      setFormKey(k => k + 1);
+      setIsDirty(false);
+      setShowUnsavedWarning(false);
+    }
+  }, [product, isOpen]);
+
+  const handleCloseAttempt = () => {
+    if (isDirty) {
+      setShowUnsavedWarning(true);
+    } else {
+      onClose();
+    }
+  };
 
   const handleCopyCommit = (injectedData: any) => {
     const fresh = { ...localProductData, ...injectedData };
     setLocalProductData(fresh);
     setFormKey(k => k + 1);
     setShowCopyModal(false);
+    setIsDirty(true);
     
     setCopySuccess(true);
     setTimeout(() => setCopySuccess(false), 4000);
@@ -84,11 +172,17 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   // Handle escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) onClose();
+      if (e.key === 'Escape' && isOpen && !showUnsavedWarning && !showCopyModal) {
+        if (isDirty) {
+          setShowUnsavedWarning(true);
+        } else {
+          onClose();
+        }
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, isDirty, showUnsavedWarning, showCopyModal, onClose]);
 
   const handleSubmit = (formData: FormData) => {
     // Auto-fallback: if the user did NOT touch the status dropdown during this edit session,
@@ -117,12 +211,17 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     if (action === 'HIDDEN') return null;
     
     if (isCheckbox) {
+      const isCriteria = moduleName.startsWith('FIELD:crit');
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
           {action === 'READ' ? (
-            <JaNeeToggle defaultChecked={val === 'Ja' || val === 'true' || (val as any) === true} disabled />
+            isCriteria ? (
+              <ThreeWayToggle defaultValue={val} disabled />
+            ) : (
+              <JaNeeToggle defaultChecked={val === 'Ja' || val === 'true' || (val as any) === true} disabled />
+            )
           ) : (
-            inputComponent
+            React.cloneElement(inputComponent as React.ReactElement<any>, { onChange: () => setIsDirty(true) })
           )}
           <span style={{ fontSize: '0.9rem', color: action === 'READ' ? 'var(--text-muted)' : 'var(--text)', fontWeight: 500 }}>
             {label}
@@ -139,7 +238,11 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
             {val || '-'}
           </div>
         ) : (
-          inputComponent
+          React.cloneElement(inputComponent as React.ReactElement<any>, { onChange: (e: any) => {
+            const originalOnChange = (inputComponent as React.ReactElement<any>).props.onChange;
+            if (originalOnChange) originalOnChange(e);
+            setIsDirty(true);
+          }})
         )}
       </div>
     );
@@ -149,7 +252,12 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     let key = f.id.replace('FIELD:', '');
     if (key === 'description') key = 'longDescription'; // Backward compatibility fix
     
-    const val = localProductData?.[key];
+    let val;
+    if (key.startsWith('custom_')) {
+      val = localProductData?.customData ? localProductData.customData[key.replace('custom_', '')] : null;
+    } else {
+      val = localProductData?.[key];
+    }
     
     let inputComponent;
     let isCheckbox = false;
@@ -158,7 +266,32 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
       inputComponent = <ProductGallery articleNumber={localProductData?.internalArticleNumber} />;
     } else if (f.type === 'checkbox') {
       isCheckbox = true;
-      inputComponent = <JaNeeToggle name={key} defaultChecked={(val as any) === true || val === 'Ja'} />;
+      if (f.id.startsWith('FIELD:crit')) {
+        inputComponent = <ThreeWayToggle name={key} defaultValue={val} />;
+      } else {
+        inputComponent = <JaNeeToggle name={key} defaultChecked={(val as any) === true || val === 'Ja'} />;
+      }
+    } else if (f.type === 'threeway') {
+      isCheckbox = true; // Technically a toggle rendering styling
+      inputComponent = <ThreeWayToggle name={key} defaultValue={val} />;
+    } else if (f.type === 'picklist') {
+      const options = f.options || [];
+      const datalistId = `datalist_${key}`;
+      inputComponent = (
+        <>
+          <input 
+            type="text" 
+            name={key} 
+            list={datalistId} 
+            className="input" 
+            defaultValue={val || ''} 
+            placeholder="Selecteer of typ vrij..."
+          />
+          <datalist id={datalistId}>
+            {options.map((opt: string) => <option key={opt} value={opt} />)}
+          </datalist>
+        </>
+      );
     } else if (f.type === 'number') {
       inputComponent = <input type="number" step="any" name={key} className="input" defaultValue={val ?? ''} />;
     } else if (f.type === 'textarea') {
@@ -185,13 +318,13 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
       {/* Backdrop overlay */}
       {isOpen && (
         <div 
-          onClick={onClose}
+          onClick={handleCloseAttempt}
           style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.3)', zIndex: 40, backdropFilter: 'blur(2px)' }} 
         />
       )}
 
       {/* Drawer */}
-      <form key={formKey} action={handleSubmit} className="glass" style={{
+      <form ref={formRef} key={formKey} action={handleSubmit} onChange={() => setIsDirty(true)} className="glass" style={{
         position: 'fixed', top: 0, right: 0, bottom: 0,
         width: 'calc(100vw - 250px)',
         backgroundColor: 'var(--surface)',
@@ -216,6 +349,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                     onChange={(e) => {
                       setStatusOverridden(true);
                       setActiveStatus(e.target.value);
+                      setIsDirty(true);
                     }}
                     style={{ 
                       padding: '0.25rem 1.75rem 0.25rem 0.75rem', 
@@ -265,7 +399,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                   )}
                 </div>
               </div>
-              <button type="button" onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.75rem', color: 'var(--text-muted)' }}>✕</button>
+              <button type="button" onClick={handleCloseAttempt} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.75rem', color: 'var(--text-muted)' }}>✕</button>
             </div>
 
             <div style={{ padding: '3rem', display: 'flex', flexDirection: 'column', gap: '4rem' }}>
@@ -280,7 +414,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
             </div>
 
             <div style={{ padding: '2rem 3rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '1rem', position: 'sticky', bottom: 0, backgroundColor: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)', zIndex: 10 }}>
-              <button type="button" onClick={onClose} className="btn" style={{ padding: '1rem 2rem', border: '1px solid var(--border)', background: 'transparent' }}>{isGloballyLocked ? 'Sluiten' : 'Annuleren'}</button>
+              <button type="button" onClick={handleCloseAttempt} className="btn" style={{ padding: '1rem 2rem', border: '1px solid var(--border)', background: 'transparent' }}>{isGloballyLocked ? 'Sluiten' : 'Annuleren'}</button>
               {isGloballyLocked ? (
                 <div style={{ color: 'var(--error)', fontWeight: 600, display: 'flex', alignItems: 'center', padding: '0 1rem' }}>
                   🔒 Product is vergrendeld voor review/export
@@ -320,6 +454,49 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
           `}</style>
         </div>
       )}
+      {/* Unsaved Changes Confirmation Modal */}
+      {showUnsavedWarning && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, backdropFilter: 'blur(4px)' }}>
+          <div style={{ backgroundColor: 'white', padding: '3rem', borderRadius: '20px', width: '90%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', animation: 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', marginBottom: '2rem' }}>
+              <div style={{ width: '64px', height: '64px', backgroundColor: '#fff7ed', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <span style={{ fontSize: '2.5rem' }}>⚠️</span>
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.5rem', color: '#9a3412', fontWeight: 700 }}>Niet Opgeslagen!</h3>
+                <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-muted)', fontSize: '1rem', lineHeight: '1.5' }}>
+                  Er zijn wijzigingen gemaakt! Wat wil je met deze aanpassingen doen?
+                </p>
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <button 
+                onClick={() => { setShowUnsavedWarning(false); formRef.current?.requestSubmit(); }} 
+                className="btn btn-primary" 
+                style={{ padding: '1.25rem', fontSize: '1.1rem', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', border: 'none', borderRadius: '12px' }}
+              >
+                💾 Wijzigingen Opslaan
+              </button>
+              <button 
+                onClick={() => { setShowUnsavedWarning(false); onClose(); }} 
+                className="btn" 
+                style={{ padding: '1.25rem', fontSize: '1.1rem', backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '12px', fontWeight: 600 }}
+              >
+                🗑️ Wijzigingen Negeren & Sluiten
+              </button>
+              <button 
+                onClick={() => setShowUnsavedWarning(false)} 
+                className="btn ghost" 
+                style={{ padding: '1rem', color: 'var(--text-muted)' }}
+              >
+                Blijf op deze pagina
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </>
   );
 }

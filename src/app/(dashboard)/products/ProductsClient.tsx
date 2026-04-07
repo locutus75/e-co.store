@@ -1,5 +1,6 @@
 "use client";
-import React, { useState, useMemo, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
+import React, { useState, useMemo, useTransition, useEffect } from 'react';
 import ProductDrawer from '@/components/ProductDrawer';
 import ExcelImportWizard from '@/components/ExcelImportWizard';
 import { deleteProductsAction, updateReadyForImportAction, updateProductStatusAction, bulkAssignAction } from '@/app/actions/product';
@@ -105,9 +106,29 @@ function InlineReadyToggle({ product, isAdmin }: { product: any, isAdmin: boolea
 }
 
 export default function ProductsClient({ initialProducts, systemUsers = [], isAdmin = false, fieldPermissions = {}, layout = [] }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, fieldPermissions?: Record<string, string>, layout?: any[] }) {
+  const router = useRouter();
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [isDeleting, startTransition] = useTransition();
+
+  const getLayoutLabel = (fieldId: string, defaultLabel: string) => {
+    if (!layout) return defaultLabel;
+    for (const section of layout) {
+      if (!section.fields) continue;
+      const field = section.fields.find((f: any) => f.id === fieldId);
+      if (field && field.label) return field.label;
+    }
+    return defaultLabel;
+  };
+
+  // Auto-Sync Background Engine
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Soft-refresh the server component silently to sync data across all active instances
+      router.refresh();
+    }, 15000); // 15 seconds
+    return () => clearInterval(interval);
+  }, [router]);
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -281,7 +302,9 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
         >
           <option value="">-- Status --</option>
           <option value="NEW">NEW</option>
+          <option value="EDIT">EDIT</option>
           <option value="CHECK">CHECK</option>
+          <option value="DONE">DONE</option>
         </select>
         <select 
           className="input" 
@@ -294,18 +317,20 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
           <option value="REVIEW">Review (R)</option>
           <option value="JA">Yes (Y)</option>
         </select>
-        <select 
-          className="input" 
-          style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
-          value={assignedUserFilter}
-          onChange={(e) => setAssignedUserFilter(e.target.value)}
-        >
-          <option value="">-- Toegewezen --</option>
-          <option value="UNASSIGNED">[ Niet Toegewezen ]</option>
-          {systemUsers.map(su => (
-             <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>
-          ))}
-        </select>
+        {isAdmin && (
+          <select 
+            className="input" 
+            style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
+            value={assignedUserFilter}
+            onChange={(e) => setAssignedUserFilter(e.target.value)}
+          >
+            <option value="">-- Toegewezen --</option>
+            <option value="UNASSIGNED">[ Niet Toegewezen ]</option>
+            {systemUsers.map(su => (
+               <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>
+            ))}
+          </select>
+        )}
       </div>
       
       <div className="glass" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
@@ -325,12 +350,12 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
                   style={{ cursor: 'pointer' }}
                 />
               </th>
-              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Article ID</th>
-              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Toewijzing</th>
-              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Leverancier</th>
-              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Merk</th>
-              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Title</th>
-              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status</th>
+              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:internalArticleNumber', 'Article ID')}</th>
+              {isAdmin && <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Toewijzing</th>}
+              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:supplierId', 'Leverancier')}</th>
+              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:brandId', 'Merk')}</th>
+              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:title', 'Title')}</th>
+              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:status', 'Status')}</th>
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Webshop Ready</th>
             </tr>
           </thead>
@@ -352,21 +377,23 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
                   />
                 </td>
                 <td style={{ padding: '1.25rem', fontWeight: 600, color: 'var(--text)' }}>{product.internalArticleNumber}</td>
-                <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
-                  <select 
-                    value={product.assignedUserId || 'NONE'}
-                    disabled={!isAdmin}
-                    onChange={(e) => {
-                      startTransition(async () => { await bulkAssignAction([product.internalArticleNumber], e.target.value); });
-                    }}
-                    style={{ border: 'none', backgroundColor: 'transparent', color: product.assignedUserId ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', cursor: isAdmin ? 'pointer' : 'not-allowed' }}
-                  >
-                    <option value="NONE">-</option>
-                    {systemUsers.map(su => (
-                      <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>
-                    ))}
-                  </select>
-                </td>
+                {isAdmin && (
+                  <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
+                    <select 
+                      value={product.assignedUserId || 'NONE'}
+                      disabled={!isAdmin}
+                      onChange={(e) => {
+                        startTransition(async () => { await bulkAssignAction([product.internalArticleNumber], e.target.value); });
+                      }}
+                      style={{ border: 'none', backgroundColor: 'transparent', color: product.assignedUserId ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', cursor: isAdmin ? 'pointer' : 'not-allowed' }}
+                    >
+                      <option value="NONE">-</option>
+                      {systemUsers.map(su => (
+                        <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>
+                      ))}
+                    </select>
+                  </td>
+                )}
                 <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.supplier?.name || '-'}</td>
                 <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.brand?.name || '-'}</td>
                 <td style={{ padding: '1.25rem', color: 'var(--text)', fontWeight: 500 }}>{product.title}</td>
