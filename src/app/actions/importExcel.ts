@@ -50,7 +50,7 @@ export async function executeImportAction(
     const workbook = XLSX.read(Buffer.from(arrayBuffer), { type: "buffer" });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     
-    const allRows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
+    const allRows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, blankrows: true });
     
     // Slice off all the rows that come BEFORE AND INCLUDING the header row
     const dataRows = allRows.slice(headerRowIndex + 1);
