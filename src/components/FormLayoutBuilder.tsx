@@ -14,6 +14,11 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
   const [resizingItem, setResizingItem] = useState<{ secIdx: number, fieldIdx: number } | null>(null);
   const [resizeStartX, setResizeStartX] = useState<number>(0);
   const [resizeStartSpan, setResizeStartSpan] = useState<number>(0);
+  
+  const [resizingVerticalItem, setResizingVerticalItem] = useState<{ secIdx: number, fieldIdx: number } | null>(null);
+  const [resizeStartY, setResizeStartY] = useState<number>(0);
+  const [resizeStartHeight, setResizeStartHeight] = useState<number>(0);
+  
   const gridContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Custom Field Modal State
@@ -42,11 +47,29 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
     });
   };
 
+  const updateFieldHeight = (secIdx: number, fieldIdx: number, height: number | undefined) => {
+    setLayout(prevLayout => {
+      const newLayout = [...prevLayout];
+      newLayout[secIdx] = { ...newLayout[secIdx], fields: [...newLayout[secIdx].fields] };
+      newLayout[secIdx].fields[fieldIdx] = { ...newLayout[secIdx].fields[fieldIdx], height };
+      return newLayout;
+    });
+  };
+
   const updateFieldLabel = (secIdx: number, fieldIdx: number, label: string) => {
     setLayout(prevLayout => {
       const newLayout = [...prevLayout];
       newLayout[secIdx] = { ...newLayout[secIdx], fields: [...newLayout[secIdx].fields] };
       newLayout[secIdx].fields[fieldIdx] = { ...newLayout[secIdx].fields[fieldIdx], label };
+      return newLayout;
+    });
+  };
+
+  const updateFieldColors = (secIdx: number, fieldIdx: number, backgroundColor: string, textColor: string) => {
+    setLayout(prevLayout => {
+      const newLayout = [...prevLayout];
+      newLayout[secIdx] = { ...newLayout[secIdx], fields: [...newLayout[secIdx].fields] };
+      newLayout[secIdx].fields[fieldIdx] = { ...newLayout[secIdx].fields[fieldIdx], backgroundColor, textColor };
       return newLayout;
     });
   };
@@ -67,6 +90,14 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
     setLayout(prevLayout => {
       const newLayout = [...prevLayout];
       newLayout[secIdx] = { ...newLayout[secIdx], title };
+      return newLayout;
+    });
+  };
+
+  const updateSectionColors = (secIdx: number, backgroundColor: string, textColor: string, titleColor: string) => {
+    setLayout(prevLayout => {
+      const newLayout = [...prevLayout];
+      newLayout[secIdx] = { ...newLayout[secIdx], backgroundColor, textColor, color: titleColor };
       return newLayout;
     });
   };
@@ -146,11 +177,11 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
       
       const deltaX = e.clientX - resizeStartX;
       const gridWidth = gridContainerRef.current.clientWidth;
-      const colWidth = gridWidth / 12; // approximate width of one grid span
+      const colWidth = gridWidth / 24; // approximate width of one grid span
       
       const deltaCols = Math.round(deltaX / colWidth);
       let newSpan = resizeStartSpan + deltaCols;
-      newSpan = Math.max(1, Math.min(12, newSpan)); // between 1 and 12 columns
+      newSpan = Math.max(1, Math.min(24, newSpan)); // between 1 and 24 columns
       
       updateFieldWidth(resizingItem.secIdx, resizingItem.fieldIdx, newSpan);
     };
@@ -166,6 +197,33 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [resizingItem, resizeStartX, resizeStartSpan]);
+
+  // Vertical Resizing Effect
+  useEffect(() => {
+    if (!resizingVerticalItem) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaY = e.clientY - resizeStartY;
+      const rowHeight = 40; // baseline height unit
+      
+      const deltaRows = Math.round(deltaY / rowHeight);
+      let newHeightMultiplier = resizeStartHeight + deltaRows;
+      newHeightMultiplier = Math.max(1, Math.min(20, newHeightMultiplier)); // 1 to 20 units
+      
+      updateFieldHeight(resizingVerticalItem.secIdx, resizingVerticalItem.fieldIdx, newHeightMultiplier);
+    };
+
+    const handleMouseUp = () => {
+      setResizingVerticalItem(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [resizingVerticalItem, resizeStartY, resizeStartHeight]);
 
   // Feedback State
   const [feedback, setFeedback] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
@@ -256,6 +314,14 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
     setResizeStartSpan(currentSpan);
   };
 
+  const handleVerticalResizeStart = (e: React.MouseEvent, secIdx: number, fieldIdx: number, currentHeight: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setResizingVerticalItem({ secIdx, fieldIdx });
+    setResizeStartY(e.clientY);
+    setResizeStartHeight(currentHeight);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3rem' }}>
       <div className="glass" style={{ padding: '2rem', borderRadius: 'var(--radius)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -287,12 +353,42 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
       <div style={{ display: 'flex', flexDirection: 'column', gap: '4rem' }} ref={gridContainerRef}>
         {layout.map((sec, secIdx) => (
           <section key={sec.id} style={{ position: 'relative' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
               <input 
                 value={sec.title}
                 onChange={(e) => updateSectionTitle(secIdx, e.target.value)}
                 style={{ fontSize: '1.25rem', fontWeight: 600, color: sec.color, borderBottom: `2px solid ${sec.color}`, paddingBottom: '0.4rem', borderTop: 'none', borderLeft: 'none', borderRight: 'none', outline: 'none', background: 'transparent', margin: 0, minWidth: '300px' }}
               />
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.2rem 0.5rem', backgroundColor: 'var(--surface-hover)', borderRadius: 'var(--radius)' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Titel:</label>
+                <input 
+                  type="color" 
+                  value={sec.color || '#000000'} 
+                  onChange={(e) => updateSectionColors(secIdx, sec.backgroundColor || '', sec.textColor || '', e.target.value)}
+                  style={{ width: '20px', height: '20px', padding: 0, border: 'none', cursor: 'pointer', background: 'transparent' }}
+                  title="Sectie Titelkleur"
+                />
+                
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>Achtergrond:</label>
+                <input 
+                  type="color" 
+                  value={sec.backgroundColor || '#ffffff'} 
+                  onChange={(e) => updateSectionColors(secIdx, e.target.value, sec.textColor || '', sec.color)}
+                  style={{ width: '20px', height: '20px', padding: 0, border: 'none', cursor: 'pointer', background: 'transparent' }}
+                  title="Sectie Achtergrondkleur"
+                />
+
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>Tekst:</label>
+                <input 
+                  type="color" 
+                  value={sec.textColor || '#000000'} 
+                  onChange={(e) => updateSectionColors(secIdx, sec.backgroundColor || '', e.target.value, sec.color)}
+                  style={{ width: '20px', height: '20px', padding: 0, border: 'none', cursor: 'pointer', background: 'transparent' }}
+                  title="Sectie Tekstkleur"
+                />
+              </div>
+
               <div style={{ display: 'flex', gap: '0.2rem' }}>
                 <button onClick={() => moveSection(secIdx, -1)} disabled={secIdx === 0} style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', padding: '0.2rem 0.4rem' }}>↑</button>
                 <button onClick={() => moveSection(secIdx, 1)} disabled={secIdx === layout.length - 1} style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', padding: '0.2rem 0.4rem' }}>↓</button>
@@ -304,6 +400,7 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                 >
                   ⨉ Verwijder
                 </button>
+
                 <button 
                   onClick={() => setShowCustomModal(secIdx)} 
                   style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', padding: '0.2rem 0.6rem', marginLeft: '0.5rem' }}
@@ -318,10 +415,10 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
               onDrop={handleDropOnSection(secIdx)}
               style={{ 
                 display: 'grid', 
-                gridTemplateColumns: 'repeat(12, minmax(0, 1fr))', 
-                gap: '1.5rem', 
-                backgroundColor: 'var(--background)', 
-                padding: '2rem', 
+                gridTemplateColumns: 'repeat(24, minmax(0, 1fr))', 
+                gap: '0.75rem', 
+                backgroundColor: sec.backgroundColor || 'var(--background)', 
+                padding: '1rem', 
                 borderRadius: 'var(--radius)', 
                 border: `1px solid rgba(0,0,0,0.05)`,
                 minHeight: '120px'
@@ -334,30 +431,35 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
               )}
               
               {sec.fields.map((f, fieldIdx) => {
-                let span = f.width ? Number(f.width) : (f.type === 'textarea' || f.type === 'media' ? 12 : 4);
-                if (isNaN(span)) span = 12;
+                let span = f.width ? Number(f.width) : (f.type === 'textarea' || f.type === 'media' ? 24 : 8);
+                if (isNaN(span)) span = 24;
+                
+                let heightMultiplier = f.height || 1;
+                if (f.type === 'textarea' && !f.height) heightMultiplier = 3;
+                if (f.type === 'media' && !f.height) heightMultiplier = 5;
 
                 const isDraggedOver = dragOverItem?.secIdx === secIdx && dragOverItem?.fieldIdx === fieldIdx;
                 const isBeingDragged = draggedItem?.secIdx === secIdx && draggedItem?.fieldIdx === fieldIdx;
                 const isResizing = resizingItem?.secIdx === secIdx && resizingItem?.fieldIdx === fieldIdx;
+                const isResizingVertical = resizingVerticalItem?.secIdx === secIdx && resizingVerticalItem?.fieldIdx === fieldIdx;
                 
                 return (
                   <div 
                     key={f.id} 
-                    draggable={!resizingItem} // prevent HTML drag if we happen to be resizing
+                    draggable={!resizingItem && !resizingVerticalItem} // prevent HTML drag if we happen to be resizing
                     onDragStart={handleDragStart(secIdx, fieldIdx)}
                     onDragOver={handleDragOverField(secIdx, fieldIdx)}
                     onDrop={handleDropOnField(secIdx, fieldIdx)}
                     style={{ 
                       gridColumn: `span ${span}`, 
-                      backgroundColor: 'white',
+                      backgroundColor: f.backgroundColor || 'white',
                       border: isDraggedOver ? `2px dashed ${sec.color}` : '1px solid var(--border)',
                       borderRadius: '8px',
-                      padding: '1.25rem',
-                      cursor: isResizing ? 'col-resize' : 'grab',
+                      padding: '1rem',
+                      cursor: (isResizing || isResizingVertical) ? 'auto' : 'grab',
                       opacity: isBeingDragged ? 0.4 : 1,
                       transform: isDraggedOver ? 'scale(1.02)' : 'none',
-                      transition: isResizing ? 'none' : 'transform 0.1s ease',
+                      transition: (isResizing || isResizingVertical) ? 'none' : 'transform 0.1s ease',
                       boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
                       display: 'flex',
                       flexDirection: 'column',
@@ -367,13 +469,29 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', paddingRight: '20px' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-                        <input 
-                          value={f.label}
-                          onChange={(e) => updateFieldLabel(secIdx, fieldIdx, e.target.value)}
-                          style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)', border: '1px dashed transparent', background: 'transparent', padding: '0.1rem 0', width: '90%' }}
-                          onFocus={(e) => e.target.style.borderBottom = '1px dashed var(--border)'}
-                          onBlur={(e) => e.target.style.borderBottom = '1px dashed transparent'}
-                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <input 
+                            value={f.label}
+                            onChange={(e) => updateFieldLabel(secIdx, fieldIdx, e.target.value)}
+                            style={{ fontSize: '0.85rem', fontWeight: 600, color: f.textColor || 'var(--text)', border: '1px dashed transparent', background: 'transparent', padding: '0.1rem 0', width: 'auto', flex: 1 }}
+                            onFocus={(e) => e.target.style.borderBottom = '1px dashed var(--border)'}
+                            onBlur={(e) => e.target.style.borderBottom = '1px dashed transparent'}
+                          />
+                          <input 
+                            type="color" 
+                            value={f.backgroundColor || '#ffffff'} 
+                            onChange={(e) => updateFieldColors(secIdx, fieldIdx, e.target.value, f.textColor || '')}
+                            style={{ width: '16px', height: '16px', padding: 0, border: 'none', cursor: 'pointer', background: 'transparent' }}
+                            title="Veld Achtergrondkleur"
+                          />
+                          <input 
+                            type="color" 
+                            value={f.textColor || '#000000'} 
+                            onChange={(e) => updateFieldColors(secIdx, fieldIdx, f.backgroundColor || '', e.target.value)}
+                            style={{ width: '16px', height: '16px', padding: 0, border: 'none', cursor: 'pointer', background: 'transparent' }}
+                            title="Veld Tekstkleur"
+                          />
+                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <span style={{ fontSize: '0.7rem', color: '#999', fontFamily: 'monospace' }}>{f.id}</span>
                           {f.id.startsWith('FIELD:custom_') && (
@@ -394,7 +512,7 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                     {/* Mock Input Field */}
                     <div style={{ 
                       width: '100%', 
-                      height: (f.type === 'textarea' || f.type === 'media') ? '80px' : '38px', 
+                      minHeight: `${Math.max(38, heightMultiplier * 40)}px`,
                       backgroundColor: 'rgba(0,0,0,0.02)', 
                       border: '1px dashed rgba(0,0,0,0.1)', 
                       borderRadius: '4px' 
@@ -416,7 +534,7 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                       </div>
                     )}
 
-                    {/* Visual Drag-to-Resize Handle */}
+                    {/* Visual Drag-to-Resize Handle Horizontal */}
                     <div
                       onMouseDown={(e) => handleResizeStart(e, secIdx, fieldIdx, span)}
                       style={{
@@ -434,6 +552,7 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                         alignItems: 'center',
                         justifyContent: 'center',
                         transition: 'background-color 0.1s',
+                        zIndex: 10
                       }}
                       onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.05)' }}
                       onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = isResizing ? 'var(--primary)' : 'transparent' }}
@@ -443,6 +562,37 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                         width: '4px',
                         borderLeft: '1px solid rgba(0,0,0,0.3)',
                         borderRight: '1px solid rgba(0,0,0,0.3)',
+                      }} />
+                    </div>
+
+                    {/* Visual Drag-to-Resize Handle Vertical */}
+                    <div
+                      onMouseDown={(e) => handleVerticalResizeStart(e, secIdx, fieldIdx, heightMultiplier)}
+                      style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        height: '12px',
+                        cursor: 'row-resize',
+                        backgroundColor: isResizingVertical ? 'var(--primary)' : 'transparent',
+                        borderTop: '1px solid var(--border)',
+                        borderBottomLeftRadius: '8px',
+                        borderBottomRightRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'background-color 0.1s',
+                        zIndex: 10
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.05)' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = isResizingVertical ? 'var(--primary)' : 'transparent' }}
+                    >
+                      <div style={{
+                        width: '20px',
+                        height: '4px',
+                        borderTop: '1px solid rgba(0,0,0,0.3)',
+                        borderBottom: '1px solid rgba(0,0,0,0.3)',
                       }} />
                     </div>
                   </div>

@@ -199,7 +199,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     });
   };
 
-  const renderField = (moduleName: string, label: string, val: string, inputComponent: React.ReactNode, isCheckbox: boolean = false) => {
+  const renderField = (moduleName: string, label: string, val: string, inputComponent: React.ReactNode, isCheckbox: boolean = false, textColor?: string) => {
     let action = isAdmin ? 'WRITE' : (fieldPermissions?.[moduleName] ?? 'READ');
     if (isGloballyLocked) action = 'READ';
 
@@ -223,7 +223,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
           ) : (
             React.cloneElement(inputComponent as React.ReactElement<any>, { onChange: () => setIsDirty(true) })
           )}
-          <span style={{ fontSize: '0.9rem', color: action === 'READ' ? 'var(--text-muted)' : 'var(--text)', fontWeight: 500 }}>
+          <span style={{ fontSize: '0.9rem', color: 'inherit', opacity: action === 'READ' ? 0.6 : 1, fontWeight: 500 }}>
             {label}
           </span>
         </div>
@@ -232,9 +232,9 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
 
     return (
       <div>
-        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>{label}</label>
+        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'inherit', opacity: 0.7, marginBottom: '0.4rem' }}>{label}</label>
         {action === 'READ' ? (
-          <div className="input" style={{ backgroundColor: 'rgba(0,0,0,0.02)', color: 'var(--text-muted)', cursor: 'not-allowed', border: '1px solid rgba(0,0,0,0.05)', minHeight: '38px', display: 'flex', alignItems: 'center' }}>
+          <div className="input" style={{ backgroundColor: 'rgba(0,0,0,0.02)', color: 'inherit', opacity: 0.7, cursor: 'not-allowed', border: '1px solid rgba(0,0,0,0.05)', minHeight: '38px', display: 'flex', alignItems: 'center' }}>
             {val || '-'}
           </div>
         ) : (
@@ -248,9 +248,11 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     );
   };
 
-  const renderDataField = (f: any) => {
+  const renderDataField = (f: any, section: any) => {
     let key = f.id.replace('FIELD:', '');
     if (key === 'description') key = 'longDescription'; // Backward compatibility fix
+    
+    const effectiveTextColor = f.textColor || section?.textColor || 'var(--text)';
     
     let val;
     if (key.startsWith('custom_')) {
@@ -262,8 +264,13 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     let inputComponent;
     let isCheckbox = false;
 
+    let heightMultiplier = f.height || 1;
+    if (f.type === 'textarea' && !f.height) heightMultiplier = 3;
+    if (f.type === 'media' && !f.height) heightMultiplier = 5;
+    const computedHeight = `${Math.max(38, heightMultiplier * 40)}px`;
+
     if (f.id === 'FIELD:media') {
-      inputComponent = <ProductGallery articleNumber={localProductData?.internalArticleNumber} />;
+      inputComponent = <div style={{ minHeight: computedHeight }}><ProductGallery articleNumber={localProductData?.internalArticleNumber} /></div>;
     } else if (f.type === 'checkbox') {
       isCheckbox = true;
       if (f.id.startsWith('FIELD:crit')) {
@@ -278,7 +285,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
       const options = f.options || [];
       const datalistId = `datalist_${key}`;
       inputComponent = (
-        <>
+        <div style={{ width: '100%' }}>
           <input 
             type="text" 
             name={key} 
@@ -286,29 +293,30 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
             className="input" 
             defaultValue={val || ''} 
             placeholder="Selecteer of typ vrij..."
+            style={{ width: '100%', minHeight: computedHeight, color: 'inherit' }}
           />
           <datalist id={datalistId}>
             {options.map((opt: string) => <option key={opt} value={opt} />)}
           </datalist>
-        </>
+        </div>
       );
     } else if (f.type === 'number') {
-      inputComponent = <input type="number" step="any" name={key} className="input" defaultValue={val ?? ''} />;
+      inputComponent = <input type="number" step="any" name={key} className="input" defaultValue={val ?? ''} style={{ minHeight: computedHeight, color: 'inherit' }} />;
     } else if (f.type === 'textarea') {
-      inputComponent = <textarea name={key} className="input" rows={6} defaultValue={val || ''} />;
+      inputComponent = <textarea name={key} className="input" defaultValue={val || ''} style={{ minHeight: computedHeight, resize: 'vertical', color: 'inherit' }} />;
     } else {
       const readOnly = f.id === 'FIELD:internalArticleNumber';
-      inputComponent = <input name={key} className="input" defaultValue={val || ''} readOnly={readOnly} style={readOnly ? { backgroundColor: 'rgba(0,0,0,0.02)' } : {}} />;
+      inputComponent = <input name={key} className="input" defaultValue={val || ''} readOnly={readOnly} style={{ minHeight: computedHeight, backgroundColor: readOnly ? 'rgba(0,0,0,0.02)' : undefined, color: 'inherit' }} />;
     }
 
-    let span = f.width ? Number(f.width) : (f.type === 'textarea' || f.type === 'media' ? 12 : 4);
-    if (isNaN(span) || f.width === 'full') span = 12; // Backwards compatibility for exact strings
-    if (f.width === '1') span = 4;
-    if (f.width === '2') span = 8;
+    let span = f.width ? Number(f.width) : (f.type === 'textarea' || f.type === 'media' ? 24 : 8);
+    if (isNaN(span) || f.width === 'full') span = 24; // Backwards compatibility for exact strings
+    if (f.width === '1') span = 8;
+    if (f.width === '2') span = 16;
     
     return (
-      <div key={f.id} style={{ gridColumn: `span ${span}` }}>
-        {renderField(f.id, f.label, val?.toString() ?? '', inputComponent, isCheckbox)}
+      <div key={f.id} style={{ gridColumn: `span ${span}`, backgroundColor: f.backgroundColor || 'transparent', padding: f.backgroundColor ? '0.75rem' : '0', borderRadius: 'var(--radius)', color: effectiveTextColor }}>
+        {renderField(f.id, f.label, val?.toString() ?? '', inputComponent, isCheckbox, effectiveTextColor)}
       </div>
     );
   };
@@ -405,9 +413,9 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
             <div style={{ padding: '3rem', display: 'flex', flexDirection: 'column', gap: '4rem' }}>
               {layout?.map((section) => (
                 <section key={section.id}>
-                  <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: section.color, marginBottom: '1.5rem', borderBottom: `2px solid ${section.color}`, paddingBottom: '0.5rem', display: 'inline-block' }}>{section.title}</h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, minmax(0, 1fr))', gap: '1.5rem', backgroundColor: 'var(--background)', padding: '2rem', borderRadius: 'var(--radius)', border: `1px solid rgba(0,0,0,0.05)` }}>
-                    {section.fields.map((f: any) => renderDataField(f))}
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: section.color, marginBottom: '1rem', borderBottom: `2px solid ${section.color}`, paddingBottom: '0.5rem', display: 'inline-block' }}>{section.title}</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(24, minmax(0, 1fr))', gap: '0.75rem', backgroundColor: section.backgroundColor || 'var(--background)', color: section.textColor || 'var(--text)', padding: '1rem', borderRadius: 'var(--radius)', border: `1px solid rgba(0,0,0,0.05)` }}>
+                    {section.fields.map((f: any) => renderDataField(f, section))}
                   </div>
                 </section>
               ))}
