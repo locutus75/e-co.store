@@ -165,7 +165,6 @@ export async function executeImportAction(
       let updatedSomething = false;
 
       for (const [colIndexStr, dbField] of Object.entries(mapping)) {
-        if (dbField === 'ignore') continue;
         const colIndex = parseInt(colIndexStr, 10);
         const headerName = headers[colIndex];
         if (headerName && typeof headerName === 'string') {

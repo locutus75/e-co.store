@@ -67,7 +67,7 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
       const matchedField = PRISMA_FIELDS.find(f => {
         const cleanField = f.label.toLowerCase().replace(/[^a-z0-9]/g, '');
         const cleanKey = f.key.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return cleanHeader.includes(cleanField) || cleanHeader.includes(cleanKey) || cleanField.includes(cleanHeader);
+        return cleanHeader === cleanField || cleanHeader === cleanKey;
       });
 
       // Specific hardcoded matches for smooth UX on specifically known headers
