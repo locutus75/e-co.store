@@ -3,7 +3,7 @@ import React, { useState, useTransition } from 'react';
 import { previewExcelAction, executeImportAction } from '@/app/actions/importExcel';
 import { PRISMA_FIELDS } from '@/lib/constants';
 
-type Phase = 'upload' | 'preview' | 'mapping' | 'importing';
+type Phase = 'upload' | 'preview' | 'mapping' | 'importing' | 'success';
 
 export default function ExcelImportWizard({ onClose }: { onClose: () => void }) {
   const [phase, setPhase] = useState<Phase>('upload');
@@ -11,6 +11,8 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
   const [previewRows, setPreviewRows] = useState<any[][]>([]);
   const [headerRowIndex, setHeaderRowIndex] = useState<number>(0);
   const [mapping, setMapping] = useState<Record<number, string>>({});
+  const [errorMsg, setErrorMsg] = useState<string>('');
+  const [successCount, setSuccessCount] = useState<number>(0);
   
   const [isPending, startTransition] = useTransition();
 
@@ -21,13 +23,14 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
       const fd = new FormData();
       fd.append('file', selectedFile);
 
+      setErrorMsg('');
       setPhase('preview');
       startTransition(async () => {
         const res = await previewExcelAction(fd);
         if (res.success && res.previewRows) {
           setPreviewRows(res.previewRows);
         } else {
-          alert("Fout bij het lezen van Excel: " + res.error);
+          setErrorMsg("Fout bij het lezen van Excel: " + res.error);
           setPhase('upload');
         }
       });
@@ -75,6 +78,7 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
 
   const executeImport = () => {
     if (!file) return;
+    setErrorMsg('');
     setPhase('importing');
     
     const fd = new FormData();
@@ -83,11 +87,11 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
     startTransition(async () => {
       const res = await executeImportAction(fd, headerRowIndex, mapping);
       if (res.error) {
-        alert("Import Mislukt: " + res.error);
+        setErrorMsg("Import Mislukt: " + res.error);
         setPhase('mapping');
       } else {
-        alert(`Succesvol ${res.count} producten geïmporteerd of bijgewerkt!`);
-        onClose();
+        setSuccessCount(res.count);
+        setPhase('success');
       }
     });
   };
@@ -96,17 +100,25 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div className="glass" style={{ backgroundColor: 'var(--surface)', borderRadius: 'var(--radius-lg)', width: '90%', maxWidth: '1000px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px rgba(0,0,0,0.3)' }}>
         
-        <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text)' }}>
             {phase === 'upload' && "1. Upload Excel"}
             {phase === 'preview' && "2. Kies Rijkop (Header Row)"}
             {phase === 'mapping' && "3. Kolommen Koppelen"}
             {phase === 'importing' && "Data Importeren..."}
+            {phase === 'success' && "Import Succesvol"}
           </h2>
-          <button className="btn" style={{ border: 'none', backgroundColor: 'transparent', fontSize: '1.25rem' }} onClick={onClose} disabled={phase === 'importing'}>✕</button>
+          {phase !== 'importing' && phase !== 'success' && (
+             <button className="btn" style={{ marginLeft: 'auto', border: 'none', backgroundColor: 'transparent', fontSize: '1.25rem' }} onClick={onClose}>✕</button>
+          )}
         </div>
 
         <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1 }}>
+          {errorMsg && (
+            <div style={{ padding: '1rem', backgroundColor: 'rgba(255, 50, 50, 0.1)', color: 'var(--error)', borderRadius: 'var(--radius)', marginBottom: '1.5rem', fontWeight: 500 }}>
+              {errorMsg}
+            </div>
+          )}
           {phase === 'upload' && (
             <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
               <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>📄</div>
@@ -193,6 +205,14 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
               <p style={{ color: 'var(--text-muted)' }}>We controleren en verwerken de rijen, een moment geduld aub.</p>
             </div>
           )}
+
+          {phase === 'success' && (
+            <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
+              <div style={{ fontSize: '4rem', marginBottom: '1rem', color: 'var(--success)' }}>✅</div>
+              <h3 style={{ fontSize: '1.4rem', marginBottom: '0.5rem', color: 'var(--text)' }}>Missie Geslaagd!</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>Succesvol <strong>{successCount}</strong> producten geïmporteerd of bijgewerkt!</p>
+            </div>
+          )}
         </div>
 
         {/* Footer Actions */}
@@ -205,6 +225,9 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
                <button className="btn" onClick={() => setPhase('preview')}>← Terug</button>
                <button className="btn btn-primary" onClick={executeImport}>Start Import</button>
              </>
+          )}
+          {phase === 'success' && (
+             <button className="btn btn-primary" onClick={onClose}>Sluiten & Vernieuwen</button>
           )}
         </div>
       </div>
