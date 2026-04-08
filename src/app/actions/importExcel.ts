@@ -25,7 +25,23 @@ export async function previewExcelAction(formData: FormData) {
   }
 }
 
-export async function executeImportAction(formData: FormData, headerRowIndex: number, mapping: Record<number, string>) {
+export async function getSavedMappingsAction() {
+  try {
+    const setting = await prisma.systemSetting.findUnique({ where: { key: 'saved_import_mappings' } });
+    if (setting && setting.value) {
+       return JSON.parse(setting.value);
+    }
+  } catch (err) {}
+  return {};
+}
+
+export async function executeImportAction(
+  formData: FormData, 
+  headerRowIndex: number, 
+  mapping: Record<number, string>, 
+  headers: (string|null)[], 
+  overwriteRules: Record<string, boolean>
+) {
   const file = formData.get("file") as File;
   if (!file) return { error: "No file uploaded" };
 
@@ -92,18 +108,79 @@ export async function executeImportAction(formData: FormData, headerRowIndex: nu
       const internalArticleNumber = rowData.internalArticleNumber;
       delete rowData.internalArticleNumber; // Remove from the generic update payload temporarily
 
-      await prisma.product.upsert({
-        where: { internalArticleNumber: internalArticleNumber },
-        create: {
-          internalArticleNumber,
-          title: rowData.title || "Nieuw Product",
-          status: "NEW",
-          ...rowData
-        },
-        update: rowData
+      const existingProduct = await prisma.product.findUnique({
+        where: { internalArticleNumber }
       });
+
+      if (!existingProduct) {
+        // Safe Create
+        await prisma.product.create({
+          data: {
+             internalArticleNumber,
+             title: rowData.title || "Nieuw Product",
+             status: "new",
+             ...rowData
+          }
+        });
+      } else {
+        // Selective Update
+        const updatePayload: Record<string, any> = {};
+        
+        for (const [key, value] of Object.entries(rowData)) {
+          // It's a relation field if it's an object (like { connectOrCreate })
+          const isRelation = typeof value === 'object' && value !== null && 'connectOrCreate' in value;
+
+          if (overwriteRules[key]) {
+             // Overwrite unconditionally
+             updatePayload[key] = value;
+          } else {
+             // Let's check if the existing value is effectively empty
+             let existingVal: any;
+             if (isRelation && key === 'supplier') existingVal = (existingProduct as any).supplierId;
+             else if (isRelation && key === 'brand') existingVal = (existingProduct as any).brandId;
+             else existingVal = (existingProduct as any)[key];
+             
+             if (existingVal === null || existingVal === undefined || String(existingVal).trim() === "") {
+                updatePayload[key] = value;
+             }
+          }
+        }
+
+        if (Object.keys(updatePayload).length > 0) {
+           await prisma.product.update({
+             where: { internalArticleNumber },
+             data: updatePayload
+           });
+        }
+      }
       
       processedParams++;
+    }
+
+    // Save mapping memory for future uploads
+    try {
+      const savedMap = await getSavedMappingsAction();
+      let updatedSomething = false;
+
+      for (const [colIndexStr, dbField] of Object.entries(mapping)) {
+        if (dbField === 'ignore') continue;
+        const colIndex = parseInt(colIndexStr, 10);
+        const headerName = headers[colIndex];
+        if (headerName && typeof headerName === 'string') {
+          savedMap[headerName.toLowerCase().trim()] = dbField;
+          updatedSomething = true;
+        }
+      }
+
+      if (updatedSomething) {
+        await prisma.systemSetting.upsert({
+          where: { key: 'saved_import_mappings' },
+          create: { key: 'saved_import_mappings', value: JSON.stringify(savedMap) },
+          update: { value: JSON.stringify(savedMap) }
+        });
+      }
+    } catch (err) {
+      console.warn("Could not save mapping memory:", err);
     }
 
     revalidatePath('/products');

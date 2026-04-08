@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useTransition } from 'react';
-import { previewExcelAction, executeImportAction } from '@/app/actions/importExcel';
+import { previewExcelAction, executeImportAction, getSavedMappingsAction } from '@/app/actions/importExcel';
 import { PRISMA_FIELDS } from '@/lib/constants';
 
 type Phase = 'upload' | 'preview' | 'mapping' | 'importing' | 'success';
@@ -11,6 +11,7 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
   const [previewRows, setPreviewRows] = useState<any[][]>([]);
   const [headerRowIndex, setHeaderRowIndex] = useState<number>(0);
   const [mapping, setMapping] = useState<Record<number, string>>({});
+  const [overwriteRules, setOverwriteRules] = useState<Record<string, boolean>>({});
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [successCount, setSuccessCount] = useState<number>(0);
   
@@ -37,10 +38,14 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
     }
   };
 
-  const handleConfirmHeader = () => {
+  const handleConfirmHeader = async () => {
     // Attempt auto-guessing the mapping based on the chosen header row
     const headers = previewRows[headerRowIndex] || [];
     const autoMap: Record<number, string> = {};
+    const autoOverwrite: Record<string, boolean> = {};
+    
+    // Fetch smart mapping memory from database
+    const savedMap = await getSavedMappingsAction();
     
     headers.forEach((headerStr, colIndex) => {
       if(!headerStr) {
@@ -48,7 +53,15 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
         return;
       }
       
-      const cleanHeader = String(headerStr).toLowerCase().replace(/[^a-z0-9]/g, '');
+      const rawHeaderStr = String(headerStr).toLowerCase().trim();
+      const cleanHeader = rawHeaderStr.replace(/[^a-z0-9]/g, '');
+      
+      // 1. Check Smart Memory First
+      if (savedMap[rawHeaderStr]) {
+         autoMap[colIndex] = savedMap[rawHeaderStr];
+         autoOverwrite[savedMap[rawHeaderStr]] = true; // Default to overwrite for mapped
+         return;
+      }
       
       // Super naive auto match
       const matchedField = PRISMA_FIELDS.find(f => {
@@ -70,9 +83,14 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
       } else {
         autoMap[colIndex] = 'ignore';
       }
+
+      if (autoMap[colIndex] !== 'ignore') {
+         autoOverwrite[autoMap[colIndex]] = true; // Default true
+      }
     });
 
     setMapping(autoMap);
+    setOverwriteRules(autoOverwrite);
     setPhase('mapping');
   };
 
@@ -84,13 +102,15 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
     const fd = new FormData();
     fd.append('file', file);
     
+    const headers = previewRows[headerRowIndex] || [];
+
     startTransition(async () => {
-      const res = await executeImportAction(fd, headerRowIndex, mapping);
+      const res = await executeImportAction(fd, headerRowIndex, mapping, headers, overwriteRules);
       if (res.error) {
         setErrorMsg("Import Mislukt: " + res.error);
         setPhase('mapping');
       } else {
-        setSuccessCount(res.count);
+        setSuccessCount(res.count || 0);
         setPhase('success');
       }
     });
@@ -162,10 +182,23 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
 
           {phase === 'mapping' && (
             <div>
-              <p style={{ marginBottom: '1rem', color: 'var(--text-muted)' }}>Koppel de Excel kolommen aan de juiste velden in de database.</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) minmax(250px, 1fr) 2fr', gap: '1rem', fontWeight: 600, paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)', marginBottom: '1rem' }}>
+              <div style={{ padding: '1rem', backgroundColor: 'var(--surface-hover)', borderRadius: 'var(--radius)', marginBottom: '1.5rem', border: '1px solid var(--border)' }}>
+                 <p style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text)' }}>Vaste Unieke Identifier: Artikel Nummer (ID)</p>
+                 <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Producten worden altijd geïdentificeerd aan de hand van het Artikel Nummer. Rijen zonder Artikel Nummer worden overgeslagen.</p>
+                 
+                 <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem' }}>
+                    <button className="btn" style={{ fontSize: '0.85rem', padding: '0.4rem 1rem' }} onClick={() => {
+                        const newRules: Record<string, boolean> = {};
+                        Object.values(mapping).forEach(dbField => { if (dbField !== 'ignore') newRules[dbField] = true; });
+                        setOverwriteRules(newRules);
+                    }}>Alles Overschrijven</button>
+                    <button className="btn" style={{ fontSize: '0.85rem', padding: '0.4rem 1rem' }} onClick={() => setOverwriteRules({}) }>Nooit Overschrijven (Alleen lege velden vullen)</button>
+                 </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) minmax(280px, 1.2fr) 2fr', gap: '1rem', fontWeight: 600, paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)', marginBottom: '1rem' }}>
                 <div>Excel Kolom</div>
-                <div>Database Veld</div>
+                <div>Database Veld <span style={{color:'var(--text-muted)', fontWeight:400}}>(✓ Overschrijven?)</span></div>
                 <div>Voorbeeld Data (Eerste rij)</div>
               </div>
               
@@ -173,21 +206,41 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
                 {(previewRows[headerRowIndex] || []).map((headerLabel, cIdx) => {
                   if (!headerLabel) return null;
                   const sampleData = previewRows[headerRowIndex + 1]?.[cIdx] || '';
+                  const activeMapping = mapping[cIdx] || 'ignore';
+                  const isIdentifier = activeMapping === 'internalArticleNumber';
                   
                   return (
-                    <div key={cIdx} style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) minmax(250px, 1fr) 2fr', gap: '1rem', alignItems: 'center' }}>
+                    <div key={cIdx} style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) minmax(280px, 1.2fr) 2fr', gap: '1rem', alignItems: 'center' }}>
                       <div style={{ fontWeight: 500 }}>{String(headerLabel)}</div>
-                      <select 
-                        className="input" 
-                        value={mapping[cIdx] || 'ignore'} 
-                        onChange={e => setMapping({...mapping, [cIdx]: e.target.value})}
-                        style={{ padding: '0.4rem', borderRadius: 'var(--radius)' }}
-                      >
-                        <option value="ignore">❌ -- Negeer deze kolom --</option>
-                        {PRISMA_FIELDS.map(f => (
-                          <option key={f.key} value={f.key}>{f.label} ({f.type})</option>
-                        ))}
-                      </select>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <select 
+                            className="input" 
+                            value={activeMapping} 
+                            onChange={e => {
+                                setMapping({...mapping, [cIdx]: e.target.value});
+                                if (e.target.value !== 'ignore' && e.target.value !== 'internalArticleNumber') {
+                                   setOverwriteRules(prev => ({ ...prev, [e.target.value]: true }));
+                                }
+                            }}
+                            style={{ padding: '0.4rem', borderRadius: 'var(--radius)', flex: 1 }}
+                          >
+                            <option value="ignore">❌ -- Negeer deze kolom --</option>
+                            {PRISMA_FIELDS.map(f => (
+                              <option key={f.key} value={f.key}>{f.label} ({f.type})</option>
+                            ))}
+                          </select>
+                          
+                          {activeMapping !== 'ignore' && !isIdentifier && (
+                              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', flexShrink: 0 }} title="Overschrijven indien product al bestaat? Vink uit om alleen lege velden te vullen.">
+                                <input 
+                                   type="checkbox" 
+                                   checked={!!overwriteRules[activeMapping]}
+                                   onChange={e => setOverwriteRules({...overwriteRules, [activeMapping]: e.target.checked})}
+                                   style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                                />
+                              </label>
+                          )}
+                      </div>
                       <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {String(sampleData)}
                       </div>
