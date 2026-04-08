@@ -38,6 +38,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # 2. Install Dependencies
 Write-Host "`n[2/5] Checking Node Dependencies..." -ForegroundColor Yellow
+$env:NODE_ENV = "development"
 npm install
 
 # 3. Synchronize Database & Generate Client
