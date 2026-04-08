@@ -82,14 +82,7 @@ export default function AdminSystemClient() {
     }
   };
 
-  const confirmTriggerUpdate = () => {
-    openConfirmModal(
-      'Install System Update',
-      <p style={{ color: 'var(--text-muted)' }}>The server will restart to apply the update and be temporarily unavailable for roughly <strong>1 to 2 minutes</strong>. Are you absolutely ready to proceed?</p>,
-      'Start Update', 'btn-primary',
-      performReboot
-    );
-  };
+  // Removing confirmTriggerUpdate so '1-Click Update' goes straight to performReboot
 
   const performReboot = async () => {
     setUpdating(true);
@@ -375,7 +368,8 @@ export default function AdminSystemClient() {
                     textDecoration: 'none',
                     letterSpacing: '0.05em',
                     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                    transition: 'all 0.2s ease'
+                    transition: 'all 0.2s ease',
+                    display: 'inline-block'
                   }}
                   onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-1px)'}
                   onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
@@ -383,18 +377,24 @@ export default function AdminSystemClient() {
                     {updateInfo.remoteHash ? updateInfo.remoteHash.substring(0, 7).toUpperCase() : 'UNKNOWN'}
                   </button>
                 </div>
+                {updateInfo.updateAvailable && (
+                  <div style={{ marginTop: '1.25rem' }}>
+                    <button className="btn btn-primary" style={{ width: '100%', padding: '0.6rem', fontSize: '0.95rem', fontWeight: 600, boxShadow: '0 4px 6px -1px rgba(59, 130, 246, 0.3)' }} onClick={performReboot}>
+                      🚀 1-Click Update NextJS
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', padding: '1rem', backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: 'var(--radius)' }}>
               <div>
                 <span style={{ fontWeight: 600, color: updateInfo.updateAvailable ? 'var(--error)' : 'var(--success)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {updateInfo.updateAvailable ? '⚠️ Update Available' : '✅ System is up to date'}
+                  {updateInfo.updateAvailable ? '⚠️ System architecture update is available.' : '✅ System is up to date'}
                 </span>
               </div>
               <div style={{ display: 'flex', gap: '1rem' }}>
                 <button className="btn" style={{ backgroundColor: 'var(--background)' }} onClick={checkUpdates}>Check Again</button>
-                {updateInfo.updateAvailable && <button className="btn btn-primary" onClick={confirmTriggerUpdate}>Install Update</button>}
               </div>
             </div>
           </div>

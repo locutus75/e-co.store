@@ -43,8 +43,19 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# 5. Boot Application
-Write-Host "`n[5/5] Booting Production Server..." -ForegroundColor Green
+# 5. Prepare Standalone Assets
+Write-Host "`n[5/6] Linking Static Assets..." -ForegroundColor Yellow
+if (Test-Path "public") {
+    Copy-Item -Path "public" -Destination ".next/standalone/public" -Recurse -Force
+}
+if (Test-Path ".next/static") {
+    $dest = ".next/standalone/.next"
+    if (-Not (Test-Path $dest)) { New-Item -ItemType Directory -Force -Path $dest | Out-Null }
+    Copy-Item -Path ".next/static" -Destination "$dest/static" -Recurse -Force
+}
+
+# 6. Boot Application
+Write-Host "`n[6/6] Booting Production Server..." -ForegroundColor Green
 Write-Host "The application is now running. Close this window to shut it down." -ForegroundColor Magenta
 
 # In Next.js Standalone mode, we boot the raw server.js file inside the .next/standalone/ directory
