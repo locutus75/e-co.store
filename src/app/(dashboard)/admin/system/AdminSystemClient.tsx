@@ -380,7 +380,7 @@ export default function AdminSystemClient() {
                 {updateInfo.updateAvailable && (
                   <div style={{ marginTop: '1.25rem' }}>
                     <button className="btn btn-primary" style={{ width: '100%', padding: '0.6rem', fontSize: '0.95rem', fontWeight: 600, boxShadow: '0 4px 6px -1px rgba(59, 130, 246, 0.3)' }} onClick={performReboot}>
-                      🚀 1-Click Update NextJS
+                      UPDATE
                     </button>
                   </div>
                 )}
