@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { spawn } from 'child_process';
+import { exec } from 'child_process';
 import path from 'path';
 
 export async function POST() {
@@ -8,20 +8,11 @@ export async function POST() {
 
     console.log(`Starting background updater script: ${scriptPath}`);
 
-    // Spawn the PowerShell script in a completely detached process
-    const child = spawn('powershell.exe', [
-      '-ExecutionPolicy', 'Bypass',
-      '-WindowStyle', 'Hidden',
-      '-File', scriptPath
-    ], {
-      detached: true,
-      stdio: 'ignore' // We don't care about the script's output in this process
-    });
+    // Break completely out of the Node.js Job Object by asking the Windows Shell 
+    // to spawn a brand new top-level visible window to host the update!
+    exec(`powershell.exe -Command "Start-Process powershell.exe -ArgumentList '-ExecutionPolicy Bypass -File \\"${scriptPath}\\"' -WindowStyle Normal"`);
 
-    // Unref the child process so Next.js doesn't wait for it to exit
-    child.unref();
-
-    console.log(`Updater process spawned with PID ${child.pid}. Server will be closed by the script shortly.`);
+    console.log(`Updater OS process requested. Server will be closed by the script shortly.`);
 
     return NextResponse.json({
       success: true,
