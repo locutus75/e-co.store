@@ -80,10 +80,12 @@ export async function executeImportAction(
         if (fieldDef.type === 'string') {
           rowData[dbField] = cellVal;
         } else if (fieldDef.type === 'number') {
-          const parsed = parseInt(cellVal, 10);
+          const cleanStr = cellVal.replace(/[^\d.-]/g, '');
+          const parsed = parseInt(cleanStr, 10);
           if (!Number.isNaN(parsed)) rowData[dbField] = parsed;
         } else if (fieldDef.type === 'float') {
-          const parsed = parseFloat(cellVal.replace(',', '.')); // Replace EU commas with dots
+          const cleanStr = cellVal.replace(/[^\d,.-]/g, '');
+          const parsed = parseFloat(cleanStr.replace(',', '.')); // Replace EU commas with dots
           if (!Number.isNaN(parsed)) rowData[dbField] = parsed;
         } else if (fieldDef.type === 'boolean') {
           const upper = cellVal.toUpperCase();
