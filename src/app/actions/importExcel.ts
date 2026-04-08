@@ -66,6 +66,9 @@ export async function executeImportAction(formData: FormData, headerRowIndex: nu
         } else if (fieldDef.type === 'number') {
           const parsed = parseInt(cellVal, 10);
           if (!Number.isNaN(parsed)) rowData[dbField] = parsed;
+        } else if (fieldDef.type === 'float') {
+          const parsed = parseFloat(cellVal.replace(',', '.')); // Replace EU commas with dots
+          if (!Number.isNaN(parsed)) rowData[dbField] = parsed;
         } else if (fieldDef.type === 'boolean') {
           const upper = cellVal.toUpperCase();
           rowData[dbField] = (upper === "JA" || upper === "TRUE" || upper === "1" || upper === "Y");
