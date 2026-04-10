@@ -133,17 +133,6 @@ export async function updateProductAction(internalId: string, formData: FormData
   await assertProductLock(internalId);
   const data: any = {};
   
-  // Safe extraction of text fields
-  const textFields = [
-    'title', 'ean', 'seoTitle', 'longDescription', 'color', 'mainMaterial', 
-    'ingredients', 'allergens', 'critMensSocial', 'supplierContacted', 
-    'critCircular', 'critTransportVehicle', 'critOther', 'status', 'internalRemarks'
-  ];
-  for(const field of textFields) {
-    const val = formData.get(field);
-    if(val !== null) data[field] = val === '' ? null : val.toString();
-  }
-  
   // Safe extraction of float fields
   if (formData.has('basePrice')) {
       const pVal = formData.get('basePrice');
@@ -157,59 +146,69 @@ export async function updateProductAction(internalId: string, formData: FormData
       }
   }
 
-  // Safe extraction of Number fields
-  const numberFields = [
-    'weightGr', 'lengthCm', 'widthCm', 'heightCm', 
-    'volumeMl', 'volumeGr', 'critTransportDistance'
-  ];
-  for(const field of numberFields) {
-    const val = formData.get(field);
-    if(val !== null && val !== '') {
-      const parsed = parseInt(val.toString(), 10);
-      if (Number.isNaN(parsed)) {
-        throw new Error(`Field ${field} is not a valid number! Received: "${val.toString()}"`);
-      }
-      data[field] = parsed;
-    } else if (val === '') {
-      data[field] = null;
-    }
-  }
-
-  // Safe extraction of True/False flags
-  data.webshopActive = formData.has('webshopActive');
-  data.systemActive = formData.has('systemActive');
-
-  // Excel mapping 'Ja' for sustainability arrays
-  const criteriaBoxes = [
-    'critMensSafeWork', 'critMensFairWage', 'critMensSocialCheck',
-    'critDierCrueltyFree', 'critDierFriendly', 'critMilieuPackagingFree',
-    'critMilieuPlasticFree', 'critMilieuRecyclable', 'critMilieuBiodegradable',
-    'critMilieuCompostable', 'critHandmade', 'critNatural', 'critMilieuCarbonCompensated'
-  ];
+  // Load layout to dynamically extract all WYSIWYG fields
+  const { getFormLayoutAction } = await import('@/app/actions/formLayouts');
+  const layout = await getFormLayoutAction();
+  const allFields = layout.flatMap((s: any) => s.fields);
   
-  for(const field of criteriaBoxes) {
-    // If it's a special rename we fix it, else keep name
-    const targetField = field === 'critMensSocialCheck' ? 'critMensSocial' : field;
-    
-    // The UI now submits an explicit string: 'Ja', 'Nee', or 'Leeg' via hidden inputs
-    const val = formData.get(field);
-    
-    if (val === 'Ja' || val === 'Nee') {
-      data[targetField] = val as string;
-    } else {
-      // It's 'Leeg' or wasn't even rendered
-      data[targetField] = null; 
-    }
-  }
-
-  // Harvest Dynamic Custom Fields
   const customData: Record<string, string | null> = {};
-  for(const [key, val] of Array.from(formData.entries())) {
+
+  for (const field of allFields) {
+    let key = field.id.replace('FIELD:', '');
+    if (key === 'description') key = 'longDescription';
+    
+    // Some keys are strictly natively boolean in Prisma schema
+    const isNativeBoolean = key === 'webshopActive' || key === 'systemActive' || key === 'publicationReady';
+    
+    // How the data comes in from the DOM
+    const val = formData.get(key);
+    
+    let processedValue: any = val;
+
+    if (field.type === 'checkbox') {
+      if (isNativeBoolean) {
+        processedValue = formData.has(key); // native checkbox sends "on" or nothing
+      } else {
+        // If it's a Prisma String mapped as a checkbox, coerce to 'Ja'/'Nee' based on presence
+        processedValue = formData.has(key) ? 'Ja' : 'Nee';
+      }
+    } else if (field.type === 'threeway') {
+      if (val === 'Ja' || val === 'Nee') {
+        processedValue = val;
+      } else {
+        processedValue = null; // 'Leeg' or unrecognized
+      }
+    } else if (field.type === 'number') {
+      if (val !== null && val !== '') {
+        const parsed = parseInt(val.toString(), 10);
+        processedValue = Number.isNaN(parsed) ? null : parsed;
+      } else {
+        processedValue = null;
+      }
+    } else {
+      // text, textarea, picklist, media
+      processedValue = (val === '' || val === null) ? null : val?.toString();
+    }
+
+    if (key === 'critMensSocialCheck') key = 'critMensSocial'; // database alias
+
     if (key.startsWith('custom_')) {
-      customData[key.replace('custom_', '')] = (val as string) || null;
+      const cleanKey = key.replace('custom_', '');
+      customData[cleanKey] = processedValue;
+    } else if (key !== 'basePrice' && key !== 'media') {
+      // media is virtual, basePrice handled above
+      data[key] = processedValue;
     }
   }
-  
+
+  // Double check basic fields from non-WYSIWYG forms or modals
+  const textFallbacks = ['title', 'ean', 'status'];
+  for (const fallback of textFallbacks) {
+    if (formData.has(fallback)) {
+      data[fallback] = formData.get(fallback)?.toString();
+    }
+  }
+
   if (Object.keys(customData).length > 0) {
     data.customData = customData;
   }

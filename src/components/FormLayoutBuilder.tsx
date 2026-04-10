@@ -65,6 +65,15 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
     });
   };
 
+  const updateFieldType = (secIdx: number, fieldIdx: number, type: string) => {
+    setLayout(prevLayout => {
+      const newLayout = [...prevLayout];
+      newLayout[secIdx] = { ...newLayout[secIdx], fields: [...newLayout[secIdx].fields] };
+      newLayout[secIdx].fields[fieldIdx] = { ...newLayout[secIdx].fields[fieldIdx], type };
+      return newLayout;
+    });
+  };
+
   const updateFieldColors = (secIdx: number, fieldIdx: number, backgroundColor: string, textColor: string) => {
     setLayout(prevLayout => {
       const newLayout = [...prevLayout];
@@ -504,9 +513,19 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                           )}
                         </div>
                       </div>
-                      <div style={{ padding: '0.2rem 0.5rem', backgroundColor: 'var(--surface-hover)', borderRadius: '4px', fontSize: '0.7rem', color: 'var(--text)', border: '1px solid var(--border)' }}>
-                        {f.type || 'text'}
-                      </div>
+                      <select 
+                        value={f.type || 'text'}
+                        onChange={(e) => updateFieldType(secIdx, fieldIdx, e.target.value)}
+                        style={{ padding: '0.2rem 0.5rem', backgroundColor: 'var(--surface-hover)', borderRadius: '4px', fontSize: '0.7rem', color: 'var(--text)', border: '1px solid var(--border)', outline: 'none', cursor: 'pointer' }}
+                      >
+                        <option value="text">Tekst Veld</option>
+                        <option value="number">Getal</option>
+                        <option value="textarea">Lange Tekst</option>
+                        <option value="checkbox">Schakelaar (Ja/Nee)</option>
+                        <option value="threeway">3-Standen (Ja/Leeg/Nee)</option>
+                        <option value="picklist">Keuzelijst</option>
+                        <option value="media">Media Galerie</option>
+                      </select>
                     </div>
 
                     {/* Mock Input Field */}
