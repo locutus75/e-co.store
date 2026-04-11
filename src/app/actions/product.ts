@@ -197,13 +197,29 @@ export async function updateProductAction(internalId: string, formData: FormData
     }
 
     if (key === 'critMensSocialCheck') key = 'critMensSocial'; // database alias
+    if (key === 'assignedUserId' && processedValue === 'NONE') processedValue = null;
+
+    const knownPrismaProductKeys = [
+      'internalArticleNumber', 'ean', 'title', 'status', 'brandId', 'supplierId', 'categoryId', 'subcategoryId', 'assignedUserId',
+      'shortDescription', 'longDescription', 'color', 'size', 'material', 'tags', 'webshopSlug', 'weightGr', 'lengthCm', 'widthCm',
+      'heightCm', 'volumeMl', 'volumeGr', 'ingredients', 'allergens', 'mainMaterial', 'readyForImport', 'webshopActive', 'systemActive',
+      'supplierContacted', 'internalRemarks', 'customData', 'critMensSafeWork', 'critMensFairWage', 'critMensSocial', 'critDierCrueltyFree',
+      'critDierFriendly', 'critMilieuPackagingFree', 'critMilieuPlasticFree', 'critMilieuRecyclable', 'critMilieuBiodegradable',
+      'critMilieuCompostable', 'critMilieuCarbonCompensated', 'critTransportDistance', 'critTransportVehicle', 'critHandmade', 'critNatural',
+      'critCircular', 'critOther', 'seoTitle', 'seoMetaDescription', 'basePrice', 'qualityControlStatus', 'exportStatus', 'publicationReady', 'internalNotes'
+    ];
 
     if (key.startsWith('custom_')) {
       const cleanKey = key.replace('custom_', '');
       customData[cleanKey] = processedValue;
     } else if (key !== 'basePrice' && key !== 'media') {
       // media is virtual, basePrice handled above
-      data[key] = processedValue;
+      if (knownPrismaProductKeys.includes(key)) {
+        data[key] = processedValue;
+      } else {
+        // Auto-fallback: User added an unmapped field (e.g. 'price') without 'custom_' prefix. Protect Prisma by isolating it.
+        customData[key] = processedValue;
+      }
     }
   }
 
