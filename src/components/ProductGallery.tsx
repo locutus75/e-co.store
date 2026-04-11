@@ -17,13 +17,20 @@ export default function ProductGallery({ articleNumber }: { articleNumber: strin
   }, [articleNumber]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log("[ProductGallery] Files selected:", e.target.files);
+    
     if (e.target.files && e.target.files.length > 0) {
       const fd = new FormData();
-      Array.from(e.target.files).forEach(f => fd.append('images', f));
+      Array.from(e.target.files).forEach((f, i) => {
+        console.log(`[ProductGallery] Appending file ${i}:`, f.name, f.size, f.type);
+        fd.append('images', f);
+      });
       
       startTransition(async () => {
         try {
+          console.log("[ProductGallery] Calling uploadProductImageAction...");
           const result = await uploadProductImageAction(articleNumber, fd);
+          console.log("[ProductGallery] Server responded:", result);
           if (result && result.error) {
             alert(`Fout bij uploaden (Server): ${result.error}`);
           }

@@ -20,11 +20,22 @@ export async function getProductImagesAction(articleNumber: string) {
 }
 
 export async function uploadProductImageAction(articleNumber: string, formData: FormData) {
+  console.log("=== START UPLOAD ACTION ===");
+  console.log("Article Number:", articleNumber);
+  
   try {
-    if (!articleNumber) return { error: "No article number" };
+    if (!articleNumber) {
+      console.log("Validation Failed: No article number");
+      return { error: "No article number" };
+    }
 
     const files = formData.getAll('images') as File[];
-    if (!files || files.length === 0) return { error: "No files found" };
+    console.log("Incoming files array length:", files?.length);
+
+    if (!files || files.length === 0) {
+      console.log("Validation Failed: No files found");
+      return { error: "No files found" };
+    }
 
     const dir = path.join(UPLOADS_DIR, articleNumber);
     if (!fs.existsSync(dir)) {
