@@ -22,10 +22,17 @@ export default function ProductGallery({ articleNumber }: { articleNumber: strin
       Array.from(e.target.files).forEach(f => fd.append('images', f));
       
       startTransition(async () => {
-        await uploadProductImageAction(articleNumber, fd);
-        // Refresh local list
-        const updated = await getProductImagesAction(articleNumber);
-        setImages(updated);
+        try {
+          const result = await uploadProductImageAction(articleNumber, fd);
+          if (result && result.error) {
+            alert(`Fout bij uploaden (Server): ${result.error}`);
+          }
+          // Refresh local list
+          const updated = await getProductImagesAction(articleNumber);
+          setImages(updated);
+        } catch (err: any) {
+          alert(`Systeemfout bij uploaden (Mogelijk CSRF/Rechten): ${err.message || 'Onbekende fout'}`);
+        }
       });
       // Clear input manually to allow selecting the same file again
       e.target.value = '';

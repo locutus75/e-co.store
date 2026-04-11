@@ -20,43 +20,47 @@ export async function getProductImagesAction(articleNumber: string) {
 }
 
 export async function uploadProductImageAction(articleNumber: string, formData: FormData) {
-  if (!articleNumber) return { error: "No article number" };
+  try {
+    if (!articleNumber) return { error: "No article number" };
 
-  const files = formData.getAll('images') as File[];
-  if (!files || files.length === 0) return { error: "No files found" };
+    const files = formData.getAll('images') as File[];
+    if (!files || files.length === 0) return { error: "No files found" };
 
-  const dir = path.join(UPLOADS_DIR, articleNumber);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-
-  for (const file of files) {
-    if(!file.name || file.size === 0) continue;
-    
-    // Prevent directory traversal attacks
-    const ext = path.extname(file.name);
-    const safeName = path.basename(file.name, ext).replace(/[^a-z0-9]/gi, '_').toLowerCase();
-    
-    // Format: 2061-timestamp-random.jpg
-    const finalFilename = `${articleNumber}-${Date.now()}-${safeName}${ext}`;
-    const filePath = path.join(dir, finalFilename);
-    
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    
-    // Write to persistent source directory
-    fs.writeFileSync(filePath, buffer);
-    
-    // Write mirror to standalone directory so NextJS serves it immediately in production mode without a restart
-    const standaloneDir = path.join(process.cwd(), ".next", "standalone", "public", "uploads", "products", articleNumber);
-    if (fs.existsSync(path.join(process.cwd(), ".next", "standalone"))) {
-      if (!fs.existsSync(standaloneDir)) fs.mkdirSync(standaloneDir, { recursive: true });
-      fs.writeFileSync(path.join(standaloneDir, finalFilename), buffer);
+    const dir = path.join(UPLOADS_DIR, articleNumber);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
     }
-  }
 
-  revalidatePath('/products');
-  return { success: true };
+    for (const file of files) {
+      if(!file.name || file.size === 0) continue;
+      
+      const ext = path.extname(file.name);
+      const safeName = path.basename(file.name, ext).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      
+      const finalFilename = `${articleNumber}-${Date.now()}-${safeName}${ext}`;
+      const filePath = path.join(dir, finalFilename);
+      
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      
+      fs.writeFileSync(filePath, buffer);
+      
+      const standaloneDir = path.join(process.cwd(), ".next", "standalone", "public", "uploads", "products", articleNumber);
+      if (fs.existsSync(path.join(process.cwd(), ".next", "standalone"))) {
+        if (!fs.existsSync(standaloneDir)) fs.mkdirSync(standaloneDir, { recursive: true });
+        fs.writeFileSync(path.join(standaloneDir, finalFilename), buffer);
+      }
+    }
+
+    revalidatePath('/products');
+    return { success: true };
+  } catch (err: any) {
+    console.error("UPLOAD ACTION ERROR", err);
+    try {
+      fs.writeFileSync(path.join(process.cwd(), "upload_error_debug.log"), `Time: ${new Date().toISOString()}\nError: ${err.message}\nStack: ${err.stack}\n`);
+    } catch(e) {}
+    return { error: err.message || "Unknown error" };
+  }
 }
 
 export async function deleteProductImageAction(articleNumber: string, filename: string) {
