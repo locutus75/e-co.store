@@ -39,11 +39,16 @@ export async function uploadProductImageAction(articleNumber: string, formData: 
 
     const dir = path.join(UPLOADS_DIR, articleNumber);
     if (!fs.existsSync(dir)) {
+      console.log(`Creating directory: ${dir}`);
       fs.mkdirSync(dir, { recursive: true });
     }
 
     for (const file of files) {
-      if(!file.name || file.size === 0) continue;
+      console.log(`Processing file -> Name: "${file.name}", Size: ${file.size}, Type: ${file.type}`);
+      if(!file.name || file.size === 0) {
+        console.log("File skipped: name is empty or size is 0");
+        continue;
+      }
       
       const ext = path.extname(file.name);
       const safeName = path.basename(file.name, ext).replace(/[^a-z0-9]/gi, '_').toLowerCase();
