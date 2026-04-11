@@ -152,10 +152,16 @@ export async function updateProductAction(internalId: string, formData: FormData
   const allFields = layout.flatMap((s: any) => s.fields);
   
   const customData: Record<string, string | null> = {};
+  
+  const presentFields = formData.getAll('_present_fields').map(v => v.toString());
 
   for (const field of allFields) {
     let key = field.id.replace('FIELD:', '');
     if (key === 'description') key = 'longDescription';
+    
+    if (!presentFields.includes(key)) {
+      continue;
+    }
     
     // Some keys are strictly natively boolean in Prisma schema
     const isNativeBoolean = key === 'webshopActive' || key === 'systemActive' || key === 'publicationReady';

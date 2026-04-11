@@ -210,10 +210,16 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
 
     if (action === 'HIDDEN') return null;
     
+    let key = moduleName.replace('FIELD:', '');
+    if (key === 'description') key = 'longDescription';
+    
+    const writeIndicator = action !== 'READ' ? <input type="hidden" name="_present_fields" value={key} /> : null;
+    
     if (isCheckbox) {
       const isCriteria = moduleName.startsWith('FIELD:crit');
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+          {writeIndicator}
           {action === 'READ' ? (
             isCriteria ? (
               <ThreeWayToggle defaultValue={val} disabled />
@@ -232,6 +238,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
 
     return (
       <div>
+        {writeIndicator}
         <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'inherit', opacity: 0.7, marginBottom: '0.4rem' }}>{label}</label>
         {action === 'READ' ? (
           <div className="input" style={{ backgroundColor: 'rgba(0,0,0,0.02)', color: 'inherit', opacity: 0.7, cursor: 'not-allowed', border: '1px solid rgba(0,0,0,0.05)', minHeight: '38px', display: 'flex', alignItems: 'center' }}>
