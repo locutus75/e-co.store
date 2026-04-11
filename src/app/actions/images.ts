@@ -43,7 +43,16 @@ export async function uploadProductImageAction(articleNumber: string, formData: 
     
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+    
+    // Write to persistent source directory
     fs.writeFileSync(filePath, buffer);
+    
+    // Write mirror to standalone directory so NextJS serves it immediately in production mode without a restart
+    const standaloneDir = path.join(process.cwd(), ".next", "standalone", "public", "uploads", "products", articleNumber);
+    if (fs.existsSync(path.join(process.cwd(), ".next", "standalone"))) {
+      if (!fs.existsSync(standaloneDir)) fs.mkdirSync(standaloneDir, { recursive: true });
+      fs.writeFileSync(path.join(standaloneDir, finalFilename), buffer);
+    }
   }
 
   revalidatePath('/products');
@@ -59,6 +68,12 @@ export async function deleteProductImageAction(articleNumber: string, filename: 
 
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
+  }
+
+  // Ensure mirrored standalone file is also purged
+  const standaloneFilePath = path.join(process.cwd(), ".next", "standalone", "public", "uploads", "products", articleNumber, safeFilename);
+  if (fs.existsSync(standaloneFilePath)) {
+    fs.unlinkSync(standaloneFilePath);
   }
 
   revalidatePath('/products');
