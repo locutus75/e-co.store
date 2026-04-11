@@ -7,15 +7,16 @@ const UPLOADS_DIR = path.join(process.cwd(), "public", "uploads", "products");
 
 export async function getProductImagesAction(articleNumber: string) {
   if (!articleNumber) return [];
-  const dir = path.join(UPLOADS_DIR, articleNumber);
-  if (!fs.existsSync(dir)) return [];
   
+  const dir = path.join(process.cwd(), "public", "uploads", "products", articleNumber);
+  if (!fs.existsSync(dir)) return [];
+
   const files = fs.readdirSync(dir);
   return files
     .filter(f => /\.(jpg|jpeg|png|webp|gif|avif|heic)$/i.test(f))
     .map(f => ({
       name: f,
-      url: `/uploads/products/${articleNumber}/${f}`
+      url: `/api/uploads/products/${articleNumber}/${f}`
     }));
 }
 
