@@ -18,8 +18,13 @@ while ($true) {
     Write-Host "  E-Co Store : Booting Production Server" -ForegroundColor Cyan
     Write-Host "=========================================" -ForegroundColor Cyan
 
-    $env:NODE_ENV = "production"
-    $env:PORT     = "4000"
+    $env:NODE_ENV  = "production"
+    $env:PORT      = "4000"
+    # APP_ROOT tells the Next.js route handlers where the project root is.
+    # Next.js standalone server.js calls process.chdir(__dirname) internally,
+    # which changes process.cwd() to .next/standalone — so we must pass the
+    # real root explicitly via env var.
+    $env:APP_ROOT  = $ProjectRoot
     Set-Location $ProjectRoot
 
     # -------------------------------------------------------
@@ -29,8 +34,9 @@ while ($true) {
     $serverJob = Start-Job -ScriptBlock {
         param($root)
         Set-Location $root
-        $env:NODE_ENV = "production"
-        $env:PORT     = "4000"
+        $env:NODE_ENV  = "production"
+        $env:PORT      = "4000"
+        $env:APP_ROOT  = $root
         node .next/standalone/server.js
     } -ArgumentList $ProjectRoot
 

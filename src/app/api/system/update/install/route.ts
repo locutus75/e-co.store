@@ -4,7 +4,11 @@ import path from 'path';
 
 export async function POST() {
   try {
-    const scriptPath = path.join(process.cwd(), 'apply_update.ps1');
+    // Next.js standalone server.js calls process.chdir(__dirname) internally,
+    // which changes process.cwd() to .next/standalone/. We use APP_ROOT (set by
+    // start_server.ps1) to reliably resolve the project root in production.
+    const projectRoot = process.env.APP_ROOT || process.cwd();
+    const scriptPath = path.join(projectRoot, 'apply_update.ps1');
 
     console.log(`Starting background updater script: ${scriptPath}`);
 
