@@ -24,11 +24,12 @@ export default function AssignmentsClient({ usersWithAssignments }: { usersWithA
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1.5rem' }}>
         {teamMembers.map(user => {
           const totalAssigned = user.assignedProducts.length;
-          const pendingCheck = user.assignedProducts.filter((p: any) => (p.status || '').toUpperCase() === 'CHECK').length;
-          const pendingNew = user.assignedProducts.filter((p: any) => (p.status || '').toUpperCase() === 'NEW').length;
-          const webshopReady = user.assignedProducts.filter((p: any) => (p.readyForImport || '').toUpperCase() === 'JA').length;
+          const countNew   = user.assignedProducts.filter((p: any) => (p.status || '').toUpperCase() === 'NEW').length;
+          const countEdit  = user.assignedProducts.filter((p: any) => (p.status || '').toUpperCase() === 'EDIT').length;
+          const countCheck = user.assignedProducts.filter((p: any) => (p.status || '').toUpperCase() === 'CHECK').length;
+          const countDone  = user.assignedProducts.filter((p: any) => (p.status || '').toUpperCase() === 'DONE').length;
           
-          let progress = totalAssigned === 0 ? 100 : Math.round((webshopReady / totalAssigned) * 100);
+          let progress = totalAssigned === 0 ? 100 : Math.round((countDone / totalAssigned) * 100);
 
           return (
             <div key={user.id} className="glass" style={{ padding: '2rem', borderRadius: 'var(--radius-lg)', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -47,18 +48,22 @@ export default function AssignmentsClient({ usersWithAssignments }: { usersWithA
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
-                 <div>
-                   <p style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary)' }}>{pendingNew}</p>
-                   <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>NEW</p>
+              <div style={{ display: 'flex', gap: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem', flexWrap: 'wrap' }}>
+                 <div style={{ textAlign: 'center', flex: 1 }}>
+                   <p style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--primary)' }}>{countNew}</p>
+                   <span style={{ display: 'inline-block', marginTop: '0.35rem', padding: '0.1rem 0.55rem', borderRadius: '1rem', fontSize: '0.7rem', fontWeight: 700, backgroundColor: 'var(--primary)', color: 'white' }}>NEW</span>
                  </div>
-                 <div>
-                   <p style={{ fontSize: '1.5rem', fontWeight: 800, color: '#3b82f6' }}>{pendingCheck}</p>
-                   <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>CHECK</p>
+                 <div style={{ textAlign: 'center', flex: 1 }}>
+                   <p style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--color-mustard)' }}>{countEdit}</p>
+                   <span style={{ display: 'inline-block', marginTop: '0.35rem', padding: '0.1rem 0.55rem', borderRadius: '1rem', fontSize: '0.7rem', fontWeight: 700, backgroundColor: 'var(--color-mustard)', color: 'white' }}>EDIT</span>
                  </div>
-                 <div>
-                   <p style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--success)' }}>{webshopReady}</p>
-                   <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>READY</p>
+                 <div style={{ textAlign: 'center', flex: 1 }}>
+                   <p style={{ fontSize: '1.4rem', fontWeight: 800, color: '#3b82f6' }}>{countCheck}</p>
+                   <span style={{ display: 'inline-block', marginTop: '0.35rem', padding: '0.1rem 0.55rem', borderRadius: '1rem', fontSize: '0.7rem', fontWeight: 700, backgroundColor: '#3b82f6', color: 'white' }}>CHECK</span>
+                 </div>
+                 <div style={{ textAlign: 'center', flex: 1 }}>
+                   <p style={{ fontSize: '1.4rem', fontWeight: 800, color: '#10b981' }}>{countDone}</p>
+                   <span style={{ display: 'inline-block', marginTop: '0.35rem', padding: '0.1rem 0.55rem', borderRadius: '1rem', fontSize: '0.7rem', fontWeight: 700, backgroundColor: '#10b981', color: 'white' }}>DONE</span>
                  </div>
               </div>
             </div>
