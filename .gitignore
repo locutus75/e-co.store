@@ -51,3 +51,5 @@ next-env.d.ts
 # Prisma
 /prisma/migrations
 
+# Update watchdog signal
+update_done.flag

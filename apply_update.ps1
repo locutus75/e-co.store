@@ -69,13 +69,16 @@ if (Test-Path ".next/static") {
     Copy-Item -Path ".next/static" -Destination $destBase -Recurse -Force
 }
 
-# 6. Boot Application
-Write-Host "`n[6/6] Booting Production Server..." -ForegroundColor Green
-Write-Host "The application is now running." -ForegroundColor Magenta
+# 6. Signal the server watchdog to restart
+Write-Host "`n[6/6] Update complete — signalling server watchdog to restart..." -ForegroundColor Green
 
-# In Next.js Standalone mode, we boot the raw server.js file inside the .next/standalone/ directory
-$env:NODE_ENV = "production"
-$env:PORT = "4000"
+$FlagFile = Join-Path $PSScriptRoot "update_done.flag"
+Set-Content -Path $FlagFile -Value (Get-Date -Format "o")
 
-# Execute Standalone
-node .next/standalone/server.js
+Write-Host ""
+Write-Host "==========================================" -ForegroundColor Magenta
+Write-Host "  update_done.flag written successfully.  " -ForegroundColor Magenta
+Write-Host "  start_server.ps1 will reboot the app.  " -ForegroundColor Magenta
+Write-Host "==========================================" -ForegroundColor Magenta
+Write-Host ""
+Write-Host "This updater window can now be closed." -ForegroundColor DarkGray
