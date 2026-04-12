@@ -13,10 +13,10 @@ export default async function DashboardPage() {
     readyReview
   ] = await Promise.all([
     prisma.product.count(),
-    prisma.product.count({ where: { status: 'NEW' } }),
-    prisma.product.count({ where: { status: 'CHECK' } }),
-    prisma.product.count({ where: { readyForImport: 'JA' } }),
-    prisma.product.count({ where: { readyForImport: 'REVIEW' } })
+    prisma.product.count({ where: { status: { equals: 'NEW', mode: 'insensitive' } } }),
+    prisma.product.count({ where: { status: { equals: 'CHECK', mode: 'insensitive' } } }),
+    prisma.product.count({ where: { readyForImport: { equals: 'JA', mode: 'insensitive' } } }),
+    prisma.product.count({ where: { readyForImport: { equals: 'REVIEW', mode: 'insensitive' } } })
   ]);
 
   return (

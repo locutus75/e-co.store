@@ -24,9 +24,9 @@ export default function AssignmentsClient({ usersWithAssignments }: { usersWithA
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1.5rem' }}>
         {teamMembers.map(user => {
           const totalAssigned = user.assignedProducts.length;
-          const pendingCheck = user.assignedProducts.filter((p: any) => p.status === 'CHECK').length;
-          const pendingNew = user.assignedProducts.filter((p: any) => p.status === 'NEW').length;
-          const webshopReady = user.assignedProducts.filter((p: any) => p.readyForImport === 'JA').length;
+          const pendingCheck = user.assignedProducts.filter((p: any) => (p.status || '').toUpperCase() === 'CHECK').length;
+          const pendingNew = user.assignedProducts.filter((p: any) => (p.status || '').toUpperCase() === 'NEW').length;
+          const webshopReady = user.assignedProducts.filter((p: any) => (p.readyForImport || '').toUpperCase() === 'JA').length;
           
           let progress = totalAssigned === 0 ? 100 : Math.round((webshopReady / totalAssigned) * 100);
 

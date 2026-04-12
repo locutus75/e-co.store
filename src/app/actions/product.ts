@@ -74,6 +74,8 @@ export async function bulkAssignAction(internalIds: string[], userId: string) {
     }
     
     revalidatePath('/products');
+    revalidatePath('/assignments');
+    revalidatePath('/', 'layout');
     return { success: true, count: res.count };
   } catch(e: any) {
     console.error("ASSIGN ERROR", e);
@@ -107,6 +109,8 @@ export async function updateReadyForImportAction(internalId: string, status: str
       data: { readyForImport: status }
     });
     revalidatePath('/products');
+    revalidatePath('/assignments');
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (e: any) {
     console.error("Update readyForImport failed:", e);
@@ -122,6 +126,8 @@ export async function updateProductStatusAction(internalId: string, status: stri
       data: { status: status }
     });
     revalidatePath('/products');
+    revalidatePath('/assignments');
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (e: any) {
     console.error("Update status failed:", e);
@@ -241,6 +247,8 @@ export async function updateProductAction(internalId: string, formData: FormData
       data
     });
     revalidatePath('/products');
+    revalidatePath('/assignments');
+    revalidatePath('/', 'layout');
   } catch (e: any) {
     const fs = require('fs');
     fs.writeFileSync('prisma_debug_err.log', "Error:\n" + String(e.message) + "\n\nPayload:\n" + JSON.stringify(data, null, 2));
