@@ -249,14 +249,6 @@ export default function ProductRemarksChat({
         </span>
       </div>
 
-      {/* Pulse keyframes — injected once inline */}
-      <style>{`
-        @keyframes chat-pulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50%       { opacity: 0.8; transform: scale(1.04); }
-        }
-      `}</style>
-
       {/* Messages */}
       <div
         ref={scrollRef}

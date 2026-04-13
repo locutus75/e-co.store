@@ -17,7 +17,12 @@ export default async function ProductsPage() {
     include: {
       brand: true,
       supplier: true,
-      assignedUser: true
+      assignedUser: true,
+      remarks: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: { createdAt: true, userId: true }
+      }
     }
   });
 

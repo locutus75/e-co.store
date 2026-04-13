@@ -99,3 +99,14 @@ a {
   transform: none !important;
   box-shadow: none !important;
 }
+
+/* Chat animations */
+@keyframes chat-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.85; transform: scale(1.05); }
+}
+
+@keyframes chat-unread-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.7; }
+}

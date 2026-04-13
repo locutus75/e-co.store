@@ -111,6 +111,34 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [isDeleting, startTransition] = useTransition();
 
+  // ── Unread messages indicator ──────────────────────────────────────────
+  const [unreadProducts, setUnreadProducts] = useState<Set<string>>(new Set());
+
+  const checkUnreadProducts = () => {
+    if (typeof window === 'undefined') return;
+    const unread = new Set<string>();
+    for (const product of initialProducts) {
+      const latestRemark = product.remarks?.[0];
+      if (!latestRemark) continue;
+      if (latestRemark.userId === currentUserId) continue; // own message
+      const key = `chat_last_seen_${currentUserId}_${product.internalArticleNumber}`;
+      const lastSeen = localStorage.getItem(key);
+      const seenDate = lastSeen ? new Date(lastSeen) : null;
+      if (!seenDate || new Date(latestRemark.createdAt) > seenDate) {
+        unread.add(product.internalArticleNumber);
+      }
+    }
+    setUnreadProducts(unread);
+  };
+
+  // Check on mount
+  useEffect(() => { checkUnreadProducts(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-check when drawer closes (chat has updated localStorage)
+  useEffect(() => {
+    if (!selectedProduct) checkUnreadProducts();
+  }, [selectedProduct]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const getLayoutLabel = (fieldId: string, defaultLabel: string) => {
     if (!layout) return defaultLabel;
     for (const section of layout) {
@@ -396,7 +424,26 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
                 )}
                 <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.supplier?.name || '-'}</td>
                 <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.brand?.name || '-'}</td>
-                <td style={{ padding: '1.25rem', color: 'var(--text)', fontWeight: 500 }}>{product.title}</td>
+                <td style={{ padding: '1.25rem', color: 'var(--text)', fontWeight: 500 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span>{product.title}</span>
+                    {unreadProducts.has(product.internalArticleNumber) && (
+                      <span
+                        title="Ongelezen berichten in interne communicatie"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
+                          backgroundColor: '#ef4444', color: 'white',
+                          fontSize: '0.6rem', fontWeight: 800,
+                          padding: '0.1rem 0.45rem', borderRadius: '1rem',
+                          flexShrink: 0, animation: 'chat-unread-pulse 2s ease-in-out infinite',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        💬 nieuw
+                      </span>
+                    )}
+                  </div>
+                </td>
                 <td style={{ padding: '1.25rem' }}>
                   <InlineStatusToggle product={product} isAdmin={isAdmin} />
                 </td>
