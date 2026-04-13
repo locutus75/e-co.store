@@ -28,6 +28,7 @@ const DEFAULT_PRODUCT_LAYOUT: FormSection[] = [
     title: "Webshop Content (Basis)",
     color: "var(--primary)",
     fields: [
+      { id: "FIELD:internalRemarks", label: "Interne Communicatie", type: "chat", width: 24 },
       { id: "FIELD:internalArticleNumber", label: "Interne Artikelcode", type: "text" },
       { id: "FIELD:ean", label: "EAN Code", type: "text" },
       { id: "FIELD:title", label: "Titel (Title)", type: "text" },
@@ -113,22 +114,65 @@ const DEFAULT_PRODUCT_LAYOUT: FormSection[] = [
       { id: "FIELD:critTransportDistance", label: "Afstand (km)", type: "number" },
       { id: "FIELD:critTransportVehicle", label: "Vervoersmiddel", type: "picklist", options: ["Vrachtwagen", "Bestelbus", "Trein", "Boot", "Vliegtuig"] },
       { id: "FIELD:critMilieuCarbonCompensated", label: "Uitstootcompensatie", type: "checkbox" },
-      { id: "FIELD:critOther", label: "Overige vermelding", type: "textarea" },
-      { id: "FIELD:internalRemarks", label: "Interne Communicatie", type: "textarea", width: 24 }
+      { id: "FIELD:critOther", label: "Overige vermelding", type: "textarea" }
     ]
   }
 ];
 
+const CHAT_FIELD: FormField = {
+  id: "FIELD:internalRemarks",
+  label: "Interne Communicatie",
+  type: "chat",
+  width: 24,
+};
+
 export async function getFormLayoutAction(): Promise<FormSection[]> {
+  let layout: FormSection[] | null = null;
   try {
     const records = await prisma.$queryRaw<{ key: string, value: string }[]>`SELECT "key", "value" FROM "SystemSetting" WHERE "key" = 'product_form_layout' LIMIT 1`;
     if (records && records.length > 0 && records[0].value) {
-      return JSON.parse(records[0].value) as FormSection[];
+      layout = JSON.parse(records[0].value) as FormSection[];
     }
   } catch(e) {
     console.error("Error fetching form layout via raw SQL", e);
   }
-  return DEFAULT_PRODUCT_LAYOUT;
+
+  if (!layout) return DEFAULT_PRODUCT_LAYOUT;
+
+  // ── Sanitise: ensure exactly one chat field, remove any legacy duplicates ─
+  //
+  // Situations the DB layout can be in:
+  //   A) No internalRemarks field at all          → prepend a new chat field
+  //   B) One field: id=internalRemarks, type≠chat → upgrade it to chat
+  //   C) One field: id=internalRemarks, type=chat → nothing to do
+  //   D) Two fields with id=internalRemarks (one chat, one textarea) — the
+  //      duplicate-key bug scenario → keep only the chat one, drop the rest
+  //
+  // We handle all cases in one pass:
+  let chatFieldFound = false;
+  layout = layout.map(section => ({
+    ...section,
+    fields: section.fields.reduce<import('@/app/actions/formLayouts').FormField[]>((acc, field) => {
+      if (field.id === 'FIELD:internalRemarks') {
+        if (!chatFieldFound) {
+          // First occurrence: ensure it's type=chat
+          chatFieldFound = true;
+          acc.push({ ...field, type: 'chat', width: 24 });
+        }
+        // Subsequent occurrences with same id → silently drop (duplicate)
+      } else {
+        acc.push(field);
+      }
+      return acc;
+    }, []),
+  }));
+
+  // No internalRemarks field existed at all → prepend a fresh chat field
+  if (!chatFieldFound && layout.length > 0) {
+    layout[0].fields = [CHAT_FIELD, ...layout[0].fields];
+  }
+
+  return layout;
 }
 
 export async function saveFormLayoutAction(layout: FormSection[]) {
@@ -145,5 +189,63 @@ export async function saveFormLayoutAction(layout: FormSection[]) {
     return { success: true };
   } catch(e: any) {
     return { success: false, error: e.message };
+  }
+}
+
+/**
+ * Bulk-migrate legacy internalRemarks text for ALL products into the new
+ * ProductRemark chat table. Safe to call multiple times — skips products that
+ * already have remarks or have no internalRemarks text.
+ * Called when the user explicitly removes the old internalRemarks field from
+ * the form layout via the WYSIWYG builder.
+ */
+export async function bulkMigrateInternalRemarksAction(): Promise<{ success: boolean; migrated: number; error?: string }> {
+  try {
+    // Find a fallback admin user to attribute migrated remarks to
+    const fallbackUser = await prisma.user.findFirst({
+      where: { userRoles: { some: { role: { name: { equals: 'ADMIN', mode: 'insensitive' } } } } },
+      select: { id: true }
+    });
+
+    const products = await prisma.product.findMany({
+      where: { internalRemarks: { not: null } },
+      select: {
+        id: true,
+        internalRemarks: true,
+        assignedUserId: true,
+        remarks: { select: { id: true }, take: 1 }
+      }
+    });
+
+    let migrated = 0;
+    for (const product of products) {
+      // Skip products that already have chat remarks (lazy migration already ran)
+      if (product.remarks.length > 0) {
+        // Still clear the legacy field to keep DB tidy
+        await prisma.product.update({ where: { id: product.id }, data: { internalRemarks: null } });
+        continue;
+      }
+      const text = product.internalRemarks?.trim();
+      if (!text) continue;
+
+      const userId = product.assignedUserId || fallbackUser?.id;
+      if (!userId) continue;
+
+      await prisma.productRemark.create({
+        data: {
+          productId: product.id,
+          userId,
+          message: `[Gemigreerd vanuit opmerkingen veld]\n${text}`
+        }
+      });
+      await prisma.product.update({ where: { id: product.id }, data: { internalRemarks: null } });
+      migrated++;
+    }
+
+    revalidatePath('/products');
+    return { success: true, migrated };
+  } catch (e: any) {
+    console.error('bulkMigrateInternalRemarksAction error', e);
+    return { success: false, migrated: 0, error: e.message };
   }
 }

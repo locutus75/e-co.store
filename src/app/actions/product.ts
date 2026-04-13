@@ -161,6 +161,9 @@ export async function updateProductAction(internalId: string, formData: FormData
   
   const presentFields = formData.getAll('_present_fields').map(v => v.toString());
 
+  // Collect internalRemarks value for later migration (never save to DB column directly)
+  const legacyRemarksText = formData.get('internalRemarks')?.toString() || '';
+
   for (const field of allFields) {
     let key = field.id.replace('FIELD:', '');
     if (key === 'description') key = 'longDescription';
@@ -202,6 +205,11 @@ export async function updateProductAction(internalId: string, formData: FormData
       processedValue = (val === '' || val === null) ? null : val?.toString();
     }
 
+    // 'chat' fields are render-only — never post data to DB
+    if (field.type === 'chat') continue;
+    // 'internalRemarks' is now managed by the ProductRemark chat system — skip it here
+    if (key === 'internalRemarks') continue;
+
     if (key === 'critMensSocialCheck') key = 'critMensSocial'; // database alias
     if (key === 'assignedUserId' && processedValue === 'NONE') processedValue = null;
 
@@ -239,6 +247,25 @@ export async function updateProductAction(internalId: string, formData: FormData
 
   if (Object.keys(customData).length > 0) {
     data.customData = customData;
+  }
+
+  // ── Legacy internalRemarks migration ────────────────────────────────────
+  // If the old textarea was still present in the form AND has content, convert
+  // it to a ProductRemark. This handles any saved layouts that still include the
+  // old FIELD:internalRemarks textarea.
+  if (legacyRemarksText.trim()) {
+    const migrSession = await getServerSession(authOptions);
+    const migrUserId = (migrSession?.user as any)?.id;
+    if (migrUserId) {
+      const product = await prisma.product.findUnique({
+        where: { internalArticleNumber: internalId },
+        select: { id: true }
+      });
+      if (product) {
+        const { migrateInlineRemarksAction } = await import('@/app/actions/remarks');
+        await migrateInlineRemarksAction(product.id, migrUserId, legacyRemarksText);
+      }
+    }
   }
 
   try {

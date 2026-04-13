@@ -105,7 +105,7 @@ function InlineReadyToggle({ product, isAdmin }: { product: any, isAdmin: boolea
   );
 }
 
-export default function ProductsClient({ initialProducts, systemUsers = [], isAdmin = false, fieldPermissions = {}, layout = [] }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, fieldPermissions?: Record<string, string>, layout?: any[] }) {
+export default function ProductsClient({ initialProducts, systemUsers = [], isAdmin = false, fieldPermissions = {}, layout = [], currentUserId = '' }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string }) {
   const router = useRouter();
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
@@ -421,6 +421,7 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
         fieldPermissions={isAdmin ? undefined : fieldPermissions}
         isAdmin={isAdmin}
         layout={layout}
+        currentUserId={currentUserId}
       />
     </div>
   );

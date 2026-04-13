@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useTransition, useEffect, useRef } from 'react';
-import { FormSection, saveFormLayoutAction, FormField } from '@/app/actions/formLayouts';
+import { FormSection, saveFormLayoutAction, FormField, bulkMigrateInternalRemarksAction } from '@/app/actions/formLayouts';
 
 export default function FormLayoutBuilder({ initialLayout }: { initialLayout: FormSection[] }) {
   const [layout, setLayout] = useState<FormSection[]>(initialLayout);
@@ -121,6 +121,25 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
   };
 
   const removeField = (secIdx: number, fieldIdx: number) => {
+    const field = layout[secIdx].fields[fieldIdx];
+    const isLegacyRemarks = field.id === 'FIELD:internalRemarks' && field.type !== 'chat';
+
+    const confirmMsg = isLegacyRemarks
+      ? 'Dit verwijdert het oude Opmerkingen tekstveld.\n\nBestaande opmerkingen worden automatisch overgezet naar de nieuwe Interne Communicatie chat wanneer een product wordt geopend.\n\nDoorgaan?'
+      : `Veld "${field.label}" verwijderen uit de layout?`;
+
+    if (!confirm(confirmMsg)) return;
+
+    // If removing the legacy remarks textarea, trigger bulk migration
+    if (isLegacyRemarks) {
+      startTransition(async () => {
+        const res = await bulkMigrateInternalRemarksAction();
+        if (!res.success) {
+          console.warn('[migration] Bulk migrate partial error:', res.error);
+        }
+      });
+    }
+
     setLayout(prevLayout => {
       const newLayout = [...prevLayout];
       const newFields = [...newLayout[secIdx].fields];
@@ -440,12 +459,13 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
               )}
               
               {sec.fields.map((f, fieldIdx) => {
-                let span = f.width ? Number(f.width) : (f.type === 'textarea' || f.type === 'media' ? 24 : 8);
+                let span = f.width ? Number(f.width) : (f.type === 'textarea' || f.type === 'media' || f.type === 'chat' ? 24 : 8);
                 if (isNaN(span)) span = 24;
                 
                 let heightMultiplier = f.height || 1;
                 if (f.type === 'textarea' && !f.height) heightMultiplier = 3;
                 if (f.type === 'media' && !f.height) heightMultiplier = 5;
+                if (f.type === 'chat' && !f.height) heightMultiplier = 10;
 
                 const isDraggedOver = dragOverItem?.secIdx === secIdx && dragOverItem?.fieldIdx === fieldIdx;
                 const isBeingDragged = draggedItem?.secIdx === secIdx && draggedItem?.fieldIdx === fieldIdx;
@@ -464,7 +484,6 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                       backgroundColor: f.backgroundColor || 'white',
                       border: isDraggedOver ? `2px dashed ${sec.color}` : '1px solid var(--border)',
                       borderRadius: '8px',
-                      padding: '1rem',
                       cursor: (isResizing || isResizingVertical) ? 'auto' : 'grab',
                       opacity: isBeingDragged ? 0.4 : 1,
                       transform: isDraggedOver ? 'scale(1.02)' : 'none',
@@ -472,70 +491,61 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                       boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
                       display: 'flex',
                       flexDirection: 'column',
-                      gap: '0.8rem',
-                      position: 'relative'
+                      gap: '0.5rem',
+                      position: 'relative',
+                      padding: '0.75rem 0.75rem 0.5rem',
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', paddingRight: '20px' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <input 
-                            value={f.label}
-                            onChange={(e) => updateFieldLabel(secIdx, fieldIdx, e.target.value)}
-                            style={{ fontSize: '0.85rem', fontWeight: 600, color: f.textColor || 'var(--text)', border: '1px dashed transparent', background: 'transparent', padding: '0.1rem 0', width: 'auto', flex: 1 }}
-                            onFocus={(e) => e.target.style.borderBottom = '1px dashed var(--border)'}
-                            onBlur={(e) => e.target.style.borderBottom = '1px dashed transparent'}
-                          />
-                          <input 
-                            type="color" 
-                            value={f.backgroundColor || '#ffffff'} 
-                            onChange={(e) => updateFieldColors(secIdx, fieldIdx, e.target.value, f.textColor || '')}
-                            style={{ width: '16px', height: '16px', padding: 0, border: 'none', cursor: 'pointer', background: 'transparent' }}
-                            title="Veld Achtergrondkleur"
-                          />
-                          <input 
-                            type="color" 
-                            value={f.textColor || '#000000'} 
-                            onChange={(e) => updateFieldColors(secIdx, fieldIdx, f.backgroundColor || '', e.target.value)}
-                            style={{ width: '16px', height: '16px', padding: 0, border: 'none', cursor: 'pointer', background: 'transparent' }}
-                            title="Veld Tekstkleur"
-                          />
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <span style={{ fontSize: '0.7rem', color: '#999', fontFamily: 'monospace' }}>{f.id}</span>
-                          {f.id.startsWith('FIELD:custom_') && (
-                            <button 
-                              onClick={() => removeField(secIdx, fieldIdx)}
-                              style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: '0.7rem', cursor: 'pointer', textDecoration: 'underline' }}
-                            >
-                              Verwijder Veld
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <select 
-                        value={f.type || 'text'}
-                        onChange={(e) => updateFieldType(secIdx, fieldIdx, e.target.value)}
-                        style={{ padding: '0.2rem 0.5rem', backgroundColor: 'var(--surface-hover)', borderRadius: '4px', fontSize: '0.7rem', color: 'var(--text)', border: '1px solid var(--border)', outline: 'none', cursor: 'pointer' }}
-                      >
-                        <option value="text">Tekst Veld</option>
-                        <option value="number">Getal</option>
-                        <option value="textarea">Lange Tekst</option>
-                        <option value="checkbox">Schakelaar (Ja/Nee)</option>
-                        <option value="threeway">3-Standen (Ja/Leeg/Nee)</option>
-                        <option value="picklist">Keuzelijst</option>
-                        <option value="media">Media Galerie</option>
-                      </select>
+                    {/* ── Zone 1: Label + drag gripper ── */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span style={{ color: '#ccc', fontSize: '0.85rem', userSelect: 'none', flexShrink: 0, cursor: 'grab' }} title="Slepen">⠿⠿</span>
+                      <input
+                        value={f.label}
+                        onChange={(e) => updateFieldLabel(secIdx, fieldIdx, e.target.value)}
+                        onMouseDown={e => e.stopPropagation()}
+                        style={{
+                          flex: 1, minWidth: 0,
+                          fontSize: '0.82rem', fontWeight: 700,
+                          color: f.textColor || 'var(--text)',
+                          border: 'none', background: 'transparent',
+                          padding: '0.1rem 0',
+                          outline: 'none',
+                          borderBottom: '1px dashed transparent',
+                          transition: 'border-color 0.15s',
+                        }}
+                        onFocus={e => (e.target.style.borderBottomColor = 'var(--border)')}
+                        onBlur={e => (e.target.style.borderBottomColor = 'transparent')}
+                      />
+                    </div>
+
+                    {/* Field ID badge */}
+                    <div style={{ fontSize: '0.58rem', color: '#bbb', fontFamily: 'monospace', paddingLeft: '1.4rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '-0.3rem' }}>
+                      {f.id}
                     </div>
 
                     {/* Mock Input Field */}
-                    <div style={{ 
-                      width: '100%', 
-                      minHeight: `${Math.max(38, heightMultiplier * 40)}px`,
-                      backgroundColor: 'rgba(0,0,0,0.02)', 
-                      border: '1px dashed rgba(0,0,0,0.1)', 
-                      borderRadius: '4px' 
-                    }} />
+                    {f.type === 'chat' ? (
+                      <div style={{
+                        width: '100%',
+                        minHeight: `${Math.max(38, heightMultiplier * 40)}px`,
+                        backgroundColor: 'rgba(99,102,241,0.05)',
+                        border: '1px dashed #6366f1',
+                        borderRadius: '8px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        flexDirection: 'column', gap: '0.3rem'
+                      }}>
+                        <span style={{ fontSize: '1.5rem' }}>💬</span>
+                        <span style={{ fontSize: '0.75rem', color: '#6366f1', fontWeight: 600 }}>Interne Communicatie Chat</span>
+                      </div>
+                    ) : (
+                      <div style={{
+                        width: '100%',
+                        minHeight: `${Math.max(38, heightMultiplier * 40)}px`,
+                        backgroundColor: 'rgba(0,0,0,0.02)',
+                        border: '1px dashed rgba(0,0,0,0.1)',
+                        borderRadius: '4px'
+                      }} />
+                    )}
 
                     {f.type === 'picklist' && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginTop: '-0.2rem' }}>
@@ -552,6 +562,61 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                         />
                       </div>
                     )}
+
+                    {/* ── Zone 3: Bottom control bar ── */}
+                    <div
+                      onMouseDown={e => e.stopPropagation()}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '0.4rem',
+                        paddingTop: '0.5rem',
+                        borderTop: '1px solid rgba(0,0,0,0.06)',
+                      }}
+                    >
+                      <select
+                        value={f.type || 'text'}
+                        onChange={(e) => updateFieldType(secIdx, fieldIdx, e.target.value)}
+                        style={{
+                          flex: 1, minWidth: 0,
+                          padding: '0.2rem 0.4rem',
+                          backgroundColor: 'var(--surface-hover)',
+                          borderRadius: '4px',
+                          fontSize: '0.68rem',
+                          color: 'var(--text)',
+                          border: '1px solid var(--border)',
+                          outline: 'none',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <option value="text">Tekst</option>
+                        <option value="number">Getal</option>
+                        <option value="textarea">Lange Tekst</option>
+                        <option value="checkbox">Schakelaar (Ja/Nee)</option>
+                        <option value="threeway">3-Standen</option>
+                        <option value="picklist">Keuzelijst</option>
+                        <option value="media">Media</option>
+                        <option value="chat">💬 Chat</option>
+                      </select>
+                      <input type="color" value={f.backgroundColor || '#ffffff'}
+                        onChange={(e) => updateFieldColors(secIdx, fieldIdx, e.target.value, f.textColor || '')}
+                        style={{ width: '18px', height: '18px', padding: 0, border: '1px solid var(--border)', borderRadius: '3px', cursor: 'pointer', flexShrink: 0 }}
+                        title="Achtergrondkleur" />
+                      <input type="color" value={f.textColor || '#000000'}
+                        onChange={(e) => updateFieldColors(secIdx, fieldIdx, f.backgroundColor || '', e.target.value)}
+                        style={{ width: '18px', height: '18px', padding: 0, border: '1px solid var(--border)', borderRadius: '3px', cursor: 'pointer', flexShrink: 0 }}
+                        title="Tekstkleur" />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); removeField(secIdx, fieldIdx); }}
+                        title="Veld verwijderen"
+                        style={{
+                          width: '24px', height: '24px', borderRadius: '4px',
+                          border: '1px solid #fca5a5', backgroundColor: '#fef2f2',
+                          color: '#ef4444', cursor: 'pointer', fontSize: '0.75rem',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#fee2e2')}
+                        onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#fef2f2')}
+                      >🗑</button>
+                    </div>
 
                     {/* Visual Drag-to-Resize Handle Horizontal */}
                     <div
@@ -651,6 +716,7 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                 <option value="checkbox">2-Standen Schakelaar (Ja/Nee)</option>
                 <option value="threeway">3-Standen Schakelaar (Ja/Leeg/Nee)</option>
                 <option value="picklist">Keuzelijst (Dropdown)</option>
+                <option value="chat">💬 Interne Communicatie Chat</option>
               </select>
             </label>
 

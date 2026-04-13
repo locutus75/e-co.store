@@ -3,6 +3,7 @@ import React, { useEffect, useState, useTransition } from 'react';
 import ProductGallery from './ProductGallery';
 import { updateProductAction } from '@/app/actions/product';
 import ProductCopyModal from './ProductCopyModal';
+import ProductRemarksChat from './ProductRemarksChat';
 
 const JaNeeToggle = ({ name, defaultChecked, disabled, onChange }: { name?: string, defaultChecked: boolean, disabled?: boolean, onChange?: () => void }) => {
   const [checked, setChecked] = useState(defaultChecked);
@@ -110,7 +111,7 @@ const ThreeWayToggle = ({ name, defaultValue, disabled, onChange }: { name?: str
 };
 
 
-export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, layout = [] }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, layout?: any[] }) {
+export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, layout = [], currentUserId = '' }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, layout?: any[], currentUserId?: string }) {
   const [isPending, startTransition] = useTransition();
   const [statusOverridden, setStatusOverridden] = useState(false);
   const currentStatus = (product?.status || 'NEW').toUpperCase();
@@ -278,6 +279,22 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
 
     if (f.id === 'FIELD:media') {
       inputComponent = <div style={{ minHeight: computedHeight }}><ProductGallery articleNumber={localProductData?.internalArticleNumber} /></div>;
+    } else if (f.type === 'chat') {
+      // Render the chat panel directly — no wrapping label, no write-indicator.
+      // Stop change-event propagation so the form's onChange does NOT flag isDirty
+      // just because the user typed a chat message (those save independently).
+      const chatHeight = Math.max(280, (f.height || 10) * 40);
+      return (
+        <div key={f.id} style={{ gridColumn: `span 24` }} onChange={(e) => e.stopPropagation()}>
+          <ProductRemarksChat
+            articleNumber={localProductData.internalArticleNumber}
+            currentUserId={currentUserId}
+            isAdmin={isAdmin}
+            isOpen={isOpen}
+            height={chatHeight}
+          />
+        </div>
+      );
     } else if (f.type === 'checkbox') {
       isCheckbox = true;
       if (f.id.startsWith('FIELD:crit')) {

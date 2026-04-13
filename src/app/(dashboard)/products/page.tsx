@@ -56,5 +56,5 @@ export default async function ProductsPage() {
   const { getFormLayoutAction } = await import('@/app/actions/formLayouts');
   const layout = await getFormLayoutAction();
 
-  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} fieldPermissions={fieldPermissions} layout={layout} />;
+  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} fieldPermissions={fieldPermissions} layout={layout} currentUserId={userId || ''} />;
 }
