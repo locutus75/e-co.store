@@ -4,6 +4,7 @@ import {
   getProductRemarksAction,
   addProductRemarkAction,
   deleteProductRemarkAction,
+  updateProductRemarkAction,
   type RemarkEntry,
 } from '@/app/actions/remarks';
 
@@ -26,15 +27,16 @@ function getAvatarColor(email: string) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-/** Always shows full date + time: "13 apr 14:35" */
 function formatDateTime(iso: string) {
   const d = new Date(iso);
   return d.toLocaleDateString('nl-NL', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
+    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
   });
+}
+
+/** Returns true if the remark is younger than 5 minutes */
+function isWithin5Min(iso: string) {
+  return Date.now() - new Date(iso).getTime() < 5 * 60 * 1000;
 }
 
 // ── Component ───────────────────────────────────────────────────────────────
@@ -42,21 +44,31 @@ function formatDateTime(iso: string) {
 interface Props {
   articleNumber: string;
   currentUserId: string;
+  /** Chat color from the current user's profile — drives optimistic bubble color */
+  currentUserChatColor?: string | null;
   isAdmin: boolean;
   isOpen: boolean;
-  /** Optional fixed height — defaults to 380px. Pass 'auto' to let WYSIWYG grid control it. */
   height?: number | string;
 }
 
-export default function ProductRemarksChat({ articleNumber, currentUserId, isAdmin, isOpen, height = 380 }: Props) {
+export default function ProductRemarksChat({
+  articleNumber, currentUserId, currentUserChatColor, isAdmin, isOpen, height = 380
+}: Props) {
   const [remarks, setRemarks]   = useState<RemarkEntry[]>([]);
   const [loading, setLoading]   = useState(true);
   const [message, setMessage]   = useState('');
   const [error, setError]       = useState('');
   const [isPending, startT]     = useTransition();
-  const [hoveredId, setHoveredId]         = useState<string | null>(null);
+
+  // hover / delete confirm
+  const [hoveredId, setHoveredId]                   = useState<string | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
-  const scrollRef               = useRef<HTMLDivElement>(null);
+
+  // edit state
+  const [editingId, setEditingId]   = useState<string | null>(null);
+  const [editValue, setEditValue]   = useState('');
+
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // ── data loading ──────────────────────────────────────────────────────
   const load = async () => {
@@ -81,11 +93,12 @@ export default function ProductRemarksChat({ articleNumber, currentUserId, isAdm
   const handleSend = () => {
     if (!message.trim() || isPending) return;
     setError('');
+    const myColor = currentUserChatColor || null;
     const optimistic: RemarkEntry = {
       id: '_optimistic_' + Date.now(),
       message: message.trim(),
       createdAt: new Date().toISOString(),
-      user: { id: currentUserId, email: 'jij', chatColor: null },
+      user: { id: currentUserId, email: 'jij', chatColor: myColor },
     };
     setRemarks(prev => [...prev, optimistic]);
     const msg = message.trim();
@@ -109,11 +122,29 @@ export default function ProductRemarksChat({ articleNumber, currentUserId, isAdm
     });
   };
 
+  const startEdit = (r: RemarkEntry) => {
+    setEditingId(r.id);
+    setEditValue(r.message);
+    setConfirmingDeleteId(null);
+  };
+
+  const cancelEdit = () => { setEditingId(null); setEditValue(''); };
+
+  const handleSaveEdit = (id: string) => {
+    if (!editValue.trim() || isPending) return;
+    startT(async () => {
+      const res = await updateProductRemarkAction(id, editValue.trim());
+      if (res.success) {
+        setRemarks(prev => prev.map(r => r.id === id ? { ...r, message: editValue.trim() } : r));
+        cancelEdit();
+      } else {
+        setError(res.error || 'Bewerken mislukt.');
+      }
+    });
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
   // ── render ────────────────────────────────────────────────────────────
@@ -121,60 +152,31 @@ export default function ProductRemarksChat({ articleNumber, currentUserId, isAdm
 
   return (
     <div style={{
-      display: 'flex',
-      flexDirection: 'column',
+      display: 'flex', flexDirection: 'column',
       height: containerHeight,
-      borderRadius: 'var(--radius)',
-      border: '1px solid var(--border)',
-      overflow: 'hidden',
-      backgroundColor: 'var(--background)',
+      borderRadius: 'var(--radius)', border: '1px solid var(--border)',
+      overflow: 'hidden', backgroundColor: 'var(--background)',
     }}>
       {/* Header */}
       <div style={{
-        padding: '0.7rem 1rem',
-        fontWeight: 700,
-        fontSize: '0.85rem',
-        color: 'var(--text)',
-        backgroundColor: 'var(--surface)',
+        padding: '0.7rem 1rem', fontWeight: 700, fontSize: '0.85rem',
+        color: 'var(--text)', backgroundColor: 'var(--surface)',
         borderBottom: '1px solid var(--border)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.5rem',
-        flexShrink: 0,
+        display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0,
       }}>
-        <span>💬</span>
-        Interne Communicatie
+        <span>💬</span> Interne Communicatie
         <span style={{
-          marginLeft: 'auto',
-          fontSize: '0.7rem',
-          fontWeight: 600,
-          color: 'var(--text-muted)',
-          backgroundColor: 'var(--border)',
-          padding: '0.1rem 0.5rem',
-          borderRadius: '1rem',
+          marginLeft: 'auto', fontSize: '0.7rem', fontWeight: 600,
+          color: 'var(--text-muted)', backgroundColor: 'var(--border)',
+          padding: '0.1rem 0.5rem', borderRadius: '1rem',
         }}>
           {remarks.length} {remarks.length === 1 ? 'bericht' : 'berichten'}
         </span>
       </div>
 
-      {/* Messages — scrolls internally */}
-      <div
-        ref={scrollRef}
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '0.75rem 1rem',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.5rem',
-        }}
-      >
-        {loading && (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1.5rem', fontSize: '0.85rem' }}>
-            Laden...
-          </div>
-        )}
-
+      {/* Messages */}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        {loading && <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1.5rem', fontSize: '0.85rem' }}>Laden...</div>}
         {!loading && remarks.length === 0 && (
           <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1.5rem', fontSize: '0.85rem' }}>
             Nog geen berichten. Stuur het eerste bericht!
@@ -185,128 +187,134 @@ export default function ProductRemarksChat({ articleNumber, currentUserId, isAdm
           const isMine       = r.user.id === currentUserId || r.user.email === 'jij';
           const isOptimistic = r.id.startsWith('_optimistic_');
           const canDelete    = !isOptimistic && (isMine || isAdmin);
+          const canEdit      = !isOptimistic && isMine && isWithin5Min(r.createdAt);
           const prevRemark   = remarks[idx - 1];
           const showAvatar   = !prevRemark || prevRemark.user.id !== r.user.id;
           const name         = r.user.email === 'jij' ? 'Jij' : r.user.email.split('@')[0];
           const initials     = getInitials(r.user.email === 'jij' ? (currentUserId + '@x') : r.user.email);
-          // Use user's custom chatColor if available, otherwise hash-based color
-          const avatarColor  = isMine
-            ? (r.user.chatColor || 'var(--primary)')
+
+          // Color priority: user's stored chatColor → fallback hash
+          const resolvedColor = isMine
+            ? (currentUserChatColor || r.user.chatColor || 'var(--primary)')
             : (r.user.chatColor || getAvatarColor(r.user.email));
+
           const isHovered    = hoveredId === r.id;
+          const isEditing    = editingId === r.id;
 
           return (
             <div
               key={r.id}
-              style={{
-                display: 'flex',
-                flexDirection: isMine ? 'row-reverse' : 'row',
-                alignItems: 'flex-end',
-                gap: '0.4rem',
-                opacity: isOptimistic ? 0.6 : 1,
-                transition: 'opacity 0.2s',
-              }}
+              style={{ display: 'flex', flexDirection: isMine ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: '0.4rem', opacity: isOptimistic ? 0.6 : 1, transition: 'opacity 0.2s' }}
             >
               {/* Avatar */}
               <div style={{
                 width: '28px', height: '28px', borderRadius: '50%',
-                backgroundColor: avatarColor, color: 'white',
+                backgroundColor: resolvedColor, color: 'white',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '0.6rem', fontWeight: 800, flexShrink: 0,
                 visibility: showAvatar ? 'visible' : 'hidden',
-              }}>
-                {initials}
-              </div>
+              }}>{initials}</div>
 
               {/* Bubble column */}
               <div
                 style={{ maxWidth: '72%', display: 'flex', flexDirection: 'column', gap: '0.1rem', alignItems: isMine ? 'flex-end' : 'flex-start' }}
                 onMouseEnter={() => setHoveredId(r.id)}
-                onMouseLeave={() => setHoveredId(null)}
+                onMouseLeave={() => { setHoveredId(null); }}
               >
                 {showAvatar && (
-                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: avatarColor, paddingLeft: isMine ? 0 : '0.35rem', paddingRight: isMine ? '0.35rem' : 0 }}>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: resolvedColor, paddingLeft: isMine ? 0 : '0.35rem', paddingRight: isMine ? '0.35rem' : 0 }}>
                     {name}
                   </span>
                 )}
 
-                {/* Bubble + delete button row */}
+                {/* Bubble + action buttons row */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexDirection: isMine ? 'row-reverse' : 'row' }}>
-                  <div
-                    style={{
-                      backgroundColor: isMine ? (r.user.chatColor || 'var(--primary)') : 'var(--surface)',
+
+                  {/* Bubble — or edit textarea */}
+                  {isEditing ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', minWidth: '220px' }}>
+                      <textarea
+                        value={editValue}
+                        onChange={e => setEditValue(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Escape') cancelEdit(); }}
+                        autoFocus
+                        rows={3}
+                        style={{
+                          width: '100%', resize: 'vertical', borderRadius: '8px',
+                          border: `2px solid ${resolvedColor}`,
+                          padding: '0.45rem 0.75rem', fontSize: '0.85rem',
+                          outline: 'none', backgroundColor: 'var(--background)', color: 'var(--text)',
+                          fontFamily: 'inherit', lineHeight: 1.4,
+                        }}
+                      />
+                      <div style={{ display: 'flex', gap: '0.3rem', justifyContent: isMine ? 'flex-end' : 'flex-start' }}>
+                        <button type="button" onClick={() => handleSaveEdit(r.id)} disabled={isPending} style={{ padding: '0.2rem 0.6rem', borderRadius: '4px', border: 'none', backgroundColor: resolvedColor, color: 'white', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer' }}>
+                          ✓ Opslaan
+                        </button>
+                        <button type="button" onClick={cancelEdit} style={{ padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--surface)', color: 'var(--text-muted)', fontSize: '0.7rem', cursor: 'pointer' }}>
+                          Annuleer
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{
+                      backgroundColor: isMine ? resolvedColor : 'var(--surface)',
                       color: isMine ? 'white' : 'var(--text)',
                       padding: '0.45rem 0.75rem',
                       borderRadius: isMine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                      fontSize: '0.85rem',
-                      lineHeight: 1.45,
+                      fontSize: '0.85rem', lineHeight: 1.45,
                       border: isMine ? 'none' : '1px solid var(--border)',
                       boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    {r.message}
-                  </div>
+                      whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                    }}>
+                      {r.message}
+                    </div>
+                  )}
 
-                  {/* Delete / inline confirm — only for own messages (or admin) */}
-                  {canDelete && (isHovered || confirmingDeleteId === r.id) && (
-                    <div
-                      style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}
-                      onClick={e => e.stopPropagation()}
-                    >
-                      {confirmingDeleteId === r.id ? (
-                        // Inline confirmation buttons
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => { setConfirmingDeleteId(null); handleDelete(r.id); }}
-                            title="Ja, verwijderen"
-                            style={{
-                              height: '22px', padding: '0 0.5rem', borderRadius: '4px',
-                              border: '1px solid #ef4444', backgroundColor: '#ef4444',
-                              color: 'white', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 700,
-                              display: 'flex', alignItems: 'center',
-                            }}
-                          >Verwijder</button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmingDeleteId(null)}
-                            title="Annuleren"
-                            style={{
-                              height: '22px', padding: '0 0.5rem', borderRadius: '4px',
-                              border: '1px solid var(--border)', backgroundColor: 'var(--surface)',
-                              color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.65rem',
-                              display: 'flex', alignItems: 'center',
-                            }}
-                          >Annuleer</button>
-                        </>
-                      ) : (
-                        // Idle trash icon
+                  {/* Action buttons — edit pencil + delete trash, shown on hover */}
+                  {!isEditing && (isHovered || confirmingDeleteId === r.id) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+
+                      {/* Edit button — own messages, within 5 min */}
+                      {canEdit && (
                         <button
                           type="button"
-                          onClick={() => setConfirmingDeleteId(r.id)}
-                          title="Verwijderen"
+                          onClick={() => startEdit(r)}
+                          title="Bewerken (binnen 5 min)"
                           style={{
                             width: '22px', height: '22px', borderRadius: '50%',
                             border: '1px solid var(--border)', backgroundColor: 'var(--surface)',
-                            color: '#ef4444', cursor: 'pointer', fontSize: '0.65rem',
+                            color: resolvedColor, cursor: 'pointer', fontSize: '0.65rem',
                             display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                            transition: 'opacity 0.15s',
                           }}
-                        >🗑</button>
+                        >✏️</button>
+                      )}
+
+                      {/* Delete button / inline confirm */}
+                      {canDelete && (
+                        confirmingDeleteId === r.id ? (
+                          <>
+                            <button type="button" onClick={() => { setConfirmingDeleteId(null); handleDelete(r.id); }}
+                              style={{ height: '22px', padding: '0 0.5rem', borderRadius: '4px', border: '1px solid #ef4444', backgroundColor: '#ef4444', color: 'white', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 700, display: 'flex', alignItems: 'center' }}
+                            >Verwijder</button>
+                            <button type="button" onClick={() => setConfirmingDeleteId(null)}
+                              style={{ height: '22px', padding: '0 0.5rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.65rem', display: 'flex', alignItems: 'center' }}
+                            >Annuleer</button>
+                          </>
+                        ) : (
+                          <button type="button" onClick={() => setConfirmingDeleteId(r.id)} title="Verwijderen"
+                            style={{ width: '22px', height: '22px', borderRadius: '50%', border: '1px solid var(--border)', backgroundColor: 'var(--surface)', color: '#ef4444', cursor: 'pointer', fontSize: '0.65rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                          >🗑</button>
+                        )
                       )}
                     </div>
                   )}
                 </div>
 
-                {/* Date + time — always shown, full format */}
-                <span style={{
-                  fontSize: '0.62rem', color: 'var(--text-muted)',
-                  paddingLeft: isMine ? 0 : '0.35rem',
-                  paddingRight: isMine ? '0.35rem' : 0,
-                }}>
+                {/* Timestamp */}
+                <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', paddingLeft: isMine ? 0 : '0.35rem', paddingRight: isMine ? '0.35rem' : 0 }}>
                   {isOptimistic ? 'Verzenden...' : formatDateTime(r.createdAt)}
+                  {canEdit && !isEditing && <span style={{ marginLeft: '0.3rem', opacity: 0.6 }}>· nog te bewerken</span>}
                 </span>
               </div>
             </div>
@@ -322,15 +330,7 @@ export default function ProductRemarksChat({ articleNumber, currentUserId, isAdm
       )}
 
       {/* Input */}
-      <div style={{
-        borderTop: '1px solid var(--border)',
-        padding: '0.55rem 0.75rem',
-        display: 'flex',
-        gap: '0.6rem',
-        alignItems: 'flex-end',
-        backgroundColor: 'var(--surface)',
-        flexShrink: 0,
-      }}>
+      <div style={{ borderTop: '1px solid var(--border)', padding: '0.55rem 0.75rem', display: 'flex', gap: '0.6rem', alignItems: 'flex-end', backgroundColor: 'var(--surface)', flexShrink: 0 }}>
         <textarea
           value={message}
           onChange={e => setMessage(e.target.value)}
@@ -340,12 +340,10 @@ export default function ProductRemarksChat({ articleNumber, currentUserId, isAdm
           disabled={isPending}
           style={{
             flex: 1, resize: 'none', borderRadius: '16px',
-            border: '1px solid var(--border)',
-            padding: '0.45rem 0.85rem',
+            border: '1px solid var(--border)', padding: '0.45rem 0.85rem',
             fontSize: '0.85rem', outline: 'none',
             backgroundColor: 'var(--background)', color: 'var(--text)',
-            fontFamily: 'inherit', lineHeight: 1.4,
-            maxHeight: '100px', overflowY: 'auto',
+            fontFamily: 'inherit', lineHeight: 1.4, maxHeight: '100px', overflowY: 'auto',
           }}
           onInput={e => {
             const t = e.currentTarget;
@@ -360,18 +358,14 @@ export default function ProductRemarksChat({ articleNumber, currentUserId, isAdm
           style={{
             width: '36px', height: '36px', borderRadius: '50%', border: 'none',
             backgroundColor: message.trim() ? 'var(--primary)' : 'var(--border)',
-            color: 'white',
-            cursor: message.trim() && !isPending ? 'pointer' : 'not-allowed',
+            color: 'white', cursor: message.trim() && !isPending ? 'pointer' : 'not-allowed',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '1rem', flexShrink: 0,
-            transition: 'background-color 0.2s, transform 0.1s',
+            fontSize: '1rem', flexShrink: 0, transition: 'background-color 0.2s, transform 0.1s',
           }}
           onMouseEnter={e => { if (message.trim()) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.1)'; }}
           onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'none'; }}
           title="Versturen (Enter)"
-        >
-          ➤
-        </button>
+        >➤</button>
       </div>
     </div>
   );

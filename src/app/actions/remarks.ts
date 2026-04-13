@@ -145,6 +145,40 @@ export async function deleteProductRemarkAction(
 }
 
 /**
+ * Edit a remark. Only the author may edit, and only within 5 minutes.
+ */
+export async function updateProductRemarkAction(
+  remarkId: string,
+  newMessage: string
+): Promise<{ success: boolean; error?: string }> {
+  const session  = await getServerSession(authOptions);
+  const userId   = (session?.user as any)?.id;
+  if (!userId) return { success: false, error: 'Niet ingelogd.' };
+
+  const trimmed = newMessage.trim();
+  if (!trimmed) return { success: false, error: 'Bericht mag niet leeg zijn.' };
+
+  try {
+    const remark = await prisma.productRemark.findUnique({ where: { id: remarkId } });
+    if (!remark) return { success: false, error: 'Opmerking niet gevonden.' };
+    if (remark.userId !== userId) return { success: false, error: 'Je kunt alleen je eigen berichten bewerken.' };
+
+    const ageMs = Date.now() - remark.createdAt.getTime();
+    if (ageMs > 5 * 60 * 1000) {
+      return { success: false, error: 'Berichten kunnen alleen binnen 5 minuten worden bewerkt.' };
+    }
+
+    await prisma.productRemark.update({
+      where: { id: remarkId },
+      data: { message: trimmed }
+    });
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+/**
  * Called from updateProductAction when `internalRemarks` sneaks in via the
  * legacy form field. Converts the text to a ProductRemark and clears the DB field.
  * Returns true if a migration was performed.

@@ -105,7 +105,7 @@ function InlineReadyToggle({ product, isAdmin }: { product: any, isAdmin: boolea
   );
 }
 
-export default function ProductsClient({ initialProducts, systemUsers = [], isAdmin = false, fieldPermissions = {}, layout = [], currentUserId = '' }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string }) {
+export default function ProductsClient({ initialProducts, systemUsers = [], isAdmin = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null }) {
   const router = useRouter();
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
@@ -422,6 +422,7 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
         isAdmin={isAdmin}
         layout={layout}
         currentUserId={currentUserId}
+        currentUserChatColor={currentUserChatColor}
       />
     </div>
   );

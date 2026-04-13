@@ -111,7 +111,7 @@ const ThreeWayToggle = ({ name, defaultValue, disabled, onChange }: { name?: str
 };
 
 
-export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, layout = [], currentUserId = '' }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, layout?: any[], currentUserId?: string }) {
+export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, layout = [], currentUserId = '', currentUserChatColor = null }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null }) {
   const [isPending, startTransition] = useTransition();
   const [statusOverridden, setStatusOverridden] = useState(false);
   const currentStatus = (product?.status || 'NEW').toUpperCase();
@@ -289,6 +289,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
           <ProductRemarksChat
             articleNumber={localProductData.internalArticleNumber}
             currentUserId={currentUserId}
+            currentUserChatColor={currentUserChatColor}
             isAdmin={isAdmin}
             isOpen={isOpen}
             height={chatHeight}
