@@ -48,9 +48,8 @@ export async function getProductRemarksAction(internalArticleNumber: string): Pr
       }
 
       if (attributeUserId) {
-        const migratedText = `[Gemigreerd vanuit tekstveld]\n${product.internalRemarks.trim()}`;
         await prisma.productRemark.create({
-          data: { productId: product.id, userId: attributeUserId, message: migratedText }
+          data: { productId: product.id, userId: attributeUserId, message: product.internalRemarks.trim() }
         });
         await prisma.product.update({
           where: { id: product.id },

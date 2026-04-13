@@ -126,7 +126,40 @@ const CHAT_FIELD: FormField = {
   width: 24,
 };
 
+/**
+ * One-time startup cleanup: removes the "[Gemigreerd vanuit ...]\n" prefix
+ * added during initial data migration. Guarded by a SystemSetting flag so it
+ * runs exactly once, on the first products-page load after update.
+ */
+async function cleanMigratedRemarkPrefixes(): Promise<void> {
+  try {
+    const flag = await prisma.$queryRaw<{ value: string }[]>`
+      SELECT "value" FROM "SystemSetting" WHERE "key" = 'migration_remarks_prefix_cleaned' LIMIT 1
+    `;
+    if (flag && flag.length > 0) return; // already done
+
+    // Strip any prefix of the form "[Gemigreerd vanuit ...]\n"
+    await prisma.$executeRaw`
+      UPDATE "ProductRemark"
+      SET    "message" = REGEXP_REPLACE("message", E'^\\[Gemigreerd vanuit [^\\]]+\\]\\n', '', 'g')
+      WHERE  "message" ~ E'^\\[Gemigreerd vanuit '
+    `;
+
+    await prisma.$executeRaw`
+      INSERT INTO "SystemSetting" ("key", "value")
+      VALUES ('migration_remarks_prefix_cleaned', 'true')
+      ON CONFLICT ("key") DO NOTHING
+    `;
+  } catch (e) {
+    // Non-fatal — will retry on next boot
+    console.warn('[startup] cleanMigratedRemarkPrefixes error:', e);
+  }
+}
+
 export async function getFormLayoutAction(): Promise<FormSection[]> {
+  // One-time prefix cleanup — fires asynchronously on first load after update
+  void cleanMigratedRemarkPrefixes();
+
   let layout: FormSection[] | null = null;
   try {
     const records = await prisma.$queryRaw<{ key: string, value: string }[]>`SELECT "key", "value" FROM "SystemSetting" WHERE "key" = 'product_form_layout' LIMIT 1`;
@@ -235,7 +268,7 @@ export async function bulkMigrateInternalRemarksAction(): Promise<{ success: boo
         data: {
           productId: product.id,
           userId,
-          message: `[Gemigreerd vanuit opmerkingen veld]\n${text}`
+          message: text
         }
       });
       await prisma.product.update({ where: { id: product.id }, data: { internalRemarks: null } });
