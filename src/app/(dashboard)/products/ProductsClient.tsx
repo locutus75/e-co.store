@@ -423,6 +423,9 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
         layout={layout}
         currentUserId={currentUserId}
         currentUserChatColor={currentUserChatColor}
+        userChatColors={Object.fromEntries(
+          systemUsers.filter((u: any) => u.chatColor).map((u: any) => [u.id, u.chatColor])
+        )}
       />
     </div>
   );

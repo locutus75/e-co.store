@@ -46,13 +46,15 @@ interface Props {
   currentUserId: string;
   /** Chat color from the current user's profile — drives optimistic bubble color */
   currentUserChatColor?: string | null;
+  /** Map of userId → chatColor for all known users, pre-fetched server-side */
+  userChatColors?: Record<string, string>;
   isAdmin: boolean;
   isOpen: boolean;
   height?: number | string;
 }
 
 export default function ProductRemarksChat({
-  articleNumber, currentUserId, currentUserChatColor, isAdmin, isOpen, height = 380
+  articleNumber, currentUserId, currentUserChatColor, userChatColors = {}, isAdmin, isOpen, height = 380
 }: Props) {
   const [remarks, setRemarks]   = useState<RemarkEntry[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -193,10 +195,12 @@ export default function ProductRemarksChat({
           const name         = r.user.email === 'jij' ? 'Jij' : r.user.email.split('@')[0];
           const initials     = getInitials(r.user.email === 'jij' ? (currentUserId + '@x') : r.user.email);
 
-          // Color priority: user's stored chatColor → fallback hash
+          // Color priority:
+          //   isMine  → live prop > DB chatColor > primary
+          //   others  → server-side map (most reliable) > DB chatColor from action > hash fallback
           const resolvedColor = isMine
             ? (currentUserChatColor || r.user.chatColor || 'var(--primary)')
-            : (r.user.chatColor || getAvatarColor(r.user.email));
+            : (userChatColors[r.user.id] || r.user.chatColor || getAvatarColor(r.user.email));
 
           const isHovered    = hoveredId === r.id;
           const isEditing    = editingId === r.id;
