@@ -294,6 +294,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
             isAdmin={isAdmin}
             isOpen={isOpen}
             height={chatHeight}
+            title={f.label}
           />
         </div>
       );

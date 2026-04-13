@@ -34,9 +34,13 @@ function formatDateTime(iso: string) {
   });
 }
 
-/** Returns true if the remark is younger than 5 minutes */
 function isWithin5Min(iso: string) {
   return Date.now() - new Date(iso).getTime() < 5 * 60 * 1000;
+}
+
+/** localStorage key for tracking when this user last read this chat. */
+function lastSeenKey(userId: string, articleNumber: string) {
+  return `chat_last_seen_${userId}_${articleNumber}`;
 }
 
 // ── Component ───────────────────────────────────────────────────────────────
@@ -44,17 +48,18 @@ function isWithin5Min(iso: string) {
 interface Props {
   articleNumber: string;
   currentUserId: string;
-  /** Chat color from the current user's profile — drives optimistic bubble color */
   currentUserChatColor?: string | null;
-  /** Map of userId → chatColor for all known users, pre-fetched server-side */
   userChatColors?: Record<string, string>;
   isAdmin: boolean;
   isOpen: boolean;
   height?: number | string;
+  /** Label from the WYSIWYG layout — default "Interne Communicatie" */
+  title?: string;
 }
 
 export default function ProductRemarksChat({
-  articleNumber, currentUserId, currentUserChatColor, userChatColors = {}, isAdmin, isOpen, height = 380
+  articleNumber, currentUserId, currentUserChatColor, userChatColors = {},
+  isAdmin, isOpen, height = 380, title = 'Interne Communicatie'
 }: Props) {
   const [remarks, setRemarks]   = useState<RemarkEntry[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -62,34 +67,86 @@ export default function ProductRemarksChat({
   const [error, setError]       = useState('');
   const [isPending, startT]     = useTransition();
 
-  // hover / delete confirm
+  // hover / delete confirm / edit
   const [hoveredId, setHoveredId]                   = useState<string | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [editingId, setEditingId]                   = useState<string | null>(null);
+  const [editValue, setEditValue]                   = useState('');
 
-  // edit state
-  const [editingId, setEditingId]   = useState<string | null>(null);
-  const [editValue, setEditValue]   = useState('');
+  // "new message" indicator
+  const [hasNewMessages, setHasNewMessages] = useState(false);
+  const [newCount, setNewCount]             = useState(0);
+  const dismissTimerRef                     = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // ── helpers ───────────────────────────────────────────────────────────
+  const markAsSeen = () => {
+    try {
+      localStorage.setItem(lastSeenKey(currentUserId, articleNumber), new Date().toISOString());
+    } catch { /* storage unavailable */ }
+  };
 
   // ── data loading ──────────────────────────────────────────────────────
   const load = async () => {
     const data = await getProductRemarksAction(articleNumber);
     setRemarks(data);
     setLoading(false);
+
+    // Check for new messages from other users since last seen
+    try {
+      const seen = localStorage.getItem(lastSeenKey(currentUserId, articleNumber));
+      const seenDate = seen ? new Date(seen) : null;
+
+      const newFromOthers = data.filter(r =>
+        r.user.id !== currentUserId &&
+        r.user.email !== 'jij' &&
+        (!seenDate || new Date(r.createdAt) > seenDate)
+      );
+
+      if (newFromOthers.length > 0) {
+        setHasNewMessages(true);
+        setNewCount(newFromOthers.length);
+      } else {
+        setHasNewMessages(false);
+        setNewCount(0);
+      }
+    } catch { /* storage unavailable */ }
   };
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      // Update "last seen" when the drawer closes
+      markAsSeen();
+      return;
+    }
     setLoading(true);
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [articleNumber, isOpen]);
 
+  // Auto-scroll to bottom when remarks change
   useEffect(() => {
     if (!scrollRef.current) return;
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [remarks]);
+
+  // 3-second auto-dismiss of new-message indicator
+  useEffect(() => {
+    if (!isOpen || !hasNewMessages) return;
+
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    dismissTimerRef.current = setTimeout(() => {
+      setHasNewMessages(false);
+      setNewCount(0);
+      markAsSeen();
+    }, 3000);
+
+    return () => {
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, hasNewMessages]);
 
   // ── actions ──────────────────────────────────────────────────────────
   const handleSend = () => {
@@ -112,6 +169,7 @@ export default function ProductRemarksChat({
         setRemarks(prev => prev.filter(r => r.id !== optimistic.id));
       } else {
         await load();
+        markAsSeen(); // own message → update "last seen" so it doesn't show as new
       }
     });
   };
@@ -129,7 +187,6 @@ export default function ProductRemarksChat({
     setEditValue(r.message);
     setConfirmingDeleteId(null);
   };
-
   const cancelEdit = () => { setEditingId(null); setEditValue(''); };
 
   const handleSaveEdit = (id: string) => {
@@ -166,7 +223,23 @@ export default function ProductRemarksChat({
         borderBottom: '1px solid var(--border)',
         display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0,
       }}>
-        <span>💬</span> Interne Communicatie
+        <span>💬</span>
+        {title}
+
+        {/* New message badge — pulses for 3 seconds */}
+        {hasNewMessages && (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+            backgroundColor: '#ef4444', color: 'white',
+            fontSize: '0.65rem', fontWeight: 800,
+            padding: '0.15rem 0.55rem', borderRadius: '1rem',
+            animation: 'chat-pulse 1s ease-in-out infinite',
+            marginLeft: '0.2rem',
+          }}>
+            🔔 {newCount} nieuw{newCount === 1 ? '' : 'e'} bericht{newCount === 1 ? '' : 'en'}
+          </span>
+        )}
+
         <span style={{
           marginLeft: 'auto', fontSize: '0.7rem', fontWeight: 600,
           color: 'var(--text-muted)', backgroundColor: 'var(--border)',
@@ -176,8 +249,19 @@ export default function ProductRemarksChat({
         </span>
       </div>
 
+      {/* Pulse keyframes — injected once inline */}
+      <style>{`
+        @keyframes chat-pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%       { opacity: 0.8; transform: scale(1.04); }
+        }
+      `}</style>
+
       {/* Messages */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      <div
+        ref={scrollRef}
+        style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
+      >
         {loading && <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1.5rem', fontSize: '0.85rem' }}>Laden...</div>}
         {!loading && remarks.length === 0 && (
           <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1.5rem', fontSize: '0.85rem' }}>
@@ -195,15 +279,12 @@ export default function ProductRemarksChat({
           const name         = r.user.email === 'jij' ? 'Jij' : r.user.email.split('@')[0];
           const initials     = getInitials(r.user.email === 'jij' ? (currentUserId + '@x') : r.user.email);
 
-          // Color priority:
-          //   isMine  → live prop > DB chatColor > primary
-          //   others  → server-side map (most reliable) > DB chatColor from action > hash fallback
           const resolvedColor = isMine
             ? (currentUserChatColor || r.user.chatColor || 'var(--primary)')
             : (userChatColors[r.user.id] || r.user.chatColor || getAvatarColor(r.user.email));
 
-          const isHovered    = hoveredId === r.id;
-          const isEditing    = editingId === r.id;
+          const isHovered = hoveredId === r.id;
+          const isEditing = editingId === r.id;
 
           return (
             <div
@@ -223,7 +304,7 @@ export default function ProductRemarksChat({
               <div
                 style={{ maxWidth: '72%', display: 'flex', flexDirection: 'column', gap: '0.1rem', alignItems: isMine ? 'flex-end' : 'flex-start' }}
                 onMouseEnter={() => setHoveredId(r.id)}
-                onMouseLeave={() => { setHoveredId(null); }}
+                onMouseLeave={() => setHoveredId(null)}
               >
                 {showAvatar && (
                   <span style={{ fontSize: '0.7rem', fontWeight: 700, color: resolvedColor, paddingLeft: isMine ? 0 : '0.35rem', paddingRight: isMine ? '0.35rem' : 0 }}>
@@ -231,33 +312,21 @@ export default function ProductRemarksChat({
                   </span>
                 )}
 
-                {/* Bubble + action buttons row */}
+                {/* Bubble + action buttons */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexDirection: isMine ? 'row-reverse' : 'row' }}>
 
-                  {/* Bubble — or edit textarea */}
                   {isEditing ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', minWidth: '220px' }}>
                       <textarea
                         value={editValue}
                         onChange={e => setEditValue(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Escape') cancelEdit(); }}
-                        autoFocus
-                        rows={3}
-                        style={{
-                          width: '100%', resize: 'vertical', borderRadius: '8px',
-                          border: `2px solid ${resolvedColor}`,
-                          padding: '0.45rem 0.75rem', fontSize: '0.85rem',
-                          outline: 'none', backgroundColor: 'var(--background)', color: 'var(--text)',
-                          fontFamily: 'inherit', lineHeight: 1.4,
-                        }}
+                        autoFocus rows={3}
+                        style={{ width: '100%', resize: 'vertical', borderRadius: '8px', border: `2px solid ${resolvedColor}`, padding: '0.45rem 0.75rem', fontSize: '0.85rem', outline: 'none', backgroundColor: 'var(--background)', color: 'var(--text)', fontFamily: 'inherit', lineHeight: 1.4 }}
                       />
                       <div style={{ display: 'flex', gap: '0.3rem', justifyContent: isMine ? 'flex-end' : 'flex-start' }}>
-                        <button type="button" onClick={() => handleSaveEdit(r.id)} disabled={isPending} style={{ padding: '0.2rem 0.6rem', borderRadius: '4px', border: 'none', backgroundColor: resolvedColor, color: 'white', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer' }}>
-                          ✓ Opslaan
-                        </button>
-                        <button type="button" onClick={cancelEdit} style={{ padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--surface)', color: 'var(--text-muted)', fontSize: '0.7rem', cursor: 'pointer' }}>
-                          Annuleer
-                        </button>
+                        <button type="button" onClick={() => handleSaveEdit(r.id)} disabled={isPending} style={{ padding: '0.2rem 0.6rem', borderRadius: '4px', border: 'none', backgroundColor: resolvedColor, color: 'white', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer' }}>✓ Opslaan</button>
+                        <button type="button" onClick={cancelEdit} style={{ padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--surface)', color: 'var(--text-muted)', fontSize: '0.7rem', cursor: 'pointer' }}>Annuleer</button>
                       </div>
                     </div>
                   ) : (
@@ -275,26 +344,14 @@ export default function ProductRemarksChat({
                     </div>
                   )}
 
-                  {/* Action buttons — edit pencil + delete trash, shown on hover */}
+                  {/* Action buttons: edit + delete */}
                   {!isEditing && (isHovered || confirmingDeleteId === r.id) && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-
-                      {/* Edit button — own messages, within 5 min */}
                       {canEdit && (
-                        <button
-                          type="button"
-                          onClick={() => startEdit(r)}
-                          title="Bewerken (binnen 5 min)"
-                          style={{
-                            width: '22px', height: '22px', borderRadius: '50%',
-                            border: '1px solid var(--border)', backgroundColor: 'var(--surface)',
-                            color: resolvedColor, cursor: 'pointer', fontSize: '0.65rem',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                          }}
+                        <button type="button" onClick={() => startEdit(r)} title="Bewerken (binnen 5 min)"
+                          style={{ width: '22px', height: '22px', borderRadius: '50%', border: '1px solid var(--border)', backgroundColor: 'var(--surface)', color: resolvedColor, cursor: 'pointer', fontSize: '0.65rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                         >✏️</button>
                       )}
-
-                      {/* Delete button / inline confirm */}
                       {canDelete && (
                         confirmingDeleteId === r.id ? (
                           <>
@@ -340,15 +397,8 @@ export default function ProductRemarksChat({
           onChange={e => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Typ een bericht... (Enter = versturen, Shift+Enter = nieuwe regel)"
-          rows={1}
-          disabled={isPending}
-          style={{
-            flex: 1, resize: 'none', borderRadius: '16px',
-            border: '1px solid var(--border)', padding: '0.45rem 0.85rem',
-            fontSize: '0.85rem', outline: 'none',
-            backgroundColor: 'var(--background)', color: 'var(--text)',
-            fontFamily: 'inherit', lineHeight: 1.4, maxHeight: '100px', overflowY: 'auto',
-          }}
+          rows={1} disabled={isPending}
+          style={{ flex: 1, resize: 'none', borderRadius: '16px', border: '1px solid var(--border)', padding: '0.45rem 0.85rem', fontSize: '0.85rem', outline: 'none', backgroundColor: 'var(--background)', color: 'var(--text)', fontFamily: 'inherit', lineHeight: 1.4, maxHeight: '100px', overflowY: 'auto' }}
           onInput={e => {
             const t = e.currentTarget;
             t.style.height = 'auto';
@@ -356,16 +406,9 @@ export default function ProductRemarksChat({
           }}
         />
         <button
-          type="button"
-          onClick={handleSend}
+          type="button" onClick={handleSend}
           disabled={isPending || !message.trim()}
-          style={{
-            width: '36px', height: '36px', borderRadius: '50%', border: 'none',
-            backgroundColor: message.trim() ? 'var(--primary)' : 'var(--border)',
-            color: 'white', cursor: message.trim() && !isPending ? 'pointer' : 'not-allowed',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '1rem', flexShrink: 0, transition: 'background-color 0.2s, transform 0.1s',
-          }}
+          style={{ width: '36px', height: '36px', borderRadius: '50%', border: 'none', backgroundColor: message.trim() ? 'var(--primary)' : 'var(--border)', color: 'white', cursor: message.trim() && !isPending ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', flexShrink: 0, transition: 'background-color 0.2s, transform 0.1s' }}
           onMouseEnter={e => { if (message.trim()) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.1)'; }}
           onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'none'; }}
           title="Versturen (Enter)"
