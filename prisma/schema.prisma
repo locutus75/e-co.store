@@ -20,6 +20,8 @@ model User {
   auditLogs           AuditLog[]
   assignedProducts    Product[]
   productRemarks      ProductRemark[]
+  sentMessages        InternalMessage[]  @relation("SentMessages")
+  receivedMessages    MessageRecipient[]
 }
 
 model Role {
@@ -217,4 +219,47 @@ model AuditLog {
 model SystemSetting {
   key   String @id
   value String // JSON string payload
+}
+
+// ── Internal Messaging ───────────────────────────────────────────────────────
+
+model InternalMessage {
+  id              String   @id @default(cuid())
+  fromUserId      String
+  subject         String
+  body            String
+  sentAt          DateTime @default(now())
+  /// null = root message; non-null = reply in a thread
+  parentId        String?
+  deletedBySender Boolean  @default(false)
+
+  fromUser    User               @relation("SentMessages",  fields: [fromUserId], references: [id])
+  parent      InternalMessage?   @relation("MessageThread", fields: [parentId],   references: [id])
+  replies     InternalMessage[]  @relation("MessageThread")
+  recipients  MessageRecipient[]
+  attachments MessageAttachment[]
+}
+
+/// Tracks per-recipient state: read status and soft-delete flag.
+model MessageRecipient {
+  id                 String    @id @default(cuid())
+  messageId          String
+  toUserId           String
+  readAt             DateTime?
+  deletedByRecipient Boolean   @default(false)
+
+  message InternalMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  toUser  User            @relation(fields: [toUserId],   references: [id])
+
+  @@unique([messageId, toUserId])
+}
+
+/// Uploaded files attached to a message (stored under uploads/messages/<messageId>/).
+model MessageAttachment {
+  id           String @id @default(cuid())
+  messageId    String
+  filename     String  // stored filename (sanitised)
+  originalName String  // original name shown to users
+
+  message InternalMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
 }

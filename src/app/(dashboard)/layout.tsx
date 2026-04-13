@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { Logo } from '@/components/Logo';
 import { LogoutButton } from '@/components/LogoutButton';
+import MessagesNavBadge from '@/components/MessagesNavBadge';
 import Link from 'next/link';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -10,6 +11,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const session = await getServerSession(authOptions);
   const roles = (session?.user as any)?.roles || [];
   const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
+  
+  const userId = (session?.user as any)?.id as string | undefined;
   
   // Fetch active menu permissions purely for non-admins 
   let allowedMenus = new Set<string>();
@@ -23,6 +26,13 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     });
     permissions.forEach((p: any) => allowedMenus.add(p.module));
   }
+
+  // Initial unread count for the Berichten badge
+  const unreadCount = userId
+    ? await prisma.messageRecipient.count({
+        where: { toUserId: userId, readAt: null, deletedByRecipient: false },
+      })
+    : 0;
 
   // Helper function to ascertain access
   const canAccess = (menuKey: string) => isAdmin || allowedMenus.has(menuKey);
@@ -52,6 +62,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           )}
           {canAccess('MENU:products') && (
             <Link href="/products" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', backgroundColor: 'transparent', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Products</Link>
+          )}
+          {canAccess('MENU:messages') && (
+            <MessagesNavBadge initialCount={unreadCount} />
           )}
           {canAccess('MENU:categories') && (
             <Link href="/" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Categories</Link>
