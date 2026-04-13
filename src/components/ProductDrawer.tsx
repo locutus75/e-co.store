@@ -170,6 +170,16 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     }
   };
 
+  // Lock background scroll when drawer is open — prevents double scrollbar
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [isOpen]);
+
   // Handle escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
