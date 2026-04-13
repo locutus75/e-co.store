@@ -52,6 +52,10 @@ function fullDate(iso: string) {
   });
 }
 
+function isImageFile(filename: string) {
+  return /\.(jpg|jpeg|png|webp|gif|avif)$/i.test(filename);
+}
+
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
 function Avatar({ user, size = 32 }: { user: MsgUser; size?: number }) {
@@ -195,6 +199,7 @@ export default function MessagesClient({
   const [isPending, startT] = useTransition();
   const [sendError, setSendError] = useState("");
   const [unread, setUnread] = useState(0);
+  const [lightbox, setLightbox] = useState<{ url: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const threadEndRef = useRef<HTMLDivElement>(null);
 
@@ -285,12 +290,15 @@ export default function MessagesClient({
 
   const handleSend = () => {
     if (!compose) return;
+    // Capture current selectedMsgId before async work
+    const replyParentId = compose.parentId;
+    const currentSelectedId = selectedMsgId;
     setSendError("");
     startT(async () => {
       const fd = new FormData();
       fd.set("subject", compose.subject || compose.replySubject);
       fd.set("body", compose.body);
-      if (compose.parentId) fd.set("parentId", compose.parentId);
+      if (replyParentId) fd.set("parentId", replyParentId);
       compose.toUserIds.forEach((id) => fd.append("toUserIds", id));
       compose.files.forEach((f) => fd.append("attachments", f));
 
@@ -299,13 +307,15 @@ export default function MessagesClient({
         setSendError(res.error);
         return;
       }
-      setCompose(null);
-      await loadBox(box);
-      // Show sent message in thread if it was a reply
-      if (compose.parentId && selectedMsgId) {
-        const t = await getThreadAction(selectedMsgId);
+
+      // Load fresh thread BEFORE closing compose so it renders immediately
+      if (replyParentId && currentSelectedId) {
+        const t = await getThreadAction(currentSelectedId);
         setThread(t);
       }
+
+      setCompose(null);
+      await loadBox(box);
     });
   };
 
@@ -601,25 +611,55 @@ export default function MessagesClient({
 
                               {/* Attachments */}
                               {msg.attachments.length > 0 && (
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.5rem", justifyContent: isMine ? "flex-end" : "flex-start" }}>
-                                  {msg.attachments.map((a) => (
-                                    <a
-                                      key={a.id}
-                                      href={`/api/uploads/messages/${msg.id}/${a.filename}`}
-                                      download={a.originalName}
-                                      style={{
-                                        display: "inline-flex", alignItems: "center", gap: "0.3rem",
-                                        padding: "0.25rem 0.65rem", borderRadius: "var(--radius)",
-                                        backgroundColor: "var(--surface)", border: "1px solid var(--border)",
-                                        color: "var(--text)", fontSize: "0.75rem", fontWeight: 600, textDecoration: "none",
-                                        transition: "border-color 0.15s",
-                                      }}
-                                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--primary)")}
-                                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
-                                    >
-                                      📎 {a.originalName}
-                                    </a>
-                                  ))}
+                                <div style={{ marginTop: "0.6rem" }}>
+                                  {/* Image thumbnails */}
+                                  {msg.attachments.filter(a => isImageFile(a.filename)).length > 0 && (
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.4rem", justifyContent: isMine ? "flex-end" : "flex-start" }}>
+                                      {msg.attachments.filter(a => isImageFile(a.filename)).map((a) => {
+                                        const url = `/api/uploads/messages/${msg.id}/${a.filename}`;
+                                        return (
+                                          <div
+                                            key={a.id}
+                                            onClick={() => setLightbox({ url, name: a.originalName })}
+                                            title={`Bekijken: ${a.originalName}`}
+                                            style={{
+                                              width: 72, height: 72, borderRadius: "var(--radius)",
+                                              overflow: "hidden", border: "1px solid var(--border)",
+                                              cursor: "pointer", flexShrink: 0, backgroundColor: "var(--surface-hover)",
+                                              transition: "transform 0.15s, border-color 0.15s",
+                                            }}
+                                            onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.05)"; e.currentTarget.style.borderColor = "var(--primary)"; }}
+                                            onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.borderColor = "var(--border)"; }}
+                                          >
+                                            <img src={url} alt={a.originalName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                  {/* Non-image file links */}
+                                  {msg.attachments.filter(a => !isImageFile(a.filename)).length > 0 && (
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", justifyContent: isMine ? "flex-end" : "flex-start" }}>
+                                      {msg.attachments.filter(a => !isImageFile(a.filename)).map((a) => (
+                                        <a
+                                          key={a.id}
+                                          href={`/api/uploads/messages/${msg.id}/${a.filename}`}
+                                          download={a.originalName}
+                                          style={{
+                                            display: "inline-flex", alignItems: "center", gap: "0.3rem",
+                                            padding: "0.25rem 0.65rem", borderRadius: "var(--radius)",
+                                            backgroundColor: "var(--surface)", border: "1px solid var(--border)",
+                                            color: "var(--text)", fontSize: "0.75rem", fontWeight: 600, textDecoration: "none",
+                                            transition: "border-color 0.15s",
+                                          }}
+                                          onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--primary)")}
+                                          onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+                                        >
+                                          📎 {a.originalName}
+                                        </a>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               )}
 
@@ -664,6 +704,50 @@ export default function MessagesClient({
           )}
         </div>
       </div>
+
+      {/* ── Attachment Lightbox ─────────────────────────────────────────── */}
+      {lightbox && (
+        <div
+          onClick={() => setLightbox(null)}
+          style={{
+            position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.88)",
+            backdropFilter: "blur(6px)", zIndex: 9999,
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <img
+            src={lightbox.url}
+            alt={lightbox.name}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: "88vw", maxHeight: "75vh",
+              objectFit: "contain", borderRadius: "0.75rem",
+              boxShadow: "0 24px 60px rgba(0,0,0,0.6)",
+            }}
+          />
+          <div style={{ marginTop: "1.5rem", display: "flex", gap: "1rem" }} onClick={(e) => e.stopPropagation()}>
+            <a
+              href={lightbox.url}
+              download={lightbox.name}
+              className="btn btn-primary"
+              style={{ textDecoration: "none" }}
+            >
+              ⬇ Download
+            </a>
+            <button
+              type="button"
+              className="btn"
+              style={{ backgroundColor: "rgba(255,255,255,0.15)", color: "white", border: "none" }}
+              onClick={() => setLightbox(null)}
+            >
+              Sluiten
+            </button>
+          </div>
+          <p style={{ marginTop: "0.75rem", color: "rgba(255,255,255,0.5)", fontSize: "0.75rem" }}>
+            {lightbox.name}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

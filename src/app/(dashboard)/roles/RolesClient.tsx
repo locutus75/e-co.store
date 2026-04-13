@@ -131,7 +131,7 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
       
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
          <div>
-           <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)' }}>Rollen \& Rechten</h1>
+           <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)' }}>Rollen & Rechten</h1>
            <p style={{ color: 'var(--text-muted)', fontSize: '1rem', marginTop: '0.2rem' }}>Configureer menu- en veldrechten per gebruikersrol.</p>
          </div>
 
