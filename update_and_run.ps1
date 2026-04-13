@@ -46,10 +46,37 @@ if ($LASTEXITCODE -ne 0) {
 
 # 5. Prepare Standalone Assets
 Write-Host "`n[5/6] Linking Static Assets..." -ForegroundColor Yellow
+
+# Preserve any runtime-uploaded images so they survive the update.
+# (public/uploads is gitignored; without this step they'd be deleted by the copy below)
+$standalonePublic  = ".next/standalone/public"
+$standaloneUploads = ".next/standalone/public/uploads"
+$backupUploads     = ".next/_uploads_backup"
+
+if (Test-Path $standaloneUploads) {
+    Write-Host "  Backing up runtime uploads..." -ForegroundColor DarkYellow
+    if (Test-Path $backupUploads) { Remove-Item -Path $backupUploads -Recurse -Force }
+    Copy-Item -Path $standaloneUploads -Destination $backupUploads -Recurse -Force
+}
+
 if (Test-Path "public") {
-    if (Test-Path ".next/standalone/public") { Remove-Item -Path ".next/standalone/public" -Recurse -Force }
+    if (Test-Path $standalonePublic) { Remove-Item -Path $standalonePublic -Recurse -Force }
     Copy-Item -Path "public" -Destination ".next/standalone/" -Recurse -Force
 }
+
+# Restore uploads on top of the fresh public copy
+if (Test-Path $backupUploads) {
+    Write-Host "  Restoring runtime uploads..." -ForegroundColor DarkYellow
+    $restoreDest = ".next/standalone/public/uploads"
+    if (-Not (Test-Path $restoreDest)) { New-Item -ItemType Directory -Force -Path $restoreDest | Out-Null }
+    # Merge: copy each backed-up article directory (don't overwrite with empty dirs)
+    Get-ChildItem -Path $backupUploads | ForEach-Object {
+        $dest = Join-Path $restoreDest $_.Name
+        Copy-Item -Path $_.FullName -Destination $dest -Recurse -Force
+    }
+    Remove-Item -Path $backupUploads -Recurse -Force
+}
+
 if (Test-Path ".next/static") {
     $destStatic = ".next/standalone/.next/static"
     if (Test-Path $destStatic) { Remove-Item -Path $destStatic -Recurse -Force }
@@ -65,6 +92,11 @@ Write-Host "The application is now running. Close this window to shut it down." 
 # In Next.js Standalone mode, we boot the raw server.js file inside the .next/standalone/ directory
 $env:NODE_ENV = "production"
 $env:PORT = "4000"
+
+# APP_ROOT tells images.ts and the serve route where the stable project root is.
+# standalone/server.js does process.chdir(__dirname) which would otherwise make
+# process.cwd() point inside .next/standalone/ (wiped on every update).
+$env:APP_ROOT = (Get-Location).Path
 
 # Execute Standalone
 node .next/standalone/server.js

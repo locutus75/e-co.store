@@ -3,12 +3,17 @@ import { revalidatePath } from "next/cache";
 import fs from "fs";
 import path from "path";
 
-const UPLOADS_DIR = path.join(process.cwd(), "public", "uploads", "products");
+// In Next.js standalone mode, server.js calls process.chdir(__dirname) which
+// moves cwd into .next/standalone/ — a directory that gets wiped on every update.
+// APP_ROOT is set by update_and_run.ps1 to the stable project root so that
+// uploaded files survive deployments.
+const ROOT_DIR = process.env.APP_ROOT || process.cwd();
+const UPLOADS_DIR = path.join(ROOT_DIR, "public", "uploads", "products");
 
 export async function getProductImagesAction(articleNumber: string) {
   if (!articleNumber) return [];
   
-  const dir = path.join(process.cwd(), "public", "uploads", "products", articleNumber);
+  const dir = path.join(ROOT_DIR, "public", "uploads", "products", articleNumber);
   if (!fs.existsSync(dir)) return [];
 
   const files = fs.readdirSync(dir);
@@ -61,12 +66,8 @@ export async function uploadProductImageAction(articleNumber: string, formData: 
       const buffer = Buffer.from(arrayBuffer);
       
       fs.writeFileSync(filePath, buffer);
-      
-      const standaloneDir = path.join(process.cwd(), ".next", "standalone", "public", "uploads", "products", articleNumber);
-      if (fs.existsSync(path.join(process.cwd(), ".next", "standalone"))) {
-        if (!fs.existsSync(standaloneDir)) fs.mkdirSync(standaloneDir, { recursive: true });
-        fs.writeFileSync(path.join(standaloneDir, finalFilename), buffer);
-      }
+      // No mirror copy needed — APP_ROOT points to the stable project root
+      // which is preserved across updates (unlike .next/standalone/public/).
     }
 
     revalidatePath('/products');

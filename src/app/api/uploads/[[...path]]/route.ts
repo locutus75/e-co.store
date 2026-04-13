@@ -2,6 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import { NextRequest, NextResponse } from 'next/server';
 
+// Mirror the ROOT_DIR from images.ts so serve paths match write paths exactly.
+const ROOT_DIR = process.env.APP_ROOT || process.cwd();
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ path?: string[] }> }) {
   const resolvedParams = await params;
   if (!resolvedParams.path || resolvedParams.path.length === 0) {
@@ -12,7 +15,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const normalizedPathParts = resolvedParams.path.map(p => p.replace(/\.\./g, ''));
   
   // Symmetrically resolve exactly as uploadProductImageAction writes it
-  const filePath = path.join(process.cwd(), "public", "uploads", ...normalizedPathParts);
+  const filePath = path.join(ROOT_DIR, "public", "uploads", ...normalizedPathParts);
 
   if (!fs.existsSync(filePath)) {
     // If running in development or standalone but missing, 404
