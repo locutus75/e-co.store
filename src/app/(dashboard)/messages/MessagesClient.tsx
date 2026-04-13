@@ -478,12 +478,21 @@ export default function MessagesClient({
                 ? { flexShrink: 0, overflowY: "auto", maxHeight: "52%", borderBottom: "2px solid var(--border)" }
                 : { flex: 1, overflowY: "auto" }),
             }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <h2 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--text)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem" }}>
+                <h2 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--text)", flex: 1 }}>
                   {compose.parentId ? "Beantwoorden" : "Nieuw bericht"}
                 </h2>
+                <button type="button" onClick={handleSend} disabled={isPending}
+                  style={{
+                    padding: "0.4rem 1rem", borderRadius: "var(--radius)",
+                    border: "none", backgroundColor: "var(--primary)", color: "#1e293b",
+                    cursor: isPending ? "wait" : "pointer", fontWeight: 700, fontSize: "0.82rem",
+                    opacity: isPending ? 0.7 : 1, transition: "opacity 0.2s", whiteSpace: "nowrap", flexShrink: 0,
+                  }}>
+                  {isPending ? "Versturen..." : "Versturen ➤"}
+                </button>
                 <button type="button" onClick={() => setCompose(null)}
-                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.2rem", color: "var(--text-muted)" }}>
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.2rem", color: "var(--text-muted)", flexShrink: 0 }}>
                   ✕
                 </button>
               </div>
@@ -556,21 +565,11 @@ export default function MessagesClient({
               </div>
 
               {sendError && (
-                <div style={{ padding: "0.7rem 1rem", borderRadius: "var(--radius)", backgroundColor: "rgba(239,68,68,0.08)", color: "var(--error)", fontSize: "0.85rem", fontWeight: 600 }}>
+                <div style={{ padding: "0.6rem 0.8rem", borderRadius: "var(--radius)", backgroundColor: "rgba(239,68,68,0.08)", color: "var(--error)", fontSize: "0.82rem", fontWeight: 600 }}>
                   {sendError}
                 </div>
               )}
 
-              <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
-                <button type="button" onClick={() => setCompose(null)}
-                  style={{ padding: "0.65rem 1.2rem", borderRadius: "var(--radius)", border: "1px solid var(--border)", backgroundColor: "var(--surface)", color: "var(--text)", cursor: "pointer", fontWeight: 600 }}>
-                  Annuleer
-                </button>
-                <button type="button" onClick={handleSend} disabled={isPending}
-                  style={{ padding: "0.65rem 1.5rem", borderRadius: "var(--radius)", border: "none", backgroundColor: "var(--primary)", color: "#1e293b", cursor: isPending ? "wait" : "pointer", fontWeight: 700, opacity: isPending ? 0.7 : 1, transition: "opacity 0.2s" }}>
-                  {isPending ? "Versturen..." : "Versturen ➤"}
-                </button>
-              </div>
             </div>
           )}
 
