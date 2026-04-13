@@ -128,30 +128,34 @@ const CHAT_FIELD: FormField = {
 
 /**
  * One-time startup cleanup: removes the "[Gemigreerd vanuit ...]\n" prefix
- * added during initial data migration. Guarded by a SystemSetting flag so it
- * runs exactly once, on the first products-page load after update.
+ * added during initial data migration. Uses LIKE + POSITION to avoid regex
+ * bracket-escaping pitfalls in PostgreSQL. Guarded by a SystemSetting flag.
  */
 async function cleanMigratedRemarkPrefixes(): Promise<void> {
   try {
     const flag = await prisma.$queryRaw<{ value: string }[]>`
-      SELECT "value" FROM "SystemSetting" WHERE "key" = 'migration_remarks_prefix_cleaned' LIMIT 1
+      SELECT "value" FROM "SystemSetting"
+      WHERE "key" = 'migration_remarks_prefix_cleaned_v2' LIMIT 1
     `;
     if (flag && flag.length > 0) return; // already done
 
-    // Strip any prefix of the form "[Gemigreerd vanuit ...]\n"
+    // Find rows that start with the legacy prefix and strip everything up to
+    // (and including) the first newline, leaving only the actual remark text.
+    // LIKE '[Gemigreerd vanuit %' — '[' is not a wildcard in PostgreSQL LIKE,
+    // so no escaping needed. POSITION returns 0 if not found.
     await prisma.$executeRaw`
       UPDATE "ProductRemark"
-      SET    "message" = REGEXP_REPLACE("message", E'^\\[Gemigreerd vanuit [^\\]]+\\]\\n', '', 'g')
-      WHERE  "message" ~ E'^\\[Gemigreerd vanuit '
+      SET    "message" = SUBSTRING("message", POSITION(E'\n' IN "message") + 1)
+      WHERE  "message" LIKE '[Gemigreerd vanuit %'
+        AND  POSITION(E'\n' IN "message") > 0
     `;
 
     await prisma.$executeRaw`
       INSERT INTO "SystemSetting" ("key", "value")
-      VALUES ('migration_remarks_prefix_cleaned', 'true')
+      VALUES ('migration_remarks_prefix_cleaned_v2', 'true')
       ON CONFLICT ("key") DO NOTHING
     `;
   } catch (e) {
-    // Non-fatal — will retry on next boot
     console.warn('[startup] cleanMigratedRemarkPrefixes error:', e);
   }
 }

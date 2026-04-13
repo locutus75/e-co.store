@@ -262,12 +262,12 @@ export default function ProductRemarksChat({
                     </div>
                   ) : (
                     <div style={{
-                      backgroundColor: isMine ? resolvedColor : 'var(--surface)',
-                      color: isMine ? 'white' : 'var(--text)',
+                      backgroundColor: resolvedColor,
+                      color: 'white',
                       padding: '0.45rem 0.75rem',
                       borderRadius: isMine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
                       fontSize: '0.85rem', lineHeight: 1.45,
-                      border: isMine ? 'none' : '1px solid var(--border)',
+                      border: 'none',
                       boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
                       whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                     }}>
