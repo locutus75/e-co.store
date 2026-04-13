@@ -202,6 +202,15 @@ export default function MessagesClient({
   const [lightbox, setLightbox] = useState<{ url: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const threadEndRef = useRef<HTMLDivElement>(null);
+  const bodyTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-focus the body textarea whenever a reply compose form opens
+  useEffect(() => {
+    if (compose?.parentId) {
+      const t = setTimeout(() => bodyTextareaRef.current?.focus(), 80);
+      return () => clearTimeout(t);
+    }
+  }, [compose?.parentId]);
 
   const currentUser: MsgUser = { id: currentUserId, email: currentUserEmail, chatColor: currentUserChatColor };
 
@@ -457,11 +466,18 @@ export default function MessagesClient({
         </div>
 
         {/* ── Right: thread or compose ──────────────────────────────────── */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
-          {/* COMPOSE */}
+          {/* COMPOSE — always visible when compose !== null */}
           {compose !== null && (
-            <div style={{ flex: 1, padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div style={{
+              padding: "1.5rem",
+              display: "flex", flexDirection: "column", gap: "1rem",
+              // When reply: fixed height slice so thread is visible below
+              ...(compose.parentId
+                ? { flexShrink: 0, overflowY: "auto", maxHeight: "52%", borderBottom: "2px solid var(--border)" }
+                : { flex: 1, overflowY: "auto" }),
+            }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <h2 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--text)" }}>
                   {compose.parentId ? "Beantwoorden" : "Nieuw bericht"}
@@ -504,11 +520,12 @@ export default function MessagesClient({
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.35rem" }}>
                 <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Bericht</label>
                 <textarea
+                  ref={bodyTextareaRef}
                   className="input"
                   value={compose.body}
                   onChange={(e) => setCompose((c) => c && { ...c, body: e.target.value })}
                   placeholder="Schrijf je bericht hier..."
-                  style={{ flex: 1, minHeight: "200px", resize: "vertical", fontFamily: "inherit", lineHeight: 1.6 }}
+                  style={{ flex: 1, minHeight: compose.parentId ? "120px" : "200px", resize: "vertical", fontFamily: "inherit", lineHeight: 1.6 }}
                 />
               </div>
 
@@ -557,15 +574,22 @@ export default function MessagesClient({
             </div>
           )}
 
-          {/* THREAD */}
-          {compose === null && selectedMsgId && (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+          {/* THREAD — shown when: (a) no compose and message selected, or (b) reply compose open */}
+          {selectedMsgId && (compose === null || compose.parentId !== null) && (
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              {/* Divider shown when reply compose is open */}
+              {compose?.parentId && (
+                <div style={{ padding: "0.4rem 1.5rem", backgroundColor: "var(--surface)", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Voorgaand gesprek</span>
+                </div>
+              )}
               {threadLoading ? (
                 <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem" }}>Laden...</div>
               ) : (
                 <>
                   <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-                    {thread.map((msg, idx) => {
+                    {/* In reply mode: reverse so newest is at top */}
+                    {(compose?.parentId ? [...thread].reverse() : thread).map((msg, idx) => {
                       const isMine = msg.fromUser.id === currentUserId;
                       const color = getAvatarColor(msg.fromUser.email, msg.fromUser.chatColor);
                       return (
@@ -597,11 +621,11 @@ export default function MessagesClient({
                                 </div>
                               )}
 
-                              {/* Bubble */}
+                              {/* Bubble — own messages in profile color, others get a light tint of their color */}
                               <div style={{
-                                backgroundColor: isMine ? color : "var(--surface)",
+                                backgroundColor: isMine ? color : `${color}1a`,
                                 color: isMine ? "white" : "var(--text)",
-                                border: isMine ? "none" : "1px solid var(--border)",
+                                border: isMine ? "none" : `1px solid ${color}40`,
                                 borderRadius: isMine ? "16px 4px 16px 16px" : "4px 16px 16px 16px",
                                 padding: "0.75rem 1rem", whiteSpace: "pre-wrap", lineHeight: 1.65,
                                 fontSize: "0.88rem", boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
