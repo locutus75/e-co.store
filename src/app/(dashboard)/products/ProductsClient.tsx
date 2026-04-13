@@ -1,6 +1,6 @@
 "use client";
 import { useRouter } from 'next/navigation';
-import React, { useState, useMemo, useTransition, useEffect } from 'react';
+import React, { useState, useMemo, useTransition, useEffect, useCallback } from 'react';
 import ProductDrawer from '@/components/ProductDrawer';
 import ExcelImportWizard from '@/components/ExcelImportWizard';
 import { deleteProductsAction, updateReadyForImportAction, updateProductStatusAction, bulkAssignAction } from '@/app/actions/product';
@@ -114,7 +114,9 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
   // ── Unread messages indicator ──────────────────────────────────────────
   const [unreadProducts, setUnreadProducts] = useState<Set<string>>(new Set());
 
-  const checkUnreadProducts = () => {
+  // Memoised so it re-creates (and re-fires effects) when initialProducts
+  // changes — i.e. after every router.refresh() cycle below.
+  const checkUnreadProducts = useCallback(() => {
     if (typeof window === 'undefined') return;
     const unread = new Set<string>();
     for (const product of initialProducts) {
@@ -129,15 +131,15 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
       }
     }
     setUnreadProducts(unread);
-  };
+  }, [initialProducts, currentUserId]);
 
-  // Check on mount
-  useEffect(() => { checkUnreadProducts(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Runs on mount AND whenever initialProducts is refreshed by the auto-sync below
+  useEffect(() => { checkUnreadProducts(); }, [checkUnreadProducts]);
 
   // Re-check when drawer closes (chat has updated localStorage)
   useEffect(() => {
     if (!selectedProduct) checkUnreadProducts();
-  }, [selectedProduct]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedProduct, checkUnreadProducts]);
 
   const getLayoutLabel = (fieldId: string, defaultLabel: string) => {
     if (!layout) return defaultLabel;
@@ -149,12 +151,12 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
     return defaultLabel;
   };
 
-  // Auto-Sync Background Engine
+  // Auto-Sync Background Engine — also triggers checkUnreadProducts via the
+  // useCallback dependency chain when fresh initialProducts arrive.
   useEffect(() => {
     const interval = setInterval(() => {
-      // Soft-refresh the server component silently to sync data across all active instances
       router.refresh();
-    }, 15000); // 15 seconds
+    }, 10000); // 10 seconds — balanced for near-real-time badge updates
     return () => clearInterval(interval);
   }, [router]);
 
