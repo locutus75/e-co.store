@@ -61,25 +61,25 @@ export default async function DashboardLayout({ children }: { children: ReactNod
             <Link href="/" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', backgroundColor: 'transparent', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Dashboard</Link>
           )}
           {canAccess('MENU:products') && (
-            <Link href="/products" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', backgroundColor: 'transparent', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Products</Link>
+            <Link href="/products" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', backgroundColor: 'transparent', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Producten</Link>
           )}
           {canAccess('MENU:messages') && (
             <MessagesNavBadge initialCount={unreadCount} />
           )}
           {canAccess('MENU:categories') && (
-            <Link href="/" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Categories</Link>
+            <Link href="/" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Categorieën</Link>
           )}
           {canAccess('MENU:assignments') && (
-            <Link href="/assignments" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Assignments</Link>
+            <Link href="/assignments" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Toewijzingen</Link>
           )}
           {canAccess('MENU:users') && (
-            <Link href="/admin" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Team & Users</Link>
+            <Link href="/admin" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Team & Gebruikers</Link>
           )}
           {canAccess('MENU:roles') && (
-            <Link href="/roles" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Roles & Security</Link>
+            <Link href="/roles" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Rollen & Rechten</Link>
           )}
           {canAccess('MENU:system') && (
-            <Link href="/admin/system" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>System Settings</Link>
+            <Link href="/admin/system" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Systeeminstellingen</Link>
           )}
         </nav>
       </aside>

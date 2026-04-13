@@ -4,12 +4,14 @@ import { setRolePermissionAction, createRoleAction, renameRoleAction, deleteRole
 import FormLayoutBuilder from '@/components/FormLayoutBuilder';
 
 const MENU_MODULES = [
-  { module: 'MENU:dashboard', label: 'Dashboard Toegang' },
-  { module: 'MENU:products', label: 'Producten Toegang' },
-  { module: 'MENU:categories', label: 'Categorieën Toegang' },
-  { module: 'MENU:assignments', label: 'Toewijzingen Toegang' },
-  { module: 'MENU:users', label: 'Team & Gebruikers Toegang' },
-  { module: 'MENU:roles', label: 'Rollen & Rechten Toegang' },
+  { module: 'MENU:dashboard',   label: 'Dashboard' },
+  { module: 'MENU:products',    label: 'Producten' },
+  { module: 'MENU:messages',    label: 'Berichten' },
+  { module: 'MENU:categories',  label: 'Categorieën' },
+  { module: 'MENU:assignments', label: 'Toewijzingen' },
+  { module: 'MENU:users',       label: 'Team & Gebruikers' },
+  { module: 'MENU:roles',       label: 'Rollen & Rechten' },
+  { module: 'MENU:system',      label: 'Systeeminstellingen' },
 ];
 
 const FIELD_MODULES = [
@@ -129,7 +131,7 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
       
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
          <div>
-           <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)' }}>Roles & Security</h1>
+           <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)' }}>Rollen \& Rechten</h1>
            <p style={{ color: 'var(--text-muted)', fontSize: '1rem', marginTop: '0.2rem' }}>Configureer menu- en veldrechten per gebruikersrol.</p>
          </div>
 
@@ -149,7 +151,7 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
       </div>
 
       <div style={{ padding: '1rem 1.5rem', backgroundColor: 'rgba(225, 191, 220, 0.1)', border: '1px solid var(--primary)', borderRadius: 'var(--radius)', color: 'var(--text-muted)' }}>
-        <strong>Note:</strong> De <strong>ADMIN</strong> rol beschikt standaard over alle rechten. De weergave voor admin configuratie is verborgen omdat deze niet kan worden gedeactiveerd.
+        <strong>Let op:</strong> De <strong>ADMIN</strong> rol beschikt standaard over alle rechten. De weergave voor admin configuratie is verborgen omdat deze niet kan worden gedeactiveerd.
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '2rem', alignItems: 'start' }}>
@@ -283,9 +285,9 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
                           value={currentAction}
                           onChange={(e) => handleActionChange(selectedRoleForFields.id, moduleName, e.target.value)}
                         >
-                          <option value="WRITE">📝 Bewerken (Write)</option>
-                          <option value="READ">👀 Alleen Lezen (Read)</option>
-                          <option value="HIDDEN">🚫 Verborgen (Hidden)</option>
+                          <option value="WRITE">📝 Bewerken</option>
+                          <option value="READ">👀 Alleen Lezen</option>
+                          <option value="HIDDEN">🚫 Verborgen</option>
                         </select>
                       </div>
                     );
