@@ -149,6 +149,15 @@ export async function markReadAction(messageId: string): Promise<void> {
   revalidatePath("/messages");
 }
 
+export async function markUnreadAction(messageId: string): Promise<void> {
+  const myId = await currentUserId();
+  await prisma.messageRecipient.updateMany({
+    where: { messageId, toUserId: myId },
+    data: { readAt: null },
+  });
+  revalidatePath("/messages");
+}
+
 export async function sendMessageAction(
   formData: FormData
 ): Promise<{ success?: boolean; error?: string; messageId?: string }> {

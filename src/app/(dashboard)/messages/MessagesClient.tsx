@@ -7,6 +7,7 @@ import {
   getUnreadCountAction,
   sendMessageAction,
   markReadAction,
+  markUnreadAction,
   deleteMessageAction,
   type MessageEntry,
   type MsgUser,
@@ -333,6 +334,22 @@ export default function MessagesClient({
       await deleteMessageAction(msgId, box);
       setMessages((prev) => prev.filter((m) => m.id !== msgId));
       if (selectedMsgId === msgId) { setSelectedMsgId(null); setThread([]); }
+    });
+  };
+
+  const handleMarkUnread = (msgId: string) => {
+    startT(async () => {
+      await markUnreadAction(msgId);
+      // Update the list row to show the unread indicator again
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msgId ? { ...m, myReadAt: null } : m))
+      );
+      // Update the thread bubble (so the button disappears immediately)
+      setThread((prev) =>
+        prev.map((m) => (m.id === msgId ? { ...m, myReadAt: null } : m))
+      );
+      // Increment the local+badge unread count
+      setUnread((n) => n + 1);
     });
   };
 
@@ -694,6 +711,15 @@ export default function MessagesClient({
                                   onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border)")}>
                                   ↩ Beantwoorden
                                 </button>
+                                {/* "Mark as unread" — visible only in inbox, on received messages that have already been read */}
+                                {box === "inbox" && !isMine && msg.myReadAt !== null && msg.myReadAt !== undefined && (
+                                  <button type="button" onClick={() => handleMarkUnread(msg.id)} disabled={isPending}
+                                    style={{ padding: "0.2rem 0.7rem", borderRadius: "var(--radius)", border: "1px solid var(--border)", backgroundColor: "var(--surface)", color: "var(--text-muted)", fontWeight: 600, fontSize: "0.72rem", cursor: "pointer", transition: "all 0.15s" }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = color; e.currentTarget.style.color = color; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-muted)"; }}>
+                                    ✉ Ongelezen
+                                  </button>
+                                )}
                                 {(isMine || box === "inbox") && (
                                   <button type="button" onClick={() => handleDelete(msg.id)} disabled={isPending}
                                     style={{ padding: "0.2rem 0.7rem", borderRadius: "var(--radius)", border: "1px solid var(--border)", backgroundColor: "var(--surface)", color: "var(--error)", fontWeight: 600, fontSize: "0.72rem", cursor: "pointer", transition: "border-color 0.15s" }}
