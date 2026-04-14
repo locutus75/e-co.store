@@ -183,8 +183,13 @@ export async function updateProductAction(internalId: string, formData: FormData
     if (field.type === 'checkbox') {
       if (isNativeBoolean) {
         processedValue = formData.has(key); // native checkbox sends "on" or nothing
+      } else if (key.startsWith('crit')) {
+        // Crit fields are rendered as ThreeWayToggle which always submits 'Ja', 'Nee', or 'Leeg'
+        // via a hidden input — so we must read the actual value, not just check presence.
+        const threeWayVal = val?.toString();
+        processedValue = (threeWayVal === 'Ja' || threeWayVal === 'Nee') ? threeWayVal : null;
       } else {
-        // If it's a Prisma String mapped as a checkbox, coerce to 'Ja'/'Nee' based on presence
+        // Other string-backed checkboxes (JaNeeToggle) send 'on' when checked, nothing when unchecked
         processedValue = formData.has(key) ? 'Ja' : 'Nee';
       }
     } else if (field.type === 'threeway') {

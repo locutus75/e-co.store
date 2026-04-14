@@ -433,7 +433,7 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                   onClick={() => setShowCustomModal(secIdx)} 
                   style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', padding: '0.2rem 0.6rem', marginLeft: '0.5rem' }}
                 >
-                  + Velden Toevegen
+                  + Veld toevoegen
                 </button>
               </div>
             </div>
