@@ -57,6 +57,41 @@ function isImageFile(filename: string) {
   return /\.(jpg|jpeg|png|webp|gif|avif)$/i.test(filename);
 }
 
+/**
+ * Splits plain text on URLs and returns a React node array where every URL
+ * is wrapped in a clickable <a> that opens in a new tab.
+ */
+function renderWithLinks(text: string): React.ReactNode[] {
+  const URL_RE = /https?:\/\/[^\s<>"']+/g;
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = URL_RE.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    const url = match[0];
+    parts.push(
+      <a
+        key={match.index}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          color: "inherit",
+          textDecoration: "underline",
+          opacity: 0.85,
+          wordBreak: "break-all",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {url}
+      </a>
+    );
+    last = match.index + url.length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
 function Avatar({ user, size = 32 }: { user: MsgUser; size?: number }) {
@@ -646,7 +681,7 @@ export default function MessagesClient({
                                 padding: "0.75rem 1rem", whiteSpace: "pre-wrap", lineHeight: 1.65,
                                 fontSize: "0.88rem", boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
                               }}>
-                                {msg.body}
+                                {renderWithLinks(msg.body)}
                               </div>
 
                               {/* Attachments */}

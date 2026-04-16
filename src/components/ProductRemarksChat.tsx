@@ -38,6 +38,41 @@ function isWithin5Min(iso: string) {
   return Date.now() - new Date(iso).getTime() < 5 * 60 * 1000;
 }
 
+/**
+ * Splits plain text on URLs and returns a React node array where every URL
+ * is wrapped in a clickable <a> that opens in a new tab.
+ */
+function renderWithLinks(text: string): React.ReactNode[] {
+  const URL_RE = /https?:\/\/[^\s<>"']+/g;
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = URL_RE.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    const url = match[0];
+    parts.push(
+      <a
+        key={match.index}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          color: 'inherit',
+          textDecoration: 'underline',
+          opacity: 0.85,
+          wordBreak: 'break-all',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {url}
+      </a>
+    );
+    last = match.index + url.length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
 /** localStorage key for tracking when this user last read this chat. */
 function lastSeenKey(userId: string, articleNumber: string) {
   return `chat_last_seen_${userId}_${articleNumber}`;
@@ -332,7 +367,7 @@ export default function ProductRemarksChat({
                       boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
                       whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                     }}>
-                      {r.message}
+                      {renderWithLinks(r.message)}
                     </div>
                   )}
 
