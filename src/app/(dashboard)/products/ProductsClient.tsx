@@ -105,7 +105,7 @@ function InlineReadyToggle({ product, isAdmin }: { product: any, isAdmin: boolea
   );
 }
 
-export default function ProductsClient({ initialProducts, systemUsers = [], isAdmin = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null }) {
+export default function ProductsClient({ initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, canAssignProducts?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null }) {
   const router = useRouter();
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
@@ -253,7 +253,7 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)' }}>Products Database</h1>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          {selectedIds.size > 0 && isAdmin && (
+          {selectedIds.size > 0 && (isAdmin || canAssignProducts) && (
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: 'var(--surface-hover)', padding: '0.2rem 0.5rem', borderRadius: 'var(--radius)' }}>
               <select 
                 className="input"
@@ -269,14 +269,16 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
                 ))}
               </select>
               
-              <button 
-                className="btn" 
-                style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', backgroundColor: 'var(--error)', border: 'none', cursor: isDeleting ? 'wait' : 'pointer', color: 'white' }}
-                onClick={executeBulkDelete}
-                disabled={isDeleting}
-              >
-                {isDeleting ? '...' : `🗑 Verwijder`}
-              </button>
+              {isAdmin && (
+                <button 
+                  className="btn" 
+                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', backgroundColor: 'var(--error)', border: 'none', cursor: isDeleting ? 'wait' : 'pointer', color: 'white' }}
+                  onClick={executeBulkDelete}
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? '...' : `🗑 Verwijder`}
+                </button>
+              )}
             </div>
           )}
           {isAdmin && (
@@ -347,7 +349,7 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
           <option value="REVIEW">Review (R)</option>
           <option value="JA">Yes (Y)</option>
         </select>
-        {isAdmin && (
+        {(isAdmin || canAssignProducts) && (
           <select 
             className="input" 
             style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
@@ -381,7 +383,7 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
                 />
               </th>
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:internalArticleNumber', 'Article ID')}</th>
-              {isAdmin && <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Toewijzing</th>}
+              {(isAdmin || canAssignProducts) && <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Toewijzing</th>}
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:supplierId', 'Leverancier')}</th>
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:brandId', 'Merk')}</th>
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:title', 'Title')}</th>
@@ -407,15 +409,14 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
                   />
                 </td>
                 <td style={{ padding: '1.25rem', fontWeight: 600, color: 'var(--text)' }}>{product.internalArticleNumber}</td>
-                {isAdmin && (
+                {(isAdmin || canAssignProducts) && (
                   <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
                     <select 
                       value={product.assignedUserId || 'NONE'}
-                      disabled={!isAdmin}
                       onChange={(e) => {
                         startTransition(async () => { await bulkAssignAction([product.internalArticleNumber], e.target.value); });
                       }}
-                      style={{ border: 'none', backgroundColor: 'transparent', color: product.assignedUserId ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', cursor: isAdmin ? 'pointer' : 'not-allowed' }}
+                      style={{ border: 'none', backgroundColor: 'transparent', color: product.assignedUserId ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
                     >
                       <option value="NONE">-</option>
                       {systemUsers.map(su => (

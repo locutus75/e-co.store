@@ -8,23 +8,6 @@ export default async function ProductsPage() {
   const roles = (session?.user as any)?.roles || [];
   const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
   const userId = (session?.user as any)?.id;
-  
-  let products = await prisma.product.findMany({
-    where: isAdmin ? undefined : {
-      assignedUserId: userId
-    },
-    orderBy: { createdAt: 'desc' },
-    include: {
-      brand: true,
-      supplier: true,
-      assignedUser: true,
-      remarks: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-        select: { createdAt: true, userId: true }
-      }
-    }
-  });
 
   const users = await prisma.user.findMany({
     orderBy: { email: 'asc' }
@@ -45,6 +28,30 @@ export default async function ProductsPage() {
     }
   });
 
+  const hasAssignmentsRight = userRecord?.userRoles.some((ur: any) =>
+    ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:assignments' && rp.action === 'ALLOW')
+  ) || false;
+
+  const canSeeAllProducts = isAdmin || hasAssignmentsRight;
+  const canAssignProducts = isAdmin || hasAssignmentsRight;
+  
+  let products = await prisma.product.findMany({
+    where: canSeeAllProducts ? undefined : {
+      assignedUserId: userId
+    },
+    orderBy: { createdAt: 'desc' },
+    include: {
+      brand: true,
+      supplier: true,
+      assignedUser: true,
+      remarks: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: { createdAt: true, userId: true }
+      }
+    }
+  });
+
   const fieldPermissions: Record<string, string> = {};
   if (!isAdmin && userRecord) {
     userRecord.userRoles.forEach((ur: any) => {
@@ -61,5 +68,5 @@ export default async function ProductsPage() {
   const { getFormLayoutAction } = await import('@/app/actions/formLayouts');
   const layout = await getFormLayoutAction();
 
-  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} fieldPermissions={fieldPermissions} layout={layout} currentUserId={userId || ''} currentUserChatColor={(userRecord as any)?.chatColor || null} />;
+  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} canAssignProducts={canAssignProducts} fieldPermissions={fieldPermissions} layout={layout} currentUserId={userId || ''} currentUserChatColor={(userRecord as any)?.chatColor || null} />;
 }
