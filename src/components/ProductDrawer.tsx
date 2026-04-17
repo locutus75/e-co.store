@@ -273,6 +273,31 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     const effectiveTextColor = f.textColor || section?.textColor || 'var(--text)';
     
     let val;
+
+    // ── Relation fields: resolve dotted path on the product object ───────────
+    if (f.type === 'relation' && f.relationPath) {
+      const parts = f.relationPath.split('.');
+      let resolved: any = localProductData;
+      for (const p of parts) { resolved = resolved?.[p]; }
+      // For email addresses (assignedUser) strip the domain for brevity
+      const displayVal = typeof resolved === 'string' && resolved.includes('@')
+        ? resolved.split('@')[0]
+        : (resolved?.toString() ?? null);
+
+      let span = f.width ? Number(f.width) : 8;
+      if (isNaN(span)) span = 8;
+
+      return (
+        <div key={f.id} style={{ gridColumn: `span ${span}`, backgroundColor: f.backgroundColor || 'transparent', padding: f.backgroundColor ? '0.75rem' : '0', borderRadius: 'var(--radius)', color: effectiveTextColor }}>
+          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'inherit', opacity: 0.7, marginBottom: '0.4rem' }}>{f.label}</label>
+          <div className="input" style={{ backgroundColor: 'rgba(0,0,0,0.02)', color: 'inherit', opacity: 0.75, cursor: 'default', border: '1px solid rgba(0,0,0,0.05)', minHeight: '38px', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>🔗</span>
+            {displayVal || <span style={{ opacity: 0.4, fontStyle: 'italic' }}>—</span>}
+          </div>
+        </div>
+      );
+    }
+
     if (key.startsWith('custom_')) {
       val = localProductData?.customData ? localProductData.customData[key.replace('custom_', '')] : null;
     } else {
@@ -357,6 +382,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
       </div>
     );
   };
+
 
   return (
     <>

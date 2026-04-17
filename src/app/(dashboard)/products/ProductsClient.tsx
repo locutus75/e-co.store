@@ -15,6 +15,36 @@ export const getStatusColor = (status: string) => {
   }
 };
 
+/**
+ * Builds a Google search URL for a product using the fields marked `useForSearch`
+ * in the form layout. Resolves both plain fields (product.title) and relation
+ * fields via a dotted relationPath (product.brand.name).
+ */
+function buildGoogleSearchUrl(product: any, layout: any[]): string | null {
+  const parts: string[] = [];
+  for (const section of layout) {
+    for (const field of (section.fields ?? [])) {
+      if (!field.useForSearch) continue;
+      let value: any;
+      if (field.relationPath) {
+        // e.g. 'brand.name' → product.brand?.name
+        value = field.relationPath.split('.').reduce((obj: any, key: string) => obj?.[key], product);
+      } else {
+        const key = field.id.replace('FIELD:', '');
+        if (key.startsWith('custom_')) {
+          value = product.customData?.[key.replace('custom_', '')];
+        } else {
+          value = product[key];
+        }
+      }
+      const str = value?.toString().trim();
+      if (str) parts.push(str);
+    }
+  }
+  if (parts.length === 0) return null;
+  return 'https://www.google.com/search?q=' + parts.map(p => encodeURIComponent(p)).join('+');
+}
+
 function InlineStatusToggle({ product, isAdmin }: { product: any, isAdmin: boolean }) {
   const [isPending, startTransition] = useTransition();
   const currentStatus = (product.status || 'NEW').toUpperCase();
@@ -408,7 +438,36 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
                     style={{ cursor: 'pointer' }}
                   />
                 </td>
-                <td style={{ padding: '1.25rem', fontWeight: 600, color: 'var(--text)' }}>{product.internalArticleNumber}</td>
+                <td style={{ padding: '1.25rem', fontWeight: 600, color: 'var(--text)' }}>
+                  {(() => {
+                    const googleUrl = buildGoogleSearchUrl(product, layout);
+                    if (!googleUrl) return product.internalArticleNumber;
+                    return (
+                      <a
+                        href={googleUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        title="Google zoeken op basis van gemarkeerde velden"
+                        style={{
+                          color: 'var(--primary)',
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.3rem',
+                          borderBottom: '1px dashed var(--primary)',
+                          paddingBottom: '1px',
+                          transition: 'opacity 0.15s',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.opacity = '0.7')}
+                        onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+                      >
+                        {product.internalArticleNumber}
+                        <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>🔍</span>
+                      </a>
+                    );
+                  })()}
+                </td>
                 {(isAdmin || canAssignProducts) && (
                   <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
                     <select 

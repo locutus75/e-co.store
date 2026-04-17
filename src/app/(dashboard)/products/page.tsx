@@ -43,6 +43,8 @@ export default async function ProductsPage() {
     include: {
       brand: true,
       supplier: true,
+      category: true,
+      subcategory: true,
       assignedUser: true,
       remarks: {
         orderBy: { createdAt: 'desc' },

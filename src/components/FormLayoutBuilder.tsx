@@ -2,6 +2,132 @@
 import React, { useState, useTransition, useEffect, useRef } from 'react';
 import { FormSection, saveFormLayoutAction, FormField, bulkMigrateInternalRemarksAction } from '@/app/actions/formLayouts';
 
+// ── Product column definitions (derived from Prisma schema) ──────────────────
+const PRODUCT_COLUMNS: {
+  group: string;
+  cols: { label: string; field: string; type: string; isRelation?: boolean; relationPath?: string }[]
+}[] = [
+  {
+    group: 'Identificatie',
+    cols: [
+      { label: 'Artikelnummer', field: 'internalArticleNumber', type: 'text' },
+      { label: 'EAN Code',      field: 'ean',                   type: 'text' },
+      { label: 'Titel',         field: 'title',                 type: 'text' },
+      { label: 'Status',        field: 'status',                type: 'text' },
+      { label: 'Webshop Slug',  field: 'webshopSlug',           type: 'text' },
+    ],
+  },
+  {
+    group: 'Relaties',
+    cols: [
+      { label: 'Merk',           field: 'brand.name',     type: 'relation', isRelation: true, relationPath: 'brand.name' },
+      { label: 'Leverancier',    field: 'supplier.name',  type: 'relation', isRelation: true, relationPath: 'supplier.name' },
+      { label: 'Categorie',      field: 'category.name',  type: 'relation', isRelation: true, relationPath: 'category.name' },
+      { label: 'Subcategorie',   field: 'subcategory.name', type: 'relation', isRelation: true, relationPath: 'subcategory.name' },
+      { label: 'Toegewezen Aan', field: 'assignedUser.email', type: 'relation', isRelation: true, relationPath: 'assignedUser.email' },
+    ],
+  },
+  {
+    group: 'Omschrijving & Content',
+    cols: [
+      { label: 'Korte Omschrijving', field: 'shortDescription', type: 'textarea' },
+      { label: 'Lange Omschrijving', field: 'longDescription',  type: 'textarea' },
+      { label: 'Kleur',             field: 'color',            type: 'text' },
+      { label: 'Maat',              field: 'size',             type: 'text' },
+      { label: 'Materiaal',         field: 'material',         type: 'text' },
+      { label: 'Tags',              field: 'tags',             type: 'text' },
+    ],
+  },
+  {
+    group: 'Afmetingen & Gewicht',
+    cols: [
+      { label: 'Gewicht (gr)',  field: 'weightGr', type: 'number' },
+      { label: 'Lengte (cm)',   field: 'lengthCm', type: 'number' },
+      { label: 'Breedte (cm)',  field: 'widthCm',  type: 'number' },
+      { label: 'Hoogte (cm)',   field: 'heightCm', type: 'number' },
+      { label: 'Volume (ml)',   field: 'volumeMl', type: 'number' },
+      { label: 'Volume (gr)',   field: 'volumeGr', type: 'number' },
+    ],
+  },
+  {
+    group: 'Samenstelling',
+    cols: [
+      { label: 'Ingrediënten',    field: 'ingredients',   type: 'textarea' },
+      { label: 'Allergenen',      field: 'allergens',     type: 'text' },
+      { label: 'Hoofdmateriaal',  field: 'mainMaterial',  type: 'text' },
+    ],
+  },
+  {
+    group: 'Status & Beheer',
+    cols: [
+      { label: 'Klaar voor Import',    field: 'readyForImport',      type: 'text' },
+      { label: 'Webshop (Actief)',     field: 'webshopActive',       type: 'checkbox' },
+      { label: 'Actief (Systeem)',     field: 'systemActive',        type: 'checkbox' },
+      { label: 'Leverancier Contact',  field: 'supplierContacted',   type: 'text' },
+      { label: 'Kwaliteitscontrole',   field: 'qualityControlStatus', type: 'text' },
+      { label: 'Export Status',        field: 'exportStatus',        type: 'text' },
+      { label: 'Publicatierijp',       field: 'publicationReady',    type: 'checkbox' },
+    ],
+  },
+  {
+    group: 'Prijs',
+    cols: [
+      { label: 'Basisprijs (€)', field: 'basePrice', type: 'number' },
+    ],
+  },
+  {
+    group: 'SEO',
+    cols: [
+      { label: 'SEO Titel',           field: 'seoTitle',           type: 'text' },
+      { label: 'SEO Meta Beschrijving', field: 'seoMetaDescription', type: 'textarea' },
+    ],
+  },
+  {
+    group: 'Interne Notities',
+    cols: [
+      { label: 'Interne Opmerkingen', field: 'internalRemarks', type: 'textarea' },
+      { label: 'Interne Notities',    field: 'internalNotes',   type: 'textarea' },
+    ],
+  },
+  {
+    group: 'Criteria – Mens',
+    cols: [
+      { label: 'Veilig Werk',       field: 'critMensSafeWork',  type: 'text' },
+      { label: 'Eerlijk Loon',      field: 'critMensFairWage',  type: 'text' },
+      { label: 'Sociaal',           field: 'critMensSocial',    type: 'text' },
+    ],
+  },
+  {
+    group: 'Criteria – Dier',
+    cols: [
+      { label: 'Cruelty Free',     field: 'critDierCrueltyFree', type: 'text' },
+      { label: 'Diervriendelijk',  field: 'critDierFriendly',    type: 'text' },
+    ],
+  },
+  {
+    group: 'Criteria – Milieu',
+    cols: [
+      { label: 'Verpakkingsvrij',    field: 'critMilieuPackagingFree',    type: 'text' },
+      { label: 'Plasticvrij',        field: 'critMilieuPlasticFree',      type: 'text' },
+      { label: 'Recyclebaar',        field: 'critMilieuRecyclable',       type: 'text' },
+      { label: 'Biologisch Afbreekbaar', field: 'critMilieuBiodegradable', type: 'text' },
+      { label: 'Composteerbaar',     field: 'critMilieuCompostable',      type: 'text' },
+      { label: 'CO₂ Gecompenseerd',  field: 'critMilieuCarbonCompensated', type: 'text' },
+    ],
+  },
+  {
+    group: 'Criteria – Transport & Overig',
+    cols: [
+      { label: 'Transportafstand',  field: 'critTransportDistance',  type: 'number' },
+      { label: 'Transportmiddel',   field: 'critTransportVehicle',   type: 'text' },
+      { label: 'Handgemaakt',       field: 'critHandmade',           type: 'text' },
+      { label: 'Natuurlijk',        field: 'critNatural',            type: 'text' },
+      { label: 'Circulair',         field: 'critCircular',           type: 'text' },
+      { label: 'Overige Criteria',  field: 'critOther',              type: 'text' },
+    ],
+  },
+];
+
 export default function FormLayoutBuilder({ initialLayout }: { initialLayout: FormSection[] }) {
   const [layout, setLayout] = useState<FormSection[]>(initialLayout);
   const [isPending, startTransition] = useTransition();
@@ -26,6 +152,13 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
   const [customName, setCustomName] = useState('');
   const [customType, setCustomType] = useState('text');
   const [customOptions, setCustomOptions] = useState('');
+  const [columnSearch, setColumnSearch] = useState('');
+  const [showColumnPicker, setShowColumnPicker] = useState(false);
+  /** When a column is selected from the picker this is set to `FIELD:fieldName`.
+   *  When null a new custom_xxx ID is generated instead. */
+  const [customFieldId, setCustomFieldId] = useState<string | null>(null);
+  /** For relation fields: the dotted path to resolve (e.g. 'brand.name'). */
+  const [customRelationPath, setCustomRelationPath] = useState<string | null>(null);
 
   const moveSection = (index: number, direction: -1 | 1) => {
     if (index + direction < 0 || index + direction >= layout.length) return;
@@ -91,6 +224,15 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
         ...newLayout[secIdx].fields[fieldIdx], 
         options: optionsStr.split(',').map(o => o.trim()).filter(Boolean)
       };
+      return newLayout;
+    });
+  };
+
+  const updateFieldUseForSearch = (secIdx: number, fieldIdx: number, value: boolean) => {
+    setLayout(prevLayout => {
+      const newLayout = [...prevLayout];
+      newLayout[secIdx] = { ...newLayout[secIdx], fields: [...newLayout[secIdx].fields] };
+      newLayout[secIdx].fields[fieldIdx] = { ...newLayout[secIdx].fields[fieldIdx], useForSearch: value };
       return newLayout;
     });
   };
@@ -168,9 +310,11 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
     if (showCustomModal === null) return;
     if (!customName.trim()) return alert("Vul een naam in");
     
-    // Generate a unique ID that starts with CUSTOM:
-    const randomHex = Math.floor(Math.random()*16777215).toString(16);
-    const id = `FIELD:custom_${randomHex}_${Date.now()}`;
+    // If a column was selected from the picker reuse its FIELD: id;
+    // otherwise generate a unique custom ID.
+    const id = customFieldId
+      ? customFieldId
+      : `FIELD:custom_${Math.floor(Math.random()*16777215).toString(16)}_${Date.now()}`;
     
     setLayout(prevLayout => {
       const newLayout = [...prevLayout];
@@ -178,7 +322,8 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
         id,
         label: customName.trim(),
         type: customType,
-        width: 12
+        width: 12,
+        ...(customRelationPath ? { relationPath: customRelationPath } : {}),
       };
       if (customType === 'picklist' && customOptions.trim()) {
         newField.options = customOptions.split(',').map(o => o.trim()).filter(Boolean);
@@ -194,6 +339,10 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
     setCustomName('');
     setCustomType('text');
     setCustomOptions('');
+    setColumnSearch('');
+    setShowColumnPicker(false);
+    setCustomFieldId(null);
+    setCustomRelationPath(null);
   };
 
   // Resizing Effect
@@ -604,6 +753,24 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                         onChange={(e) => updateFieldColors(secIdx, fieldIdx, f.backgroundColor || '', e.target.value)}
                         style={{ width: '18px', height: '18px', padding: 0, border: '1px solid var(--border)', borderRadius: '3px', cursor: 'pointer', flexShrink: 0 }}
                         title="Tekstkleur" />
+                      {/* Google search toggle — not available for chat/media */}
+                      {f.type !== 'chat' && f.type !== 'media' && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); updateFieldUseForSearch(secIdx, fieldIdx, !f.useForSearch); }}
+                          title={f.useForSearch ? 'Wordt gebruikt in Google zoekopdracht — klik om uit te zetten' : 'Niet gebruikt in Google zoekopdracht — klik om aan te zetten'}
+                          style={{
+                            width: '24px', height: '24px', borderRadius: '4px', flexShrink: 0,
+                            border: f.useForSearch ? '1px solid #1d4ed8' : '1px solid #e2e8f0',
+                            backgroundColor: f.useForSearch ? '#2563eb' : '#f8fafc',
+                            color: f.useForSearch ? 'white' : '#cbd5e1',
+                            cursor: 'pointer', fontSize: '0.7rem',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: f.useForSearch ? '0 0 0 2px rgba(37,99,235,0.25)' : 'none',
+                            transition: 'all 0.15s',
+                          }}
+                        >🔍</button>
+                      )}
                       <button
                         onClick={(e) => { e.stopPropagation(); removeField(secIdx, fieldIdx); }}
                         title="Veld verwijderen"
@@ -699,13 +866,106 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
 
       {showCustomModal !== null && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ backgroundColor: 'white', padding: '2rem', borderRadius: 'var(--radius)', width: '400px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+          <div style={{ backgroundColor: 'white', padding: '2rem', borderRadius: 'var(--radius)', width: '520px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
             <h3 style={{ marginTop: 0, marginBottom: '1.5rem', color: 'var(--primary)' }}>Nieuw Aangepast Veld</h3>
-            
-            <label style={{ display: 'block', marginBottom: '1rem' }}>
+
+            {/* ── Column picker ── */}
+            <div style={{ marginBottom: '1.25rem', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+              <button
+                type="button"
+                onClick={() => setShowColumnPicker(v => !v)}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '0.55rem 0.85rem', background: 'var(--surface)', border: 'none',
+                  cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text)',
+                }}
+              >
+                <span>📋 Selecteer uit producttabel</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{showColumnPicker ? '▲ Inklappen' : '▼ Uitklappen'}</span>
+              </button>
+
+              {showColumnPicker && (
+                <div style={{ padding: '0.75rem', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  <input
+                    value={columnSearch}
+                    onChange={e => setColumnSearch(e.target.value)}
+                    placeholder="Filter kolommen..."
+                    style={{ padding: '0.4rem 0.65rem', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.8rem', outline: 'none', width: '100%' }}
+                  />
+                  {PRODUCT_COLUMNS
+                    .map(group => ({
+                      ...group,
+                      cols: group.cols.filter(c =>
+                        !columnSearch ||
+                        c.label.toLowerCase().includes(columnSearch.toLowerCase()) ||
+                        c.field.toLowerCase().includes(columnSearch.toLowerCase())
+                      ),
+                    }))
+                    .filter(g => g.cols.length > 0)
+                    .map(group => (
+                      <div key={group.group}>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.3rem' }}>
+                          {group.group}
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                          {group.cols.map(col => (
+                            <button
+                              key={col.field}
+                              type="button"
+                              onClick={() => {
+                                setCustomName(col.label);
+                                setCustomType(col.type);
+                                // For relation fields use a clean ID; for regular columns use FIELD:fieldName
+                                const fieldId = col.isRelation
+                                  ? `FIELD:rel_${col.field.split('.')[0]}`
+                                  : `FIELD:${col.field}`;
+                                setCustomFieldId(fieldId);
+                                setCustomRelationPath(col.isRelation ? col.field : null);
+                                setShowColumnPicker(false);
+                                setColumnSearch('');
+                              }}
+                              title={col.isRelation
+                                ? `Veld: ${col.field} — Let op: toont een intern ID, niet de naam`
+                                : `Veld: ${col.field}`
+                              }
+                              style={{
+                                padding: '0.25rem 0.6rem', borderRadius: '1rem',
+                                border: `1px solid ${col.isRelation ? '#f97316' : 'var(--border)'}`,
+                                background: col.isRelation ? '#fff7ed' : 'var(--surface-hover)',
+                                fontSize: '0.75rem', cursor: 'pointer',
+                                color: col.isRelation ? '#c2410c' : 'var(--text)',
+                                transition: 'border-color 0.15s, background 0.15s',
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.background = 'var(--primary)20'; }}
+                              onMouseLeave={e => {
+                                e.currentTarget.style.borderColor = col.isRelation ? '#f97316' : 'var(--border)';
+                                e.currentTarget.style.background = col.isRelation ? '#fff7ed' : 'var(--surface-hover)';
+                              }}
+                            >
+                              {col.label}
+                              <span style={{ marginLeft: '0.3rem', opacity: 0.45, fontSize: '0.65rem' }}>{col.field}</span>
+                              {col.isRelation && <span style={{ marginLeft: '0.3rem', fontSize: '0.6rem' }}>⚠</span>}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+
+            <label style={{ display: 'block', marginBottom: '0.25rem' }}>
               <span style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.3rem' }}>Veld Naam</span>
-              <input value={customName} onChange={e => setCustomName(e.target.value)} className="input" placeholder="Bijv. Promotie Code" autoFocus />
+              <input value={customName} onChange={e => { setCustomName(e.target.value); setCustomFieldId(null); }} className="input" placeholder="Bijv. Promotie Code" autoFocus />
             </label>
+            {customFieldId && (
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '1rem', padding: '0.3rem 0.6rem', backgroundColor: 'var(--surface)', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                🔗 Gekoppeld aan kolom: <code style={{ fontWeight: 700, color: 'var(--primary)' }}>{customFieldId}</code>
+                {customFieldId && PRODUCT_COLUMNS.flatMap(g => g.cols).find(c => `FIELD:${c.field}` === customFieldId)?.isRelation && (
+                  <span style={{ marginLeft: '0.5rem', color: '#c2410c', fontWeight: 600 }}>⚠ Relatie-veld — toont intern ID, niet de naam</span>
+                )}
+              </div>
+            )}
             
             <label style={{ display: 'block', marginBottom: '1rem' }}>
               <span style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.3rem' }}>Type Code</span>
@@ -728,7 +988,7 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
             )}
 
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
-              <button className="btn ghost" onClick={() => setShowCustomModal(null)}>Annuleren</button>
+              <button className="btn ghost" onClick={() => { setShowCustomModal(null); setCustomFieldId(null); setCustomRelationPath(null); }}>Annuleren</button>
               <button className="btn btn-primary" onClick={addCustomField}>Toevoegen</button>
             </div>
           </div>

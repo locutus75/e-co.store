@@ -11,6 +11,8 @@ export type FormField = {
   backgroundColor?: string;
   textColor?: string;
   options?: string[]; // For picklist dropdowns
+  relationPath?: string; // e.g. 'brand.name' — resolved at render time from the nested product object
+  useForSearch?: boolean; // When true, this field's value is included in the Google search URL on the article number link
 };
 
 export type FormSection = {
