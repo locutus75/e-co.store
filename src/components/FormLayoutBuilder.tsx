@@ -769,7 +769,7 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                             boxShadow: f.useForSearch ? '0 0 0 2px rgba(37,99,235,0.25)' : 'none',
                             transition: 'all 0.15s',
                           }}
-                        >🔍</button>
+                        >🌐</button>
                       )}
                       <button
                         onClick={(e) => { e.stopPropagation(); removeField(secIdx, fieldIdx); }}

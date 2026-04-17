@@ -463,7 +463,7 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
                         onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
                       >
                         {product.internalArticleNumber}
-                        <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>🔍</span>
+                        <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>🌐</span>
                       </a>
                     );
                   })()}

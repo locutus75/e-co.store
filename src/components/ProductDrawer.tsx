@@ -349,7 +349,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                 onMouseEnter={e => (e.currentTarget.style.opacity = '0.75')}
                 onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
               >
-                🔍 Google
+                🌐
               </a>
             )}
           </div>

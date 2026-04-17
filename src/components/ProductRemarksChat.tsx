@@ -145,16 +145,16 @@ export default function ProductRemarksChat({
       } else {
         setHasNewMessages(false);
         setNewCount(0);
+        // No unread messages — mark as seen now so the badge stays clear after refresh
+        markAsSeen();
       }
     } catch { /* storage unavailable */ }
   };
 
   useEffect(() => {
-    if (!isOpen) {
-      // Update "last seen" when the drawer closes
-      markAsSeen();
-      return;
-    }
+    // Skip when the drawer is not open — avoids writing a stale timestamp on
+    // first mount (before any chat data has been fetched).
+    if (!isOpen) return;
     setLoading(true);
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
