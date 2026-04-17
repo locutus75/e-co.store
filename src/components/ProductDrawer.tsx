@@ -5,6 +5,32 @@ import { updateProductAction } from '@/app/actions/product';
 import ProductCopyModal from './ProductCopyModal';
 import ProductRemarksChat from './ProductRemarksChat';
 
+/**
+ * Builds a Google search URL using fields marked `useForSearch` in the layout.
+ * Identical logic to the one in ProductsClient — resolves plain and relation paths.
+ */
+function buildGoogleSearchUrl(product: any, layout: any[]): string | null {
+  const parts: string[] = [];
+  for (const section of layout) {
+    for (const field of (section.fields ?? [])) {
+      if (!field.useForSearch) continue;
+      let value: any;
+      if (field.relationPath) {
+        value = field.relationPath.split('.').reduce((obj: any, key: string) => obj?.[key], product);
+      } else {
+        const key = field.id.replace('FIELD:', '');
+        value = key.startsWith('custom_')
+          ? product.customData?.[key.replace('custom_', '')]
+          : product[key];
+      }
+      const str = value?.toString().trim();
+      if (str) parts.push(str);
+    }
+  }
+  if (parts.length === 0) return null;
+  return 'https://www.google.com/search?q=' + parts.map(p => encodeURIComponent(p)).join('+');
+}
+
 const JaNeeToggle = ({ name, defaultChecked, disabled, onChange }: { name?: string, defaultChecked: boolean, disabled?: boolean, onChange?: () => void }) => {
   const [checked, setChecked] = useState(defaultChecked);
 
@@ -297,13 +323,46 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
         </div>
       );
     }
+    // ── Special: article number — show as Google search link when configured ─
+    if (f.id === 'FIELD:internalArticleNumber') {
+      const googleUrl = buildGoogleSearchUrl(localProductData, layout);
+      let span = f.width ? Number(f.width) : 8;
+      if (isNaN(span)) span = 8;
+      return (
+        <div key={f.id} style={{ gridColumn: `span ${span}`, backgroundColor: f.backgroundColor || 'transparent', padding: f.backgroundColor ? '0.75rem' : '0', borderRadius: 'var(--radius)', color: effectiveTextColor }}>
+          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'inherit', opacity: 0.7, marginBottom: '0.4rem' }}>{f.label}</label>
+          <div className="input" style={{ backgroundColor: 'rgba(0,0,0,0.02)', border: '1px solid rgba(0,0,0,0.05)', minHeight: '38px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontWeight: 600, color: 'inherit' }}>{localProductData?.internalArticleNumber}</span>
+            {googleUrl && (
+              <a
+                href={googleUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Google zoeken op basis van gemarkeerde velden"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                  fontSize: '0.75rem', color: '#2563eb', textDecoration: 'none',
+                  padding: '0.15rem 0.5rem', borderRadius: '4px',
+                  border: '1px solid #bfdbfe', backgroundColor: '#eff6ff',
+                  transition: 'opacity 0.15s', flexShrink: 0,
+                }}
+                onMouseEnter={e => (e.currentTarget.style.opacity = '0.75')}
+                onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+              >
+                🔍 Google
+              </a>
+            )}
+          </div>
+        </div>
+      );
+    }
 
     if (key.startsWith('custom_')) {
       val = localProductData?.customData ? localProductData.customData[key.replace('custom_', '')] : null;
     } else {
       val = localProductData?.[key];
     }
-    
+
     let inputComponent;
     let isCheckbox = false;
 
