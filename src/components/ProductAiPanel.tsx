@@ -1,9 +1,41 @@
 'use client';
 
-import React, { useState, useTransition } from 'react';
+import React, { useState, useTransition, useEffect } from 'react';
+import fs from 'fs';
 
 const PROVIDER_ICONS: Record<string, string> = { openai: '🟢', anthropic: '🟠', gemini: '🔵' };
 const PROVIDER_LABELS: Record<string, string> = { openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Google Gemini' };
+
+// ── Known product fields with labels ─────────────────────────────────────────
+// These are always available regardless of what the layout contains
+const KNOWN_FIELDS: { id: string; label: string; path: string }[] = [
+  { id: '_title',              label: 'Titel',                  path: 'title' },
+  { id: '_shortDescription',  label: 'Korte omschrijving',      path: 'shortDescription' },
+  { id: '_longDescription',   label: 'Lange omschrijving',      path: 'longDescription' },
+  { id: '_ean',               label: 'EAN Code',               path: 'ean' },
+  { id: '_color',             label: 'Kleur',                  path: 'color' },
+  { id: '_size',              label: 'Maat',                   path: 'size' },
+  { id: '_material',          label: 'Materiaal',              path: 'material' },
+  { id: '_mainMaterial',      label: 'Hoofdmateriaal',         path: 'mainMaterial' },
+  { id: '_tags',              label: 'Tags',                   path: 'tags' },
+  { id: '_ingredients',       label: 'Ingrediënten',           path: 'ingredients' },
+  { id: '_allergens',         label: 'Allergenen',             path: 'allergens' },
+  { id: '_seoTitle',          label: 'SEO Titel',              path: 'seoTitle' },
+  { id: '_seoMetaDescription',label: 'SEO Beschrijving',       path: 'seoMetaDescription' },
+  { id: '_basePrice',         label: 'Basisprijs',             path: 'basePrice' },
+  { id: '_internalNotes',     label: 'Interne notities',       path: 'internalNotes' },
+  { id: '_brand',             label: 'Merk',                   path: 'brand.name' },
+  { id: '_supplier',          label: 'Leverancier',            path: 'supplier.name' },
+  { id: '_category',          label: 'Categorie',              path: 'category.name' },
+  { id: '_subcategory',       label: 'Subcategorie',           path: 'subcategory.name' },
+  { id: '_status',            label: 'Status',                 path: 'status' },
+  { id: '_readyForImport',    label: 'Gereed voor import',     path: 'readyForImport' },
+];
+
+// Special constant IDs
+const IMAGES_FIELD_ID = '__images__';
+
+interface FieldEntry { id: string; label: string; value: string; }
 
 interface Props {
   product: any;
@@ -11,30 +43,101 @@ interface Props {
   isAdmin: boolean;
 }
 
-function resolveFieldValue(field: any, product: any): string | null {
-  if (field.relationPath) {
-    const val = field.relationPath.split('.').reduce((o: any, k: string) => o?.[k], product);
-    return val?.toString() ?? null;
-  }
-  const key = field.id.replace('FIELD:', '');
-  if (key.startsWith('custom_')) return product.customData?.[key.replace('custom_', '')] ?? null;
-  return product[key]?.toString() ?? null;
+function resolvePath(obj: any, path: string): string | null {
+  const val = path.split('.').reduce((o: any, k: string) => o?.[k], obj);
+  return val != null && val !== '' ? String(val) : null;
 }
 
-export default function ProductAiPanel({ product, layout, isAdmin }: Props) {
+// localStorage key for preferences (shared across products — prompt/fields choice)
+const PREFS_KEY = 'ai_panel_prefs_v1';
+
+interface Prefs {
+  selectedFields: string[];
+  customPrompt: string;
+  includeImages: boolean;
+  provider: string;
+}
+
+function loadPrefs(): Prefs | null {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function savePrefs(prefs: Prefs) {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { /* storage unavailable */ }
+}
+
+const DEFAULT_PROMPT = 'Analyseer dit product en geef een conclusie over de volledigheid van de data, eventuele verbeterpunten en aanbevelingen.';
+
+export default function ProductAiPanel({ product, layout }: Props) {
   const [open, setOpen] = useState(false);
   const [providers, setProviders] = useState<any[]>([]);
   const [selectedProvider, setSelectedProvider] = useState('');
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set());
-  const [customPrompt, setCustomPrompt] = useState('Analyseer dit product en geef een conclusie over de volledigheid van de data, eventuele verbeterpunten en aanbevelingen.');
+  const [includeImages, setIncludeImages] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState(DEFAULT_PROMPT);
   const [response, setResponse] = useState('');
   const [usage, setUsage] = useState<any>(null);
   const [error, setError] = useState('');
   const [isPending, startTransition] = useTransition();
   const [providersLoaded, setProvidersLoaded] = useState(false);
+  const [imageList, setImageList] = useState<string[]>([]);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
 
+  // ── Build field list ────────────────────────────────────────────────────────
+  // 1. Start with all KNOWN_FIELDS that have a value on this product
+  const fieldMap = new Map<string, FieldEntry>();
+  for (const kf of KNOWN_FIELDS) {
+    const value = resolvePath(product, kf.path);
+    if (value) fieldMap.set(kf.id, { id: kf.id, label: kf.label, value });
+  }
+
+  // 2. Add layout fields that are NOT already covered (e.g. custom fields, picklists)
+  for (const section of layout) {
+    for (const field of (section.fields ?? [])) {
+      if (field.type === 'chat' || field.type === 'media') continue;
+      if (fieldMap.has(field.id)) continue; // already in known list
+
+      let value: string | null = null;
+      if (field.relationPath) {
+        value = resolvePath(product, field.relationPath);
+      } else {
+        const key = field.id.replace('FIELD:', '');
+        if (key.startsWith('custom_')) {
+          value = product.customData?.[key.replace('custom_', '')] ?? null;
+        } else {
+          value = product[key] != null ? String(product[key]) : null;
+        }
+      }
+      if (value) fieldMap.set(field.id, { id: field.id, label: field.label, value });
+    }
+  }
+
+  const allFields = Array.from(fieldMap.values());
+
+  // ── Load prefs from localStorage on first open ────────────────────────────
   const openPanel = async () => {
     setOpen(true);
+
+    // Load prefs once
+    if (!prefsLoaded) {
+      const prefs = loadPrefs();
+      if (prefs) {
+        setCustomPrompt(prefs.customPrompt ?? DEFAULT_PROMPT);
+        setIncludeImages(prefs.includeImages ?? false);
+        // Restore field selection — only keep IDs that exist in this product's field list
+        const availableIds = new Set(allFields.map(f => f.id));
+        availableIds.add(IMAGES_FIELD_ID);
+        const restored = (prefs.selectedFields ?? []).filter((id: string) => availableIds.has(id));
+        setSelectedFields(new Set(restored));
+        if (prefs.provider) setSelectedProvider(prefs.provider);
+      }
+      setPrefsLoaded(true);
+    }
+
+    // Load providers
     if (!providersLoaded) {
       try {
         const res = await fetch('/api/ai/providers');
@@ -42,22 +145,34 @@ export default function ProductAiPanel({ product, layout, isAdmin }: Props) {
           const data = await res.json();
           const active = data.filter((p: any) => p.hasApiKey);
           setProviders(active);
-          if (active.length > 0) setSelectedProvider(active[0].provider);
+          if (active.length > 0) {
+            setSelectedProvider(prev => prev || active[0].provider);
+          }
         }
       } catch { /* ignore */ }
       setProvidersLoaded(true);
     }
+
+    // Try to list product images
+    try {
+      const res = await fetch(`/api/ai/images?article=${encodeURIComponent(product.internalArticleNumber)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setImageList(data.images ?? []);
+      }
+    } catch { /* ignore, images optional */ }
   };
 
-  // Collect all fields with a label from layout for selection
-  const allFields: { id: string; label: string; value: string | null }[] = [];
-  for (const section of layout) {
-    for (const field of (section.fields ?? [])) {
-      if (field.type === 'chat' || field.type === 'media') continue;
-      const value = resolveFieldValue(field, product);
-      if (value) allFields.push({ id: field.id, label: field.label, value });
-    }
-  }
+  // ── Persist prefs whenever they change ───────────────────────────────────
+  useEffect(() => {
+    if (!open) return;
+    savePrefs({
+      selectedFields: Array.from(selectedFields),
+      customPrompt,
+      includeImages,
+      provider: selectedProvider,
+    });
+  }, [selectedFields, customPrompt, includeImages, selectedProvider, open]);
 
   const toggleField = (id: string) => {
     setSelectedFields(prev => {
@@ -67,19 +182,28 @@ export default function ProductAiPanel({ product, layout, isAdmin }: Props) {
     });
   };
 
-  const selectAll = () => setSelectedFields(new Set(allFields.map(f => f.id)));
+  const selectAll = () => {
+    const ids = allFields.map(f => f.id);
+    setSelectedFields(new Set(ids));
+  };
   const selectNone = () => setSelectedFields(new Set());
 
   const buildPrompt = () => {
     const lines: string[] = [];
     for (const field of allFields) {
-      if (selectedFields.has(field.id) && field.value) {
+      if (selectedFields.has(field.id)) {
         lines.push(`${field.label}: ${field.value}`);
       }
+    }
+    if (includeImages && imageList.length > 0) {
+      lines.push(`Foto's: ${imageList.length} afbeelding(en) beschikbaar`);
+      imageList.forEach((img, i) => lines.push(`  Foto ${i + 1}: ${window.location.origin}${img}`));
     }
     const context = lines.length > 0 ? `\n\n--- Productgegevens ---\n${lines.join('\n')}` : '';
     return customPrompt + context;
   };
+
+  const totalSelected = selectedFields.size + (includeImages && imageList.length > 0 ? 1 : 0);
 
   const runAnalysis = () => {
     if (!selectedProvider || isPending) return;
@@ -123,8 +247,7 @@ export default function ProductAiPanel({ product, layout, isAdmin }: Props) {
           padding: '0.4rem 0.85rem', borderRadius: 'var(--radius)',
           border: '1px solid #c4b5fd', backgroundColor: '#f5f3ff',
           color: '#7c3aed', fontWeight: 600, fontSize: '0.8rem',
-          cursor: 'pointer', transition: 'all 0.15s',
-          flexShrink: 0,
+          cursor: 'pointer', transition: 'all 0.15s', flexShrink: 0,
         }}
         onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#ede9fe'; }}
         onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#f5f3ff'; }}
@@ -180,7 +303,10 @@ export default function ProductAiPanel({ product, layout, isAdmin }: Props) {
             {/* Field picker */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#5b21b6' }}>Velden meesturen als context</label>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#5b21b6' }}>
+                  Velden meesturen als context
+                  {totalSelected > 0 && <span style={{ fontWeight: 400, color: '#7c3aed', marginLeft: '0.4rem' }}>({totalSelected} geselecteerd)</span>}
+                </label>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <button type="button" onClick={selectAll} style={{ fontSize: '0.7rem', color: '#7c3aed', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Alles</button>
                   <button type="button" onClick={selectNone} style={{ fontSize: '0.7rem', color: '#7c3aed', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Geen</button>
@@ -192,6 +318,7 @@ export default function ProductAiPanel({ product, layout, isAdmin }: Props) {
                     key={f.id}
                     type="button"
                     onClick={() => toggleField(f.id)}
+                    title={f.value.length > 80 ? f.value.slice(0, 120) + '…' : f.value}
                     style={{
                       padding: '0.2rem 0.55rem', borderRadius: '999px', fontSize: '0.72rem',
                       border: selectedFields.has(f.id) ? '1px solid #7c3aed' : '1px solid #ddd6fe',
@@ -203,12 +330,32 @@ export default function ProductAiPanel({ product, layout, isAdmin }: Props) {
                     {f.label}
                   </button>
                 ))}
+
+                {/* Images option — always shown */}
+                <button
+                  type="button"
+                  onClick={() => setIncludeImages(v => !v)}
+                  title={imageList.length > 0 ? `${imageList.length} afbeelding(en) beschikbaar` : 'Nog geen afbeeldingen geladen'}
+                  style={{
+                    padding: '0.2rem 0.55rem', borderRadius: '999px', fontSize: '0.72rem',
+                    border: includeImages ? '1px solid #7c3aed' : '1px solid #ddd6fe',
+                    backgroundColor: includeImages ? '#7c3aed' : 'white',
+                    color: includeImages ? 'white' : '#5b21b6',
+                    cursor: 'pointer', fontWeight: includeImages ? 600 : 400,
+                    display: 'flex', alignItems: 'center', gap: '0.25rem',
+                  }}
+                >
+                  🖼 Foto's {imageList.length > 0 && <span style={{ opacity: 0.7 }}>({imageList.length})</span>}
+                </button>
               </div>
             </div>
 
-            {/* Custom prompt */}
+            {/* Custom prompt — persisted */}
             <div>
-              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#5b21b6', marginBottom: '0.3rem' }}>Vraag / instructie</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#5b21b6' }}>Vraag / instructie</label>
+                <span style={{ fontSize: '0.65rem', color: '#a78bfa' }}>💾 automatisch bewaard</span>
+              </div>
               <textarea
                 value={customPrompt}
                 onChange={e => setCustomPrompt(e.target.value)}
@@ -224,12 +371,12 @@ export default function ProductAiPanel({ product, layout, isAdmin }: Props) {
             <button
               type="button"
               onClick={runAnalysis}
-              disabled={isPending || selectedFields.size === 0}
+              disabled={isPending || totalSelected === 0}
               style={{
                 padding: '0.65rem 1.5rem', borderRadius: 'var(--radius)',
-                backgroundColor: isPending || selectedFields.size === 0 ? '#a78bfa' : '#7c3aed',
+                backgroundColor: isPending || totalSelected === 0 ? '#a78bfa' : '#7c3aed',
                 color: 'white', border: 'none', fontWeight: 700, fontSize: '0.9rem',
-                cursor: isPending || selectedFields.size === 0 ? 'not-allowed' : 'pointer',
+                cursor: isPending || totalSelected === 0 ? 'not-allowed' : 'pointer',
                 transition: 'all 0.15s', alignSelf: 'flex-start',
               }}
             >
