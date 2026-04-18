@@ -86,32 +86,48 @@ export default function ProductAiPanel({ product, layout }: Props) {
   const [imageList, setImageList] = useState<string[]>([]);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
 
-  // ── Build field list ────────────────────────────────────────────────────────
-  // 1. Start with all KNOWN_FIELDS that have a value on this product
+  // ── Build field list (deduplicated by property path) ─────────────────────
+  // 1. Start with KNOWN_FIELDS — track which paths are already covered
   const fieldMap = new Map<string, FieldEntry>();
+  const coveredPaths = new Set<string>(); // e.g. 'title', 'ean', 'brand.name'
+
   for (const kf of KNOWN_FIELDS) {
     const value = resolvePath(product, kf.path);
-    if (value) fieldMap.set(kf.id, { id: kf.id, label: kf.label, value });
+    if (value) {
+      fieldMap.set(kf.id, { id: kf.id, label: kf.label, value });
+      coveredPaths.add(kf.path);
+    }
   }
 
-  // 2. Add layout fields that are NOT already covered (e.g. custom fields, picklists)
+  // 2. Add layout fields — skip if the property is already covered by a KNOWN_FIELD
   for (const section of layout) {
     for (const field of (section.fields ?? [])) {
       if (field.type === 'chat' || field.type === 'media') continue;
-      if (fieldMap.has(field.id)) continue; // already in known list
+      if (fieldMap.has(field.id)) continue; // exact ID already present
 
       let value: string | null = null;
+      let propPath: string;
+
       if (field.relationPath) {
+        propPath = field.relationPath;
         value = resolvePath(product, field.relationPath);
       } else {
         const key = field.id.replace('FIELD:', '');
+        propPath = key.startsWith('custom_') ? `customData.${key.replace('custom_', '')}` : key;
         if (key.startsWith('custom_')) {
           value = product.customData?.[key.replace('custom_', '')] ?? null;
         } else {
           value = product[key] != null ? String(product[key]) : null;
         }
       }
-      if (value) fieldMap.set(field.id, { id: field.id, label: field.label, value });
+
+      // Skip if this property path is already shown via a KNOWN_FIELD
+      if (coveredPaths.has(propPath)) continue;
+
+      if (value) {
+        fieldMap.set(field.id, { id: field.id, label: field.label, value });
+        coveredPaths.add(propPath);
+      }
     }
   }
 

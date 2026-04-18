@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
         body: JSON.stringify({
           model: config.activeModel,
-          max_tokens: config.maxOutputTokens,
+          max_completion_tokens: config.maxOutputTokens,
           messages: [
             ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
             { role: 'user', content: prompt },
