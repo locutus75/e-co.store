@@ -66,6 +66,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           {canAccess('MENU:messages') && (
             <MessagesNavBadge initialCount={unreadCount} />
           )}
+          {canAccess('MENU:ai') && (
+            <Link href="/ai" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>🤖 AI Assistent</Link>
+          )}
           {canAccess('MENU:categories') && (
             <Link href="/" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Categorieën</Link>
           )}

@@ -7,6 +7,7 @@ const MENU_MODULES = [
   { module: 'MENU:dashboard',   label: 'Dashboard' },
   { module: 'MENU:products',    label: 'Producten' },
   { module: 'MENU:messages',    label: 'Berichten' },
+  { module: 'MENU:ai',          label: '🤖 AI Assistent' },
   { module: 'MENU:categories',  label: 'Categorieën' },
   { module: 'MENU:assignments', label: 'Toewijzingen' },
   { module: 'MENU:users',       label: 'Team & Gebruikers' },

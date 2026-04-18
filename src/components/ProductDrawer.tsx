@@ -4,6 +4,7 @@ import ProductGallery from './ProductGallery';
 import { updateProductAction } from '@/app/actions/product';
 import ProductCopyModal from './ProductCopyModal';
 import ProductRemarksChat from './ProductRemarksChat';
+import ProductAiPanel from './ProductAiPanel';
 
 /**
  * Builds a Google search URL using fields marked `useForSearch` in the layout.
@@ -137,7 +138,7 @@ const ThreeWayToggle = ({ name, defaultValue, disabled, onChange }: { name?: str
 };
 
 
-export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, layout = [], currentUserId = '', currentUserChatColor = null, userChatColors = {} }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, userChatColors?: Record<string, string> }) {
+export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, canUseAi = false, layout = [], currentUserId = '', currentUserChatColor = null, userChatColors = {} }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, canUseAi?: boolean, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, userChatColors?: Record<string, string> }) {
   const [isPending, startTransition] = useTransition();
   const [statusOverridden, setStatusOverridden] = useState(false);
   const currentStatus = (product?.status || 'NEW').toUpperCase();
@@ -526,6 +527,9 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                     >
                       🖨 Kopieer Data
                     </button>
+                  )}
+                  {canUseAi && (
+                    <ProductAiPanel product={localProductData} layout={layout} isAdmin={isAdmin} />
                   )}
                 </div>
               </div>

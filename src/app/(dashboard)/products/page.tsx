@@ -32,8 +32,13 @@ export default async function ProductsPage() {
     ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:assignments' && rp.action === 'ALLOW')
   ) || false;
 
+  const hasAiRight = userRecord?.userRoles.some((ur: any) =>
+    ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:ai' && rp.action === 'ALLOW')
+  ) || false;
+
   const canSeeAllProducts = isAdmin || hasAssignmentsRight;
   const canAssignProducts = isAdmin || hasAssignmentsRight;
+  const canUseAi = isAdmin || hasAiRight;
   
   let products = await prisma.product.findMany({
     where: canSeeAllProducts ? undefined : {
@@ -70,5 +75,5 @@ export default async function ProductsPage() {
   const { getFormLayoutAction } = await import('@/app/actions/formLayouts');
   const layout = await getFormLayoutAction();
 
-  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} canAssignProducts={canAssignProducts} fieldPermissions={fieldPermissions} layout={layout} currentUserId={userId || ''} currentUserChatColor={(userRecord as any)?.chatColor || null} />;
+  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} canAssignProducts={canAssignProducts} canUseAi={canUseAi} fieldPermissions={fieldPermissions} layout={layout} currentUserId={userId || ''} currentUserChatColor={(userRecord as any)?.chatColor || null} />;
 }

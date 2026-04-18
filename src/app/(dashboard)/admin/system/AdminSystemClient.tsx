@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
+import LlmConfigSection from '@/components/LlmConfigSection';
 
 export default function AdminSystemClient() {
   const [checking, setChecking] = useState(true);
@@ -469,6 +470,9 @@ export default function AdminSystemClient() {
             </form>
         )}
       </div>
+
+      {/* AI / LLM Configuration */}
+      <LlmConfigSection />
 
     </div>
   );

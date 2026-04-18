@@ -135,7 +135,7 @@ function InlineReadyToggle({ product, isAdmin }: { product: any, isAdmin: boolea
   );
 }
 
-export default function ProductsClient({ initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, canAssignProducts?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null }) {
+export default function ProductsClient({ initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canUseAi = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, canAssignProducts?: boolean, canUseAi?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null }) {
   const router = useRouter();
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
@@ -529,6 +529,7 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
         onClose={() => setSelectedProduct(null)} 
         fieldPermissions={isAdmin ? undefined : fieldPermissions}
         isAdmin={isAdmin}
+        canUseAi={canUseAi}
         layout={layout}
         currentUserId={currentUserId}
         currentUserChatColor={currentUserChatColor}
