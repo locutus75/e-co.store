@@ -237,6 +237,15 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
     });
   };
 
+  const updateFieldAiInstruction = (secIdx: number, fieldIdx: number, value: string) => {
+    setLayout(prevLayout => {
+      const newLayout = [...prevLayout];
+      newLayout[secIdx] = { ...newLayout[secIdx], fields: [...newLayout[secIdx].fields] };
+      newLayout[secIdx].fields[fieldIdx] = { ...newLayout[secIdx].fields[fieldIdx], aiInstruction: value || undefined };
+      return newLayout;
+    });
+  };
+
   const updateSectionTitle = (secIdx: number, title: string) => {
     setLayout(prevLayout => {
       const newLayout = [...prevLayout];
@@ -707,6 +716,28 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                           style={{
                             width: '90%', padding: '0.4rem 0.5rem', border: '1px solid var(--border)', 
                             borderRadius: '4px', fontSize: '0.75rem', backgroundColor: 'white'
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* AI Instruction — only for text-compatible fields */}
+                    {f.type !== 'chat' && f.type !== 'media' && f.type !== 'checkbox' && f.type !== 'threeway' && f.type !== 'relation' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginTop: '0' }}>
+                        <label style={{ fontSize: '0.7rem', color: '#a78bfa', fontWeight: 600 }}>✨ AI Instructie:</label>
+                        <textarea
+                          key={`ai-${f.id}`}
+                          defaultValue={f.aiInstruction || ''}
+                          onBlur={(e) => updateFieldAiInstruction(secIdx, fieldIdx, e.target.value.trim())}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          placeholder={`Bijv. Alleen hele getallen zonder eenheid. Max 10 woorden.`}
+                          rows={2}
+                          style={{
+                            width: '90%', padding: '0.35rem 0.5rem',
+                            border: '1px solid #ddd6fe',
+                            borderRadius: '4px', fontSize: '0.72rem',
+                            backgroundColor: '#faf5ff', color: '#4c1d95',
+                            resize: 'vertical', lineHeight: 1.35,
                           }}
                         />
                       </div>

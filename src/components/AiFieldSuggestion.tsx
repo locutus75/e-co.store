@@ -9,6 +9,7 @@ interface Props {
   currentValue: string;
   analysisNarrative: string;
   productTitle: string;
+  fieldInstruction?: string; // Admin-defined constraint, e.g. "Alleen hele getallen, geen eenheid"
   onApply: (value: string) => void;
 }
 
@@ -19,7 +20,7 @@ function getProvider(): string {
   catch { return 'openai'; }
 }
 
-export default function AiFieldSuggestion({ fieldKey, fieldLabel, currentValue, analysisNarrative, productTitle, onApply }: Props) {
+export default function AiFieldSuggestion({ fieldKey, fieldLabel, currentValue, analysisNarrative, productTitle, fieldInstruction, onApply }: Props) {
   const [open, setOpen]             = useState(false);
   const [mounted, setMounted]       = useState(false);
   const [loading, setLoading]       = useState(false);
@@ -51,7 +52,8 @@ export default function AiFieldSuggestion({ fieldKey, fieldLabel, currentValue, 
             `Productanalyse:\n${analysisNarrative}\n\n` +
             `Schrijf een passende waarde voor het veld "${fieldLabel}"` +
             (currentValue ? ` (huidige waarde: "${currentValue}")` : ' (veld is leeg)') +
-            `.\n\nGeef alleen de veldinhoud terug, maximaal 500 tekens.`,
+            (fieldInstruction ? `\n\nSpecifieke instructie voor dit veld (verplicht op te volgen): ${fieldInstruction}` : '') +
+            `\n\nGeef alleen de veldinhoud terug, maximaal 500 tekens.`,
         }),
       });
       const data = await res.json();

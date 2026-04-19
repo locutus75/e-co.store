@@ -266,7 +266,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     if (el) { el.value = value; setIsDirty(true); }
   };
 
-  const renderField = (moduleName: string, label: string, val: string, inputComponent: React.ReactNode, isCheckbox: boolean = false, textColor?: string, fieldKey?: string) => {
+  const renderField = (moduleName: string, label: string, val: string, inputComponent: React.ReactNode, isCheckbox: boolean = false, textColor?: string, fieldKey?: string, fieldInstruction?: string) => {
     let action = isAdmin ? 'WRITE' : (fieldPermissions?.[moduleName] ?? 'READ');
     if (isGloballyLocked) action = 'READ';
 
@@ -291,6 +291,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
         currentValue={val}
         analysisNarrative={analysisNarrative!}
         productTitle={localProductData?.title || ''}
+        fieldInstruction={fieldInstruction}
         onApply={(suggestion) => applyAiSuggestion(fieldKey!, suggestion)}
       />
     ) : null;
@@ -487,7 +488,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
 
     return (
       <div key={f.id} style={{ gridColumn: `span ${span}`, backgroundColor: f.backgroundColor || 'transparent', padding: f.backgroundColor ? '0.75rem' : '0', borderRadius: 'var(--radius)', color: effectiveTextColor }}>
-        {renderField(f.id, f.label, val?.toString() ?? '', inputComponent, isCheckbox, effectiveTextColor, isAiEligible ? key : undefined)}
+        {renderField(f.id, f.label, val?.toString() ?? '', inputComponent, isCheckbox, effectiveTextColor, isAiEligible ? key : undefined, f.aiInstruction)}
       </div>
     );
   };
