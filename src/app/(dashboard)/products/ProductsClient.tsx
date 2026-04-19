@@ -4,6 +4,7 @@ import React, { useState, useMemo, useTransition, useEffect, useCallback } from 
 import ProductDrawer from '@/components/ProductDrawer';
 import ExcelImportWizard from '@/components/ExcelImportWizard';
 import AiAnalysisViewer from '@/components/AiAnalysisViewer';
+import BatchAnalyzeModal from '@/components/BatchAnalyzeModal';
 import { deleteProductsAction, updateReadyForImportAction, updateProductStatusAction, bulkAssignAction } from '@/app/actions/product';
 
 export const getStatusColor = (status: string) => {
@@ -140,6 +141,7 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
   const router = useRouter();
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
+  const [showBatchAnalyze, setShowBatchAnalyze] = useState(false);
   const [isDeleting, startTransition] = useTransition();
 
   // ── Unread messages indicator ──────────────────────────────────────────
@@ -280,6 +282,14 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
       {showImportWizard && (
         <ExcelImportWizard onClose={() => setShowImportWizard(false)} />
       )}
+      {showBatchAnalyze && (
+        <BatchAnalyzeModal
+          products={filteredProducts.filter(p => selectedIds.has(p.internalArticleNumber))}
+          layout={layout}
+          onClose={() => { setShowBatchAnalyze(false); setSelectedIds(new Set()); }}
+          onComplete={() => router.refresh()}
+        />
+      )}
       
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)' }}>Products Database</h1>
@@ -311,6 +321,17 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
                 </button>
               )}
             </div>
+          )}
+          {/* Batch AI Analyse — shown when products are selected and user has AI access */}
+          {selectedIds.size > 0 && canUseAi && (
+            <button
+              className="btn"
+              onClick={() => setShowBatchAnalyze(true)}
+              style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem', backgroundColor: '#7c3aed', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, borderRadius: 'var(--radius)' }}
+              title={`Analyseer ${selectedIds.size} geselecteerde producten`}
+            >
+              🤖 Analyseer ({selectedIds.size})
+            </button>
           )}
           {isAdmin && (
             <button 
