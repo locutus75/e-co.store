@@ -1,30 +1,30 @@
 import { NextResponse } from 'next/server';
-import { exec } from 'child_process';
+import { writeFileSync } from 'fs';
 import path from 'path';
 
 export async function POST() {
   try {
     // Next.js standalone server.js calls process.chdir(__dirname) internally,
-    // which changes process.cwd() to .next/standalone/. We use APP_ROOT (set by
-    // start_server.ps1) to reliably resolve the project root in production.
+    // so we use APP_ROOT (set by start_server.ps1) to reliably resolve the project root.
     const projectRoot = process.env.APP_ROOT || process.cwd();
-    const scriptPath = path.join(projectRoot, 'apply_update.ps1');
+    const flagPath = path.join(projectRoot, 'update_requested.flag');
 
-    console.log(`Starting background updater script: ${scriptPath}`);
+    // Write a flag file. start_server.ps1 polls for this flag and handles the
+    // full update flow (stop server → run apply_update.ps1 → restart) itself.
+    // This avoids trying to spawn a new PowerShell window from inside a background job,
+    // which doesn't work reliably in non-interactive sessions.
+    writeFileSync(flagPath, new Date().toISOString(), 'utf-8');
 
-    // Break completely out of the Node.js Job Object by asking the Windows Shell 
-    // to spawn a brand new top-level visible window to host the update!
-    exec(`powershell.exe -Command "Start-Process powershell.exe -ArgumentList '-ExecutionPolicy Bypass -File \\"${scriptPath}\\"' -WindowStyle Normal"`);
-
-    console.log(`Updater OS process requested. Server will be closed by the script shortly.`);
+    console.log(`Update flag written to: ${flagPath}`);
+    console.log(`start_server.ps1 watchdog will pick this up and run apply_update.ps1.`);
 
     return NextResponse.json({
       success: true,
-      message: "Update process started. The server will restart shortly."
+      message: "Update aangevraagd. De server stopt zodra de watchdog het signaal oppikt en herstart daarna automatisch.",
     });
 
   } catch (error: any) {
-    console.error("Error in update install:", error);
-    return NextResponse.json({ success: false, error: "Failed to trigger update process", details: error.message }, { status: 500 });
+    console.error('Error writing update flag:', error);
+    return NextResponse.json({ success: false, error: 'Kon update flag niet schrijven', details: error.message }, { status: 500 });
   }
 }
