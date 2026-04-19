@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation';
 import React, { useState, useMemo, useTransition, useEffect, useCallback } from 'react';
 import ProductDrawer from '@/components/ProductDrawer';
 import ExcelImportWizard from '@/components/ExcelImportWizard';
+import AiAnalysisViewer from '@/components/AiAnalysisViewer';
 import { deleteProductsAction, updateReadyForImportAction, updateProductStatusAction, bulkAssignAction } from '@/app/actions/product';
 
 export const getStatusColor = (status: string) => {
@@ -135,7 +136,7 @@ function InlineReadyToggle({ product, isAdmin }: { product: any, isAdmin: boolea
   );
 }
 
-export default function ProductsClient({ initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canUseAi = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, canAssignProducts?: boolean, canUseAi?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null }) {
+export default function ProductsClient({ initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canUseAi = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null, aiScoreMap = {} }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, canAssignProducts?: boolean, canUseAi?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, aiScoreMap?: Record<string, number | null> }) {
   const router = useRouter();
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
@@ -419,6 +420,7 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:title', 'Title')}</th>
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:status', 'Status')}</th>
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Webshop Ready</th>
+              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>AI Score</th>
             </tr>
           </thead>
           <tbody>
@@ -511,6 +513,13 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
                 </td>
                 <td style={{ padding: '1.25rem' }}>
                   <InlineReadyToggle product={product} isAdmin={isAdmin} />
+                </td>
+                <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
+                  <AiAnalysisViewer
+                    articleNumber={product.internalArticleNumber}
+                    productTitle={product.title}
+                    score={aiScoreMap[product.internalArticleNumber] ?? null}
+                  />
                 </td>
               </tr>
             ))}

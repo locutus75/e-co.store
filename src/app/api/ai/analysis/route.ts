@@ -44,10 +44,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'articleNumber en response zijn verplicht' }, { status: 400 });
   }
 
+  const structured = body.structuredData ? (() => { try { return JSON.parse(body.structuredData!); } catch { return null; } })() : null;
+  const score: number | null = structured?.score != null ? Number(structured.score) : null;
+
   const analysis = await prisma.productAiAnalysis.upsert({
     where:  { articleNumber: body.articleNumber },
-    update: { provider: body.provider, model: body.model, response: body.response, structuredData: body.structuredData ?? null, inputTokens: body.inputTokens, outputTokens: body.outputTokens, costUsd: body.costUsd },
-    create: { articleNumber: body.articleNumber, provider: body.provider, model: body.model, response: body.response, structuredData: body.structuredData ?? null, inputTokens: body.inputTokens, outputTokens: body.outputTokens, costUsd: body.costUsd },
+    update: { provider: body.provider, model: body.model, response: body.response, structuredData: body.structuredData ?? null, score, inputTokens: body.inputTokens, outputTokens: body.outputTokens, costUsd: body.costUsd },
+    create: { articleNumber: body.articleNumber, provider: body.provider, model: body.model, response: body.response, structuredData: body.structuredData ?? null, score, inputTokens: body.inputTokens, outputTokens: body.outputTokens, costUsd: body.costUsd },
   });
 
   return NextResponse.json({ analysis });
