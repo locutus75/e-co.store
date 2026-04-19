@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useTransition, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { FormSection, saveFormLayoutAction, FormField, bulkMigrateInternalRemarksAction } from '@/app/actions/formLayouts';
 
 // ── Product column definitions (derived from Prisma schema) ──────────────────
@@ -159,6 +160,41 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
   const [customFieldId, setCustomFieldId] = useState<string | null>(null);
   /** For relation fields: the dotted path to resolve (e.g. 'brand.name'). */
   const [customRelationPath, setCustomRelationPath] = useState<string | null>(null);
+
+  // AI Instruction popover
+  const [aiPopover, setAiPopover] = useState<{
+    secIdx: number; fieldIdx: number; label: string; value: string;
+    top: number; left: number;
+  } | null>(null);
+  const [aiPopoverDraft, setAiPopoverDraft] = useState('');
+
+  const openAiPopover = (e: React.MouseEvent, secIdx: number, fieldIdx: number, label: string, current: string) => {
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const top = rect.bottom + 8;
+    const left = Math.min(rect.left, window.innerWidth - 340);
+    setAiPopoverDraft(current);
+    setAiPopover({ secIdx, fieldIdx, label, value: current, top, left });
+  };
+
+  const saveAiInstruction = () => {
+    if (!aiPopover) return;
+    updateFieldAiInstruction(aiPopover.secIdx, aiPopover.fieldIdx, aiPopoverDraft.trim());
+    setAiPopover(null);
+  };
+
+  const clearAiInstruction = () => {
+    if (!aiPopover) return;
+    updateFieldAiInstruction(aiPopover.secIdx, aiPopover.fieldIdx, '');
+    setAiPopover(null);
+  };
+
+  useEffect(() => {
+    if (!aiPopover) return;
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setAiPopover(null); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [aiPopover]);
 
   const moveSection = (index: number, direction: -1 | 1) => {
     if (index + direction < 0 || index + direction >= layout.length) return;
@@ -721,29 +757,6 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                       </div>
                     )}
 
-                    {/* AI Instruction — only for text-compatible fields */}
-                    {f.type !== 'chat' && f.type !== 'media' && f.type !== 'checkbox' && f.type !== 'threeway' && f.type !== 'relation' && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginTop: '0' }}>
-                        <label style={{ fontSize: '0.7rem', color: '#a78bfa', fontWeight: 600 }}>✨ AI Instructie:</label>
-                        <textarea
-                          key={`ai-${f.id}`}
-                          defaultValue={f.aiInstruction || ''}
-                          onBlur={(e) => updateFieldAiInstruction(secIdx, fieldIdx, e.target.value.trim())}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          placeholder={`Bijv. Alleen hele getallen zonder eenheid. Max 10 woorden.`}
-                          rows={2}
-                          style={{
-                            width: '90%', padding: '0.35rem 0.5rem',
-                            border: '1px solid #ddd6fe',
-                            borderRadius: '4px', fontSize: '0.72rem',
-                            backgroundColor: '#faf5ff', color: '#4c1d95',
-                            resize: 'vertical', lineHeight: 1.35,
-                          }}
-                        />
-                      </div>
-                    )}
-
-                    {/* ── Zone 3: Bottom control bar ── */}
                     <div
                       onMouseDown={e => e.stopPropagation()}
                       style={{
@@ -801,6 +814,24 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                             transition: 'all 0.15s',
                           }}
                         >🌐</button>
+                      )}
+                      {/* AI instruction button — not for chat/media/checkbox/threeway */}
+                      {f.type !== 'chat' && f.type !== 'media' && f.type !== 'checkbox' && f.type !== 'threeway' && (
+                        <button
+                          type="button"
+                          onClick={(e) => openAiPopover(e, secIdx, fieldIdx, f.label, f.aiInstruction || '')}
+                          title={f.aiInstruction ? `AI instructie: ${f.aiInstruction}` : 'Geen AI instructie — klik om in te stellen'}
+                          style={{
+                            width: '24px', height: '24px', borderRadius: '4px', flexShrink: 0,
+                            border: f.aiInstruction ? '1px solid #7c3aed' : '1px solid #e2e8f0',
+                            backgroundColor: f.aiInstruction ? '#7c3aed' : '#f8fafc',
+                            color: f.aiInstruction ? 'white' : '#cbd5e1',
+                            cursor: 'pointer', fontSize: '0.7rem',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: f.aiInstruction ? '0 0 0 2px rgba(124,58,237,0.25)' : 'none',
+                            transition: 'all 0.15s',
+                          }}
+                        >✨</button>
                       )}
                       <button
                         onClick={(e) => { e.stopPropagation(); removeField(secIdx, fieldIdx); }}
@@ -1024,6 +1055,66 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
             </div>
           </div>
         </div>
+      )}
+      {/* ── AI Instruction Popover (portal) ── */}
+      {aiPopover && typeof document !== 'undefined' && createPortal(
+        <>
+          <div onClick={() => setAiPopover(null)}
+            style={{ position: 'fixed', inset: 0, zIndex: 9980 }} />
+          <div style={{
+            position: 'fixed', top: aiPopover.top, left: aiPopover.left,
+            width: '320px', zIndex: 9981,
+            backgroundColor: 'white', border: '1.5px solid #c4b5fd',
+            borderRadius: '10px', boxShadow: '0 8px 28px rgba(0,0,0,0.18)',
+            overflow: 'hidden',
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.55rem 0.85rem', backgroundColor: '#7c3aed' }}>
+              <span style={{ color: 'white', fontSize: '0.78rem', fontWeight: 700, flex: 1 }}>✨ AI Instructie — {aiPopover.label}</span>
+              <button type="button" onClick={() => setAiPopover(null)}
+                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.75)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: 0 }}>✕</button>
+            </div>
+            {/* Body */}
+            <div style={{ padding: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0, lineHeight: 1.4 }}>
+                Geef een instructie die de AI verplicht opvolgt bij het genereren van een suggestie voor dit veld. Bijv. <em>"Alleen hele getallen, geen eenheid"</em> of <em>"Max 10 woorden"</em>.
+              </p>
+              <textarea
+                autoFocus
+                value={aiPopoverDraft}
+                onChange={e => setAiPopoverDraft(e.target.value)}
+                placeholder="Bijv. Alleen hele getallen, geen eenheid. Max 10 woorden."
+                rows={3}
+                style={{
+                  width: '100%', padding: '0.5rem 0.65rem', boxSizing: 'border-box',
+                  border: '1.5px solid #ddd6fe', borderRadius: '6px',
+                  fontSize: '0.8rem', backgroundColor: '#faf5ff', color: '#4c1d95',
+                  resize: 'vertical', lineHeight: 1.4, outline: 'none',
+                }}
+                onFocus={e => (e.target.style.borderColor = '#7c3aed')}
+                onBlur={e => (e.target.style.borderColor = '#ddd6fe')}
+              />
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <button type="button" onClick={saveAiInstruction}
+                  style={{ flex: 1, padding: '0.38rem', borderRadius: '6px', backgroundColor: '#7c3aed', color: 'white', border: 'none', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>
+                  ✓ Opslaan
+                </button>
+                {aiPopoverDraft && (
+                  <button type="button" onClick={clearAiInstruction}
+                    style={{ padding: '0.38rem 0.6rem', borderRadius: '6px', backgroundColor: 'white', color: '#dc2626', border: '1px solid #fca5a5', fontSize: '0.78rem', cursor: 'pointer' }}
+                    title="Instructie wissen">
+                    ✕ Wissen
+                  </button>
+                )}
+                <button type="button" onClick={() => setAiPopover(null)}
+                  style={{ padding: '0.38rem 0.6rem', borderRadius: '6px', backgroundColor: 'white', color: '#6b7280', border: '1px solid #e5e7eb', fontSize: '0.78rem', cursor: 'pointer' }}>
+                  Annuleren
+                </button>
+              </div>
+            </div>
+          </div>
+        </>,
+        document.body
       )}
     </div>
   );
