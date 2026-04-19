@@ -5,6 +5,7 @@ import { updateProductAction } from '@/app/actions/product';
 import ProductCopyModal from './ProductCopyModal';
 import ProductRemarksChat from './ProductRemarksChat';
 import ProductAiPanel from './ProductAiPanel';
+import AiFieldSuggestion from './AiFieldSuggestion';
 
 /**
  * Builds a Google search URL using fields marked `useForSearch` in the layout.
@@ -157,6 +158,9 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   const formRef = React.useRef<HTMLFormElement>(null);
 
+  // AI field suggestions — narrative loaded from DB when drawer opens
+  const [analysisNarrative, setAnalysisNarrative] = useState<string | null>(null);
+
   useEffect(() => {
     if (isOpen) {
       setActiveStatus((product?.status || 'NEW').toUpperCase());
@@ -167,6 +171,23 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
       setShowUnsavedWarning(false);
     }
   }, [product, isOpen]);
+
+  // Load the AI analysis narrative for field suggestions (canUseAi users only)
+  useEffect(() => {
+    if (!isOpen || !canUseAi || !product?.internalArticleNumber) { setAnalysisNarrative(null); return; }
+    fetch(`/api/ai/analysis?article=${encodeURIComponent(product.internalArticleNumber)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.analysis?.response) {
+          const raw: string = d.analysis.response;
+          const idx = raw.lastIndexOf('```json');
+          setAnalysisNarrative(idx >= 0 ? raw.slice(0, idx).trim() : raw.trim());
+        } else {
+          setAnalysisNarrative(null);
+        }
+      })
+      .catch(() => setAnalysisNarrative(null));
+  }, [isOpen, product?.internalArticleNumber, canUseAi]);
 
   const handleCloseAttempt = () => {
     if (isDirty) {
@@ -237,7 +258,15 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     });
   };
 
-  const renderField = (moduleName: string, label: string, val: string, inputComponent: React.ReactNode, isCheckbox: boolean = false, textColor?: string) => {
+  // Apply an AI-suggested value directly to the DOM input (non-destructive — no re-mount)
+  const applyAiSuggestion = (fieldKey: string, value: string) => {
+    const form = formRef.current;
+    if (!form) return;
+    const el = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${fieldKey}"]`);
+    if (el) { el.value = value; setIsDirty(true); }
+  };
+
+  const renderField = (moduleName: string, label: string, val: string, inputComponent: React.ReactNode, isCheckbox: boolean = false, textColor?: string, fieldKey?: string) => {
     let action = isAdmin ? 'WRITE' : (fieldPermissions?.[moduleName] ?? 'READ');
     if (isGloballyLocked) action = 'READ';
 
@@ -252,6 +281,19 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     if (key === 'description') key = 'longDescription';
     
     const writeIndicator = action !== 'READ' ? <input type="hidden" name="_present_fields" value={key} /> : null;
+
+    // AI suggestion button — only for writable text-type fields when an analysis is available
+    const showAiBtn = canUseAi && analysisNarrative && !isCheckbox && action !== 'READ' && fieldKey;
+    const aiBtn = showAiBtn ? (
+      <AiFieldSuggestion
+        fieldKey={fieldKey!}
+        fieldLabel={label}
+        currentValue={val}
+        analysisNarrative={analysisNarrative!}
+        productTitle={localProductData?.title || ''}
+        onApply={(suggestion) => applyAiSuggestion(fieldKey!, suggestion)}
+      />
+    ) : null;
     
     if (isCheckbox) {
       const isCriteria = moduleName.startsWith('FIELD:crit');
@@ -277,7 +319,9 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     return (
       <div>
         {writeIndicator}
-        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'inherit', opacity: 0.7, marginBottom: '0.4rem' }}>{label}</label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem', fontWeight: 600, color: 'inherit', opacity: 0.7, marginBottom: '0.4rem' }}>
+          {label}{aiBtn}
+        </label>
         {action === 'READ' ? (
           <div className="input" style={{ backgroundColor: 'rgba(0,0,0,0.02)', color: 'inherit', opacity: 0.7, cursor: 'not-allowed', border: '1px solid rgba(0,0,0,0.05)', minHeight: '38px', display: 'flex', alignItems: 'center' }}>
             {val || '-'}
@@ -436,9 +480,14 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     if (f.width === '1') span = 8;
     if (f.width === '2') span = 16;
     
+    // Only show AI suggestion button for text-compatible, non-system fields
+    const isAiEligible = !isCheckbox &&
+      f.type !== 'media' && f.type !== 'chat' && f.type !== 'relation' &&
+      f.id !== 'FIELD:internalArticleNumber';
+
     return (
       <div key={f.id} style={{ gridColumn: `span ${span}`, backgroundColor: f.backgroundColor || 'transparent', padding: f.backgroundColor ? '0.75rem' : '0', borderRadius: 'var(--radius)', color: effectiveTextColor }}>
-        {renderField(f.id, f.label, val?.toString() ?? '', inputComponent, isCheckbox, effectiveTextColor)}
+        {renderField(f.id, f.label, val?.toString() ?? '', inputComponent, isCheckbox, effectiveTextColor, isAiEligible ? key : undefined)}
       </div>
     );
   };
