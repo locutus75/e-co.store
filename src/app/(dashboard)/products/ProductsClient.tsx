@@ -519,6 +519,7 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
                     articleNumber={product.internalArticleNumber}
                     productTitle={product.title}
                     score={aiScoreMap[product.internalArticleNumber] ?? null}
+                    canUseAi={canUseAi}
                   />
                 </td>
               </tr>

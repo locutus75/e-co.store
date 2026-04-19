@@ -340,7 +340,7 @@ export default function ProductAiPanel({ product, layout }: Props) {
 
         {/* ── Modal header ── */}
         <div style={{ display:'flex', alignItems:'center', gap:'0.75rem', padding:'0.9rem 1.25rem', backgroundColor:'#7c3aed', color:'white', flexShrink:0 }}>
-          <span style={{ fontWeight:700, fontSize:'0.95rem', whiteSpace:'nowrap' }}>🤖 AI Productanalyse</span>
+          <span style={{ fontWeight: 700, fontSize: '0.95rem', whiteSpace: 'nowrap' }}>📋 Product Analyse</span>
           <span style={{ fontSize:'0.78rem', opacity:0.75, fontWeight:400 }}>— {product.title ?? `#${product.internalArticleNumber}`}</span>
           <div style={{ flex:1 }} />
           {/* Provider selector */}

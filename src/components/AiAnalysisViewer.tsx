@@ -29,6 +29,7 @@ interface Props {
   articleNumber: string;
   productTitle?: string;
   score: number | null;
+  canUseAi?: boolean;
 }
 
 function scoreColor(s: number) {
@@ -108,7 +109,7 @@ export function AiScoreBadge({ score, onClick }: { score: number; onClick: (e: R
 }
 
 /** Full read-only analysis viewer modal */
-export default function AiAnalysisViewer({ articleNumber, productTitle, score }: Props) {
+export default function AiAnalysisViewer({ articleNumber, productTitle, score, canUseAi = false }: Props) {
   const [open, setOpen]         = useState(false);
   const [mounted, setMounted]   = useState(false);
   const [loading, setLoading]   = useState(false);
@@ -156,16 +157,20 @@ export default function AiAnalysisViewer({ articleNumber, productTitle, score }:
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.9rem 1.25rem', backgroundColor: '#7c3aed', color: 'white', flexShrink: 0 }}>
-          <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>🤖 AI Analyse</span>
+          <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>📋 Product Analyse</span>
           {productTitle && <span style={{ fontSize: '0.78rem', opacity: 0.75 }}>— {productTitle}</span>}
           <div style={{ flex: 1 }} />
-          {analysis && (
+          {canUseAi && analysis && (
             <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.71rem', color: 'rgba(255,255,255,0.75)', alignItems: 'center' }}>
               <span>{PROVIDER_ICONS[analysis.provider]} {analysis.model}</span>
               <span>📥 {analysis.inputTokens.toLocaleString()} / 📤 {analysis.outputTokens.toLocaleString()}</span>
               <span>💰 ${analysis.costUsd.toFixed(5)}</span>
-              <span>📅 {new Date(analysis.updatedAt).toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
             </div>
+          )}
+          {analysis && (
+            <span style={{ fontSize: '0.71rem', color: 'rgba(255,255,255,0.65)' }}>
+              📅 {new Date(analysis.updatedAt).toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </span>
           )}
           <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.8)', cursor: 'pointer', fontSize: '1.3rem', lineHeight: 1, padding: '0 0.25rem', marginLeft: '0.5rem' }}>✕</button>
         </div>
