@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
-import { getLlmConfigsAction, getLlmUsageStatsAction } from '@/app/actions/llm';
+import { getAvailableProvidersAction, getLlmUsageStatsAction } from '@/app/actions/llm';
 import AiClient from './AiClient';
 
 export const metadata = { title: 'AI Assistent — e&co.store' };
@@ -22,8 +22,8 @@ export default async function AiPage() {
   }
 
   const [providers, stats] = await Promise.all([
-    getLlmConfigsAction(),
-    isAdmin ? getLlmUsageStatsAction('30d') : null,
+    getAvailableProvidersAction(),                            // works for admin + MENU:ai users
+    isAdmin ? getLlmUsageStatsAction('30d') : null,          // stats only for admins
   ]);
 
   const userId = (session.user as any)?.id as string;
@@ -31,3 +31,4 @@ export default async function AiPage() {
 
   return <AiClient providers={providers} initialStats={stats} isAdmin={isAdmin} userId={userId} userEmail={userEmail} />;
 }
+

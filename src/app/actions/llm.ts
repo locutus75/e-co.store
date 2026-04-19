@@ -46,6 +46,38 @@ async function assertAdmin() {
   return session!;
 }
 
+/** Allows both admins and users with the MENU:ai role permission */
+async function assertAiAccess() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) throw new Error('Niet ingelogd.');
+  const roles: string[] = (session.user as any)?.roles ?? [];
+  const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
+  if (isAdmin) return session;
+  const perm = await prisma.rolePermission.findFirst({
+    where: { role: { name: { in: roles } }, module: 'MENU:ai', action: 'ALLOW' },
+  });
+  if (!perm) throw new Error('Geen toegang tot AI functies.');
+  return session;
+}
+
+/** Read provider list — usable by anyone with AI access (no API keys exposed) */
+export async function getAvailableProvidersAction(): Promise<LlmProviderPublic[]> {
+  await assertAiAccess();
+  const results: LlmProviderPublic[] = [];
+  for (const provider of ['openai', 'anthropic', 'gemini'] as LlmProvider[]) {
+    const row = await prisma.systemSetting.findUnique({ where: { key: settingKey(provider) } });
+    if (row) {
+      const parsed: LlmProviderConfig = JSON.parse(row.value);
+      const { apiKey: _key, ...rest } = parsed;
+      results.push({ ...rest, hasApiKey: !!_key });
+    } else {
+      results.push({ ...DEFAULTS[provider], hasApiKey: false });
+    }
+  }
+  return results;
+}
+
+/** Admin-only: read full config list */
 export async function getLlmConfigsAction(): Promise<LlmProviderPublic[]> {
   await assertAdmin();
   const results: LlmProviderPublic[] = [];
