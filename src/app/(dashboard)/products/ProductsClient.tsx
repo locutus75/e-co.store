@@ -7,6 +7,119 @@ import AiAnalysisViewer from '@/components/AiAnalysisViewer';
 import BatchAnalyzeModal from '@/components/BatchAnalyzeModal';
 import { deleteProductsAction, updateReadyForImportAction, updateProductStatusAction, bulkAssignAction } from '@/app/actions/product';
 
+// ── Completeness helpers ────────────────────────────────────────────────────
+const BASIS_TEXT_TYPES = new Set(['text', 'textarea']);
+const ATTR_TYPES = new Set(['text', 'textarea', 'number', 'picklist']);
+const SKIP_BASIS_FIELDS = new Set(['FIELD:internalArticleNumber', 'FIELD:internalRemarks']);
+
+function computeCompleteness(product: any, layout: any[], imageCount: number) {
+  let basisTotal = 0, basisFilled = 0;
+  let attrTotal = 0, attrFilled = 0;
+  let critTotal = 0, critFilled = 0;
+
+  for (const section of layout) {
+    const fields: any[] = section.fields ?? [];
+    const isBasisSection = fields.some((f: any) => f.id === 'FIELD:title');
+    const isCritSection  = fields.some((f: any) => f.id.replace('FIELD:', '').startsWith('crit'));
+
+    for (const field of fields) {
+      const key = field.id.replace('FIELD:', '');
+      const isCritField = key.startsWith('crit');
+
+      // ── Basis text section ──────────────────────────────────────────────
+      if (isBasisSection && !SKIP_BASIS_FIELDS.has(field.id) && BASIS_TEXT_TYPES.has(field.type)) {
+        basisTotal++;
+        const val = product[key];
+        if (val != null && String(val).trim()) basisFilled++;
+        continue;
+      }
+
+      // ── Criteria fields ─────────────────────────────────────────────────
+      if (isCritField) {
+        critTotal++;
+        const val = product[key];
+        if (field.type === 'checkbox') {
+          // boolean: true or false both = answered; null = not
+          if (val !== null && val !== undefined) critFilled++;
+        } else {
+          // text/number/picklist/textarea crit fields
+          if (val != null && String(val).trim() && String(val) !== 'Leeg') critFilled++;
+        }
+        continue;
+      }
+
+      // ── Physical / attribute fields (non-basis, non-criteria) ───────────
+      if (!isBasisSection && !isCritSection && ATTR_TYPES.has(field.type)) {
+        attrTotal++;
+        let val: any;
+        if (key.startsWith('custom_')) {
+          val = product.customData?.[key.replace('custom_', '')];
+        } else {
+          val = product[key];
+        }
+        if (val != null && String(val).trim()) attrFilled++;
+      }
+    }
+  }
+
+  return {
+    photos:    imageCount,
+    basisPct:  basisTotal  > 0 ? Math.round((basisFilled  / basisTotal)  * 100) : -1,
+    attrPct:   attrTotal   > 0 ? Math.round((attrFilled   / attrTotal)   * 100) : -1,
+    critPct:   critTotal   > 0 ? Math.round((critFilled   / critTotal)   * 100) : -1,
+    basisTotal, attrTotal, critTotal,
+    basisFilled, attrFilled, critFilled,
+  };
+}
+
+function pctStyle(pct: number): React.CSSProperties {
+  if (pct < 0)  return { backgroundColor: '#f3f4f6', color: '#9ca3af' }; // not applicable
+  if (pct >= 75) return { backgroundColor: '#dcfce7', color: '#15803d' };
+  if (pct >= 50) return { backgroundColor: '#fef9c3', color: '#92400e' };
+  return { backgroundColor: '#fee2e2', color: '#b91c1c' };
+}
+
+function Pip({ label, value, bg, color, title }: { label: string; value: string; bg: string; color: string; title: string }) {
+  return (
+    <span title={title} style={{
+      display: 'inline-flex', alignItems: 'center', gap: '1px',
+      padding: '2px 5px', borderRadius: '4px',
+      backgroundColor: bg, color, fontSize: '0.62rem', fontWeight: 700,
+      lineHeight: 1, whiteSpace: 'nowrap', cursor: 'default',
+    }}>
+      <span>{label}</span><span>{value}</span>
+    </span>
+  );
+}
+
+function CompletenessCell({ product, layout, imageCount }: { product: any; layout: any[]; imageCount: number }) {
+  const c = computeCompleteness(product, layout, imageCount);
+  const photoStyle = c.photos >= 2
+    ? { bg: '#dcfce7', color: '#15803d' }
+    : c.photos === 1
+      ? { bg: '#fef9c3', color: '#92400e' }
+      : { bg: '#fee2e2', color: '#b91c1c' };
+  const bs = pctStyle(c.basisPct);
+  const as_ = pctStyle(c.attrPct);
+  const cs = pctStyle(c.critPct);
+  return (
+    <div style={{ display: 'flex', flexWrap: 'nowrap', gap: '3px', alignItems: 'center' }}>
+      <Pip label="📷" value={String(c.photos)}
+        bg={photoStyle.bg} color={photoStyle.color}
+        title={`${c.photos} foto${c.photos !== 1 ? "'s" : ''}`} />
+      {c.basisTotal > 0 && <Pip label="T" value={`${c.basisPct}%`}
+        bg={bs.backgroundColor as string} color={bs.color as string}
+        title={`Tekst: ${c.basisFilled}/${c.basisTotal} velden gevuld (${c.basisPct}%)`} />}
+      {c.attrTotal > 0 && <Pip label="F" value={`${c.attrPct}%`}
+        bg={as_.backgroundColor as string} color={as_.color as string}
+        title={`Fysiek: ${c.attrFilled}/${c.attrTotal} velden gevuld (${c.attrPct}%)`} />}
+      {c.critTotal > 0 && <Pip label="C" value={`${c.critPct}%`}
+        bg={cs.backgroundColor as string} color={cs.color as string}
+        title={`Criteria: ${c.critFilled}/${c.critTotal} beoordeeld (${c.critPct}%)`} />}
+    </div>
+  );
+}
+
 export const getStatusColor = (status: string) => {
   switch (status.toUpperCase()) {
     case 'NEW': return 'var(--primary)';
@@ -137,7 +250,7 @@ function InlineReadyToggle({ product, isAdmin }: { product: any, isAdmin: boolea
   );
 }
 
-export default function ProductsClient({ initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canUseAi = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null, aiScoreMap = {} }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, canAssignProducts?: boolean, canUseAi?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, aiScoreMap?: Record<string, number | null> }) {
+export default function ProductsClient({ initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canUseAi = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null, aiScoreMap = {}, imageCountMap = {} }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, canAssignProducts?: boolean, canUseAi?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, aiScoreMap?: Record<string, number | null>, imageCountMap?: Record<string, number> }) {
   const router = useRouter();
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
@@ -440,8 +553,9 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:brandId', 'Merk')}</th>
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:title', 'Title')}</th>
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:status', 'Status')}</th>
-              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Webshop Ready</th>
+              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Compleet</th>
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Score</th>
+              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Webshop Ready</th>
             </tr>
           </thead>
           <tbody>
@@ -532,8 +646,8 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
                 <td style={{ padding: '1.25rem' }}>
                   <InlineStatusToggle product={product} isAdmin={isAdmin} />
                 </td>
-                <td style={{ padding: '1.25rem' }}>
-                  <InlineReadyToggle product={product} isAdmin={isAdmin} />
+                <td style={{ padding: '0.6rem 1.25rem' }}>
+                  <CompletenessCell product={product} layout={layout} imageCount={imageCountMap[product.internalArticleNumber] ?? 0} />
                 </td>
                 <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
                   <AiAnalysisViewer
@@ -543,11 +657,14 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
                     canUseAi={canUseAi}
                   />
                 </td>
+                <td style={{ padding: '1.25rem' }}>
+                  <InlineReadyToggle product={product} isAdmin={isAdmin} />
+                </td>
               </tr>
             ))}
             {filteredProducts.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>Geen producten gevonden die voldoen aan je filters.</td>
+                <td colSpan={10} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>Geen producten gevonden die voldoen aan je filters.</td>
               </tr>
             )}
           </tbody>
