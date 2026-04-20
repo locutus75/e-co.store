@@ -12,6 +12,12 @@ const BASIS_TEXT_TYPES = new Set(['text', 'textarea']);
 const ATTR_TYPES = new Set(['text', 'textarea', 'number', 'picklist']);
 const SKIP_BASIS_FIELDS = new Set(['FIELD:internalArticleNumber', 'FIELD:internalRemarks']);
 
+// Mirrors the alias in ProductDrawer.tsx (line 281): FIELD:description → longDescription
+const FIELD_KEY_ALIAS: Record<string, string> = {
+  'description': 'longDescription',
+};
+
+
 function computeCompleteness(product: any, layout: any[], imageCount: number) {
   let basisTotal = 0, basisFilled = 0;
   let attrTotal = 0, attrFilled = 0;
@@ -29,7 +35,8 @@ function computeCompleteness(product: any, layout: any[], imageCount: number) {
       // ── Basis text section ──────────────────────────────────────────────
       if (isBasisSection && !SKIP_BASIS_FIELDS.has(field.id) && BASIS_TEXT_TYPES.has(field.type)) {
         basisTotal++;
-        const val = product[key];
+        const modelKey = FIELD_KEY_ALIAS[key] || key;
+        const val = product[modelKey];
         if (val != null && String(val).trim()) basisFilled++;
         continue;
       }
@@ -37,12 +44,11 @@ function computeCompleteness(product: any, layout: any[], imageCount: number) {
       // ── Criteria fields ─────────────────────────────────────────────────
       if (isCritField) {
         critTotal++;
-        const val = product[key];
+        const modelKey = FIELD_KEY_ALIAS[key] || key;
+        const val = product[modelKey];
         if (field.type === 'checkbox') {
-          // boolean: true or false both = answered; null = not
           if (val !== null && val !== undefined) critFilled++;
         } else {
-          // text/number/picklist/textarea crit fields
           if (val != null && String(val).trim() && String(val) !== 'Leeg') critFilled++;
         }
         continue;
@@ -51,11 +57,12 @@ function computeCompleteness(product: any, layout: any[], imageCount: number) {
       // ── Physical / attribute fields (non-basis, non-criteria) ───────────
       if (!isBasisSection && !isCritSection && ATTR_TYPES.has(field.type)) {
         attrTotal++;
+        const modelKey = FIELD_KEY_ALIAS[key] || key;
         let val: any;
         if (key.startsWith('custom_')) {
           val = product.customData?.[key.replace('custom_', '')];
         } else {
-          val = product[key];
+          val = product[modelKey];
         }
         if (val != null && String(val).trim()) attrFilled++;
       }
