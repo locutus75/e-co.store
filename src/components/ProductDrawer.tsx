@@ -521,7 +521,23 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
             <div style={{ padding: '2rem 3rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, backgroundColor: 'rgba(255,255,255,0.95)', zIndex: 10, backdropFilter: 'blur(8px)' }}>
               <div>
                 <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text)' }}>Edit Product #{localProductData.internalArticleNumber}</h2>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.5rem' }}>
+                {/* Last edited info */}
+                {(localProductData.updatedAt || localProductData.lastEditedByUser) && (
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <span>🕐</span>
+                    <span>
+                      Laatste bewerking:{' '}
+                      {localProductData.updatedAt
+                        ? new Date(localProductData.updatedAt).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        : '—'}
+                      {localProductData.lastEditedByUser?.email && (
+                        <> door <strong style={{ color: 'var(--text)', fontWeight: 600 }}>{localProductData.lastEditedByUser.email.split('@')[0]}</strong></>
+                      )}
+                    </span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.25rem' }}>
+
                   <span style={{ fontSize: '1rem', color: 'var(--color-mustard)', fontWeight: 600 }}>{localProductData.title}</span>
                   <select 
                     name="status"

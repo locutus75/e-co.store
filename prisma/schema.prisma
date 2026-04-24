@@ -23,6 +23,7 @@ model User {
   sentMessages        InternalMessage[]  @relation("SentMessages")
   receivedMessages    MessageRecipient[]
   llmUsageLogs        LlmUsageLog[]
+  lastEditedProducts  Product[]          @relation("LastEditedBy")
 }
 
 model Role {
@@ -150,12 +151,14 @@ model Product {
 
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+  lastEditedByUserId    String?  // Who last saved this product
 
   brand             Brand?    @relation(fields: [brandId], references: [id])
   supplier          Supplier? @relation(fields: [supplierId], references: [id])
   category          Category? @relation("CategoryToProduct", fields: [categoryId], references: [id])
   subcategory       Category? @relation("SubcategoryToProduct", fields: [subcategoryId], references: [id])
   assignedUser      User?     @relation(fields: [assignedUserId], references: [id])
+  lastEditedByUser  User?     @relation("LastEditedBy", fields: [lastEditedByUserId], references: [id])
 
   assignments       ProductAssignment[]
   statusHistories   ProductStatusHistory[]

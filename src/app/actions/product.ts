@@ -274,10 +274,15 @@ export async function updateProductAction(internalId: string, formData: FormData
   }
 
   try {
+    const session = await getServerSession(authOptions);
+    const editorId = (session?.user as any)?.id;
+    if (editorId) data.lastEditedByUserId = editorId;
+
     await prisma.product.update({
       where: { internalArticleNumber: internalId },
       data
     });
+
     revalidatePath('/products');
     revalidatePath('/assignments');
     revalidatePath('/', 'layout');

@@ -46,7 +46,8 @@ export default async function ProductsPage() {
     prisma.product.findMany({
       where: canSeeAllProducts ? undefined : { assignedUserId: userId },
       orderBy: { createdAt: 'desc' },
-      include: { brand: true, supplier: true, category: true, subcategory: true, assignedUser: true, remarks: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true, userId: true } } }
+      include: { brand: true, supplier: true, category: true, subcategory: true, assignedUser: true, lastEditedByUser: { select: { id: true, email: true } }, remarks: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true, userId: true } } }
+
     }),
     prisma.productAiAnalysis.findMany({ select: { articleNumber: true, score: true } }),
   ]);
