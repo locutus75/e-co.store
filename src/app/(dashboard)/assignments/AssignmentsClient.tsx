@@ -37,14 +37,26 @@ export default function AssignmentsClient({ usersWithAssignments }: { usersWithA
     setRecentEdits([]);
     try {
       const res = await fetch(`/api/user/recent-edits?userId=${encodeURIComponent(userId)}&take=20`);
-      const data = await res.json();
-      if (res.ok) setRecentEdits(data.products ?? []);
-      else setPanelError(data.error || 'Fout bij laden');
-    } catch {
-      setPanelError('Netwerk fout');
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        setPanelError(`Server antwoord is geen geldige JSON (status ${res.status}). Herstart de server via update_and_run.ps1.`);
+        setPanelLoading(false);
+        return;
+      }
+      if (res.ok) {
+        setRecentEdits(data.products ?? []);
+        if (data.warning) setPanelError(`⚠️ ${data.warning}`);
+      } else {
+        setPanelError(data.error || `Fout bij laden (${res.status})`);
+      }
+    } catch (err: any) {
+      setPanelError(`Verbindingsfout: ${err?.message ?? 'Onbekend'}. Controleer of de server actief is.`);
     }
     setPanelLoading(false);
   };
+
 
   const closePanel = () => { setActivePanel(null); setRecentEdits([]); };
 
