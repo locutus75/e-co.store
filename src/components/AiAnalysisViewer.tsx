@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useExchangeRate, formatCostEur } from '@/hooks/useExchangeRate';
 
 const PROVIDER_ICONS: Record<string, string> = { openai: '🟢', anthropic: '🟠', gemini: '🔵' };
 
@@ -110,6 +111,7 @@ export function AiScoreBadge({ score, onClick }: { score: number; onClick: (e: R
 
 /** Full read-only analysis viewer modal */
 export default function AiAnalysisViewer({ articleNumber, productTitle, score, canUseAi = false }: Props) {
+  const { rate: usdToEur } = useExchangeRate();
   const [open, setOpen]         = useState(false);
   const [mounted, setMounted]   = useState(false);
   const [loading, setLoading]   = useState(false);
@@ -164,7 +166,7 @@ export default function AiAnalysisViewer({ articleNumber, productTitle, score, c
             <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.71rem', color: 'rgba(255,255,255,0.75)', alignItems: 'center' }}>
               <span>{PROVIDER_ICONS[analysis.provider]} {analysis.model}</span>
               <span>📥 {analysis.inputTokens.toLocaleString()} / 📤 {analysis.outputTokens.toLocaleString()}</span>
-              <span>💰 ${analysis.costUsd.toFixed(5)}</span>
+              <span>💰 {formatCostEur(analysis.costUsd, usdToEur)}</span>
             </div>
           )}
           {analysis && (

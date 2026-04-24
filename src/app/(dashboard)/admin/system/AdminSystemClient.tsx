@@ -30,12 +30,22 @@ export default function AdminSystemClient() {
   const [modalAction, setModalAction] = useState<() => void>(() => {});
   const [modalIsInfoOnly, setModalIsInfoOnly] = useState(false);
 
+  // Exchange Rate State
+  const [exRate, setExRate]           = useState<{ rate: number; updatedAt: string | null; source: string } | null>(null);
+  const [exRateLoading, setExRateLoading] = useState(false);
+  const [exRateMsg, setExRateMsg]     = useState('');
+  const [exRateError, setExRateError] = useState('');
+  const [manualRate, setManualRate]   = useState('');
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
 
   useEffect(() => {
     checkUpdates();
     fetchDbConfig();
+    fetchExchangeRate();
   }, []);
+
 
   // --- MODAL HELPER ---
   const openConfirmModal = (title: string, body: React.ReactNode, actionText: string, actionClass: string, onConfirm: () => void) => {
@@ -65,6 +75,46 @@ export default function AdminSystemClient() {
     setModalOpen(false);
     // if file input is pending reset it
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // --- EXCHANGE RATE ---
+  const fetchExchangeRate = async () => {
+    try {
+      const res = await fetch('/api/system/exchange-rate');
+      if (res.ok) setExRate(await res.json());
+    } catch { /* ignore */ }
+  };
+
+  const refreshExchangeRate = async () => {
+    setExRateLoading(true); setExRateMsg(''); setExRateError('');
+    try {
+      const res = await fetch('/api/system/exchange-rate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'refresh' }),
+      });
+      const data = await res.json();
+      if (res.ok) { setExRate(data); setExRateMsg(`✅ Bijgewerkt: 1 USD = ${data.rate.toFixed(4)} EUR`); }
+      else setExRateError(data.error || 'Ophalen mislukt');
+    } catch (e: any) { setExRateError(e.message || 'Netwerkfout'); }
+    setExRateLoading(false);
+  };
+
+  const saveManualRate = async () => {
+    const r = parseFloat(manualRate.replace(',', '.'));
+    if (isNaN(r) || r <= 0) { setExRateError('Voer een geldige wisselkoers in (bijv. 0.92)'); return; }
+    setExRateLoading(true); setExRateMsg(''); setExRateError('');
+    try {
+      const res = await fetch('/api/system/exchange-rate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'manual', rate: r }),
+      });
+      const data = await res.json();
+      if (res.ok) { setExRate(data); setManualRate(''); setExRateMsg(`✅ Handmatige koers opgeslagen: 1 USD = ${r.toFixed(4)} EUR`); }
+      else setExRateError(data.error || 'Opslaan mislukt');
+    } catch (e: any) { setExRateError(e.message || 'Netwerkfout'); }
+    setExRateLoading(false);
   };
 
   // --- UPDATER ---
@@ -469,6 +519,89 @@ export default function AdminSystemClient() {
                 </div>
             </form>
         )}
+      </div>
+
+      {/* 💱 Wisselkoers USD → EUR */}
+      <div className="glass" style={{ borderRadius: 'var(--radius-lg)', padding: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
+          <div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text)', margin: 0 }}>💱 Wisselkoers USD → EUR</h2>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>Wordt gebruikt voor het tonen van AI-kosten in euro’s in het hele systeem.</p>
+          </div>
+          <button
+            type="button"
+            onClick={refreshExchangeRate}
+            disabled={exRateLoading}
+            style={{ padding: '0.5rem 1.1rem', borderRadius: 'var(--radius)', backgroundColor: '#0ea5e9', color: 'white', border: 'none', fontWeight: 600, fontSize: '0.85rem', cursor: exRateLoading ? 'not-allowed' : 'pointer', opacity: exRateLoading ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}
+          >
+            {exRateLoading ? (
+              <><span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2.5px solid white', borderTopColor: 'transparent', borderRadius: '50%', animation: 'ex-spin 1s linear infinite' }} /> Ophalen...</>
+            ) : '🔄 Live bijwerken (ECB)'}
+          </button>
+        </div>
+
+        {exRateMsg && <div style={{ padding: '0.75rem 1rem', backgroundColor: 'rgba(5,150,105,0.08)', border: '1px solid rgba(5,150,105,0.3)', borderRadius: 'var(--radius)', color: '#065f46', fontSize: '0.85rem', marginBottom: '1rem' }}>{exRateMsg}</div>}
+        {exRateError && <div style={{ padding: '0.75rem 1rem', backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 'var(--radius)', color: '#991b1b', fontSize: '0.85rem', marginBottom: '1rem' }}>{exRateError}</div>}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+          {/* Current rate info */}
+          <div style={{ padding: '1.5rem', backgroundColor: 'var(--background)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>Huidige koers</div>
+            {exRate ? (
+              <>
+                <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text)', lineHeight: 1 }}>
+                  {exRate.rate.toFixed(4)}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>1 USD = {exRate.rate.toFixed(4)} EUR</div>
+                <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  <span style={{
+                    fontSize: '0.7rem', fontWeight: 700, padding: '0.2rem 0.55rem', borderRadius: '999px',
+                    backgroundColor: exRate.source === 'api' ? '#dbeafe' : exRate.source === 'manual' ? '#fef9c3' : '#f1f5f9',
+                    color: exRate.source === 'api' ? '#1d4ed8' : exRate.source === 'manual' ? '#92400e' : '#64748b',
+                  }}>
+                    {exRate.source === 'api' ? '🏦 ECB Live' : exRate.source === 'manual' ? '✏️ Handmatig' : '⚠️ Standaard'}
+                  </span>
+                  {exRate.updatedAt && (
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      Bijgewerkt: {new Date(exRate.updatedAt).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Laden...</div>
+            )}
+          </div>
+
+          {/* Manual override */}
+          <div style={{ padding: '1.5rem', backgroundColor: 'var(--background)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>Handmatige overschrijving</div>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem', lineHeight: 1.5 }}>
+              Voer zelf een vaste koers in (bijv. <code style={{ backgroundColor: 'var(--surface-hover)', padding: '0.1rem 0.3rem', borderRadius: '3px' }}>0.9200</code>).
+            </p>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <input
+                type="text"
+                value={manualRate}
+                onChange={e => { setManualRate(e.target.value); setExRateMsg(''); setExRateError(''); }}
+                placeholder="bijv. 0.9200"
+                className="input"
+                style={{ flex: 1, fontSize: '0.9rem' }}
+              />
+              <button
+                type="button"
+                onClick={saveManualRate}
+                disabled={exRateLoading || !manualRate.trim()}
+                className="btn btn-primary"
+                style={{ flexShrink: 0 }}
+              >
+                Opslaan
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <style>{`@keyframes ex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </div>
 
       {/* AI / LLM Configuration */}

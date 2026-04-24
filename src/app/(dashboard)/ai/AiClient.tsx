@@ -2,6 +2,7 @@
 
 import React, { useState, useTransition, useRef, useEffect } from 'react';
 import { LlmProviderPublic, LlmStatsResult } from '@/app/actions/llm';
+import { useExchangeRate, formatCostEur } from '@/hooks/useExchangeRate';
 
 // ── Model lists per provider ──────────────────────────────────────────────────
 const MODELS: Record<string, { id: string; label: string }[]> = {
@@ -29,8 +30,8 @@ const PROVIDER_ICONS: Record<string, string> = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmt(n: number) { return n.toLocaleString('nl-NL'); }
-function fmtCost(n: number) { return `$${n.toFixed(4)}`; }
 function fmtMs(ms: number) { return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`; }
+
 
 interface Message { role: 'user' | 'assistant'; content: string; usage?: any; }
 
@@ -43,6 +44,8 @@ interface Props {
 }
 
 export default function AiClient({ providers, initialStats, isAdmin }: Props) {
+  const { rate: usdToEur } = useExchangeRate();
+  const fmtCost = (usd: number) => formatCostEur(usd, usdToEur);
   const activeProviders = providers.filter(p => p.hasApiKey);
 
   const [tab, setTab] = useState<'chat' | 'stats'>('chat');
