@@ -196,6 +196,66 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
     return () => window.removeEventListener('keydown', h);
   }, [aiPopover]);
 
+  // ── Photo-presets popover (for media fields) ─────────────────────────────────
+  const [presetsPopover, setPresetsPopover] = useState<{
+    fieldId: string; label: string; top: number; left: number;
+  } | null>(null);
+  const [presetsDraft, setPresetsDraft] = useState<string[]>([]);
+  const [presetsNewDraft, setPresetsNewDraft] = useState('');
+  const [presetsSaving, setPresetsSaving] = useState(false);
+
+  const openPresetsPopover = (e: React.MouseEvent, fieldId: string, label: string) => {
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const top = rect.bottom + 8;
+    const left = Math.min(rect.left, window.innerWidth - 380);
+    // Load existing presets
+    fetch(`/api/ai/photo-presets?fieldId=${encodeURIComponent(fieldId)}`)
+      .then(r => r.json())
+      .then(data => setPresetsDraft(data.presets ?? []))
+      .catch(() => setPresetsDraft([]));
+    setPresetsNewDraft('');
+    setPresetsPopover({ fieldId, label, top, left });
+  };
+
+  const savePresets = async () => {
+    if (!presetsPopover) return;
+    setPresetsSaving(true);
+    await fetch('/api/ai/photo-presets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fieldId: presetsPopover.fieldId, presets: presetsDraft }),
+    });
+    setPresetsSaving(false);
+    setPresetsPopover(null);
+  };
+
+  const addPreset = () => {
+    const trimmed = presetsNewDraft.trim();
+    if (!trimmed || presetsDraft.includes(trimmed)) return;
+    setPresetsDraft(prev => [...prev, trimmed]);
+    setPresetsNewDraft('');
+  };
+
+  const removePreset = (idx: number) => setPresetsDraft(prev => prev.filter((_, i) => i !== idx));
+
+  const movePreset = (idx: number, dir: -1 | 1) => {
+    if (idx + dir < 0 || idx + dir >= presetsDraft.length) return;
+    setPresetsDraft(prev => {
+      const next = [...prev];
+      [next[idx], next[idx + dir]] = [next[idx + dir], next[idx]];
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!presetsPopover) return;
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setPresetsPopover(null); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [presetsPopover]);
+
+
   const moveSection = (index: number, direction: -1 | 1) => {
     if (index + direction < 0 || index + direction >= layout.length) return;
     setLayout(prev => {
@@ -833,6 +893,24 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                           }}
                         >✨</button>
                       )}
+                      {/* AI Photo Presets button — only for media fields */}
+                      {f.type === 'media' && (
+                        <button
+                          type="button"
+                          onClick={(e) => openPresetsPopover(e, f.id, f.label)}
+                          title="AI Foto Presets beheren — snelle instructies voor de AI beeldbewerking"
+                          style={{
+                            width: '24px', height: '24px', borderRadius: '4px', flexShrink: 0,
+                            border: '1px solid #0369a1',
+                            backgroundColor: '#0ea5e9',
+                            color: 'white',
+                            cursor: 'pointer', fontSize: '0.7rem',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 0 0 2px rgba(14,165,233,0.2)',
+                            transition: 'all 0.15s',
+                          }}
+                        >🤖</button>
+                      )}
                       <button
                         onClick={(e) => { e.stopPropagation(); removeField(secIdx, fieldIdx); }}
                         title="Veld verwijderen"
@@ -1068,13 +1146,11 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
             borderRadius: '10px', boxShadow: '0 8px 28px rgba(0,0,0,0.18)',
             overflow: 'hidden',
           }}>
-            {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.55rem 0.85rem', backgroundColor: '#7c3aed' }}>
               <span style={{ color: 'white', fontSize: '0.78rem', fontWeight: 700, flex: 1 }}>✨ AI Instructie — {aiPopover.label}</span>
               <button type="button" onClick={() => setAiPopover(null)}
                 style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.75)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: 0 }}>✕</button>
             </div>
-            {/* Body */}
             <div style={{ padding: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
               <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0, lineHeight: 1.4 }}>
                 Geef een instructie die de AI verplicht opvolgt bij het genereren van een suggestie voor dit veld. Bijv. <em>"Alleen hele getallen, geen eenheid"</em> of <em>"Max 10 woorden"</em>.
@@ -1107,6 +1183,99 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                   </button>
                 )}
                 <button type="button" onClick={() => setAiPopover(null)}
+                  style={{ padding: '0.38rem 0.6rem', borderRadius: '6px', backgroundColor: 'white', color: '#6b7280', border: '1px solid #e5e7eb', fontSize: '0.78rem', cursor: 'pointer' }}>
+                  Annuleren
+                </button>
+              </div>
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
+      {/* ── Photo-presets Popover (portal) ── */}
+
+      {presetsPopover && typeof document !== 'undefined' && createPortal(
+        <>
+          <div onClick={() => setPresetsPopover(null)}
+            style={{ position: 'fixed', inset: 0, zIndex: 9980 }} />
+          <div style={{
+            position: 'fixed', top: presetsPopover.top, left: presetsPopover.left,
+            width: '370px', zIndex: 9981,
+            backgroundColor: 'white', border: '1.5px solid #7dd3fc',
+            borderRadius: '10px', boxShadow: '0 8px 28px rgba(0,0,0,0.18)',
+            overflow: 'hidden',
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.55rem 0.85rem', backgroundColor: '#0ea5e9' }}>
+              <span style={{ color: 'white', fontSize: '0.78rem', fontWeight: 700, flex: 1 }}>🤖 AI Foto Presets — {presetsPopover.label}</span>
+              <button type="button" onClick={() => setPresetsPopover(null)}
+                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.8)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: 0 }}>✕</button>
+            </div>
+            {/* Body */}
+            <div style={{ padding: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0, lineHeight: 1.4 }}>
+                Definieer snelkeuze-instructies die de gebruiker met één klik kan selecteren in het AI Foto Bewerking paneel.
+              </p>
+
+              {/* Existing preset list */}
+              {presetsDraft.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', maxHeight: '220px', overflowY: 'auto' }}>
+                  {presetsDraft.map((preset, idx) => (
+                    <div key={idx} style={{
+                      display: 'flex', alignItems: 'center', gap: '0.4rem',
+                      padding: '0.4rem 0.55rem', backgroundColor: '#f0f9ff',
+                      border: '1px solid #bae6fd', borderRadius: '6px', fontSize: '0.78rem',
+                    }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', marginRight: '0.1rem' }}>
+                        <button type="button" onClick={() => movePreset(idx, -1)} disabled={idx === 0}
+                          style={{ background: 'none', border: 'none', cursor: idx === 0 ? 'not-allowed' : 'pointer', fontSize: '0.6rem', color: '#94a3b8', padding: 0, lineHeight: 1, opacity: idx === 0 ? 0.3 : 1 }}>▲</button>
+                        <button type="button" onClick={() => movePreset(idx, 1)} disabled={idx === presetsDraft.length - 1}
+                          style={{ background: 'none', border: 'none', cursor: idx === presetsDraft.length - 1 ? 'not-allowed' : 'pointer', fontSize: '0.6rem', color: '#94a3b8', padding: 0, lineHeight: 1, opacity: idx === presetsDraft.length - 1 ? 0.3 : 1 }}>▼</button>
+                      </div>
+                      <span style={{ flex: 1, color: '#0c4a6e', lineHeight: 1.4 }}>{preset}</span>
+                      <button type="button" onClick={() => removePreset(idx)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '0.9rem', padding: '0 0.1rem', lineHeight: 1, flexShrink: 0 }}
+                        title="Verwijderen">✕</button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ fontSize: '0.78rem', color: '#94a3b8', margin: 0, textAlign: 'center', padding: '0.5rem 0', fontStyle: 'italic' }}>Nog geen presets — voeg er hieronder een toe.</p>
+              )}
+
+              {/* Add new preset */}
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <input
+                  autoFocus
+                  value={presetsNewDraft}
+                  onChange={e => setPresetsNewDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addPreset(); } }}
+                  placeholder='Bijv. "Vervang achtergrond door wit"'
+                  style={{
+                    flex: 1, padding: '0.4rem 0.6rem', border: '1.5px solid #bae6fd',
+                    borderRadius: '6px', fontSize: '0.78rem', backgroundColor: '#f0f9ff',
+                    color: '#0c4a6e', outline: 'none',
+                  }}
+                  onFocus={e => (e.target.style.borderColor = '#0ea5e9')}
+                  onBlur={e => (e.target.style.borderColor = '#bae6fd')}
+                />
+                <button type="button" onClick={addPreset} disabled={!presetsNewDraft.trim()}
+                  style={{
+                    padding: '0.4rem 0.7rem', borderRadius: '6px',
+                    backgroundColor: presetsNewDraft.trim() ? '#0ea5e9' : '#e2e8f0',
+                    color: presetsNewDraft.trim() ? 'white' : '#94a3b8',
+                    border: 'none', fontSize: '0.8rem', fontWeight: 700,
+                    cursor: presetsNewDraft.trim() ? 'pointer' : 'not-allowed',
+                  }}>+ Toevoegen</button>
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: '0.4rem', borderTop: '1px solid #e0f2fe', paddingTop: '0.6rem' }}>
+                <button type="button" onClick={savePresets} disabled={presetsSaving}
+                  style={{ flex: 1, padding: '0.38rem', borderRadius: '6px', backgroundColor: '#0ea5e9', color: 'white', border: 'none', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>
+                  {presetsSaving ? 'Opslaan...' : '✓ Opslaan'}
+                </button>
+                <button type="button" onClick={() => setPresetsPopover(null)}
                   style={{ padding: '0.38rem 0.6rem', borderRadius: '6px', backgroundColor: 'white', color: '#6b7280', border: '1px solid #e5e7eb', fontSize: '0.78rem', cursor: 'pointer' }}>
                   Annuleren
                 </button>

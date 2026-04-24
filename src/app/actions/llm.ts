@@ -123,6 +123,66 @@ export async function getLlmProviderConfigInternal(provider: LlmProvider): Promi
   return JSON.parse(row.value) as LlmProviderConfig;
 }
 
+// ── Vision / Image-edit config ───────────────────────────────────────────────
+// Stores only the model override for vision tasks — API key is reused from the
+// main provider config and never duplicated.
+
+function visionSettingKey(provider: LlmProvider) {
+  return `llm_vision_model_${provider}`;
+}
+
+// Default vision-capable models per provider
+const VISION_MODEL_DEFAULTS: Record<LlmProvider, string> = {
+  openai:    'gpt-4o',
+  anthropic: 'claude-3-5-sonnet-20241022',
+  gemini:    'gemini-1.5-pro',
+};
+
+export interface VisionProviderConfig {
+  provider: LlmProvider;
+  visionModel: string;
+}
+
+/** Admin-only: save the vision-model selection for a provider */
+export async function saveVisionConfigAction(config: VisionProviderConfig): Promise<{ success: boolean; error?: string }> {
+  try {
+    await assertAdmin();
+    await prisma.systemSetting.upsert({
+      where:  { key: visionSettingKey(config.provider) },
+      update: { value: config.visionModel },
+      create: { key: visionSettingKey(config.provider), value: config.visionModel },
+    });
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+/** Returns the vision model for a provider, falling back to the default */
+export async function getVisionModelForProvider(provider: LlmProvider): Promise<string> {
+  const row = await prisma.systemSetting.findUnique({ where: { key: visionSettingKey(provider) } });
+  return row?.value ?? VISION_MODEL_DEFAULTS[provider];
+}
+
+/** Returns combined vision config (model + API key from main config) for use in API routes */
+export async function getVisionProviderConfigInternal(provider: LlmProvider): Promise<(LlmProviderConfig & { visionModel: string }) | null> {
+  const main = await getLlmProviderConfigInternal(provider);
+  if (!main?.apiKey) return null;
+  const visionModel = await getVisionModelForProvider(provider);
+  return { ...main, visionModel };
+}
+
+/** Read all vision model selections (for admin UI) */
+export async function getVisionConfigsAction(): Promise<VisionProviderConfig[]> {
+  await assertAdmin();
+  const configs: VisionProviderConfig[] = [];
+  for (const provider of ['openai', 'anthropic', 'gemini'] as LlmProvider[]) {
+    const model = await getVisionModelForProvider(provider);
+    configs.push({ provider, visionModel: model });
+  }
+  return configs;
+}
+
 // ── Usage stats ───────────────────────────────────────────────────────────────
 
 export interface LlmStatsResult {

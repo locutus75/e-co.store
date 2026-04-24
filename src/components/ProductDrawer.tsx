@@ -418,7 +418,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     const computedHeight = `${Math.max(38, heightMultiplier * 40)}px`;
 
     if (f.id === 'FIELD:media') {
-      inputComponent = <div style={{ minHeight: computedHeight }}><ProductGallery articleNumber={localProductData?.internalArticleNumber} /></div>;
+      inputComponent = <div style={{ minHeight: computedHeight }}><ProductGallery articleNumber={localProductData?.internalArticleNumber} canUseAi={canUseAi} /></div>;
     } else if (f.type === 'chat') {
       // Render the chat panel directly — no wrapping label, no write-indicator.
       // Stop change-event propagation so the form's onChange does NOT flag isDirty
