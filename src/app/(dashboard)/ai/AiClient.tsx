@@ -60,6 +60,20 @@ export default function AiClient({ providers, initialStats, isAdmin }: Props) {
   const [statsLoading, setStatsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Load last used provider from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('ai_assistant_last_provider');
+    if (saved && providers.some(p => p.provider === saved && p.hasApiKey)) {
+      setSelectedProvider(saved);
+    }
+  }, [providers]);
+
+  // Save selection on change
+  const handleProviderChange = (p: string) => {
+    setSelectedProvider(p);
+    localStorage.setItem('ai_assistant_last_provider', p);
+  };
+
   const providerConfig = providers.find(p => p.provider === selectedProvider);
 
   useEffect(() => {
@@ -155,7 +169,7 @@ export default function AiClient({ providers, initialStats, isAdmin }: Props) {
               {activeProviders.map(p => (
                 <button
                   key={p.provider}
-                  onClick={() => setSelectedProvider(p.provider)}
+                  onClick={() => handleProviderChange(p.provider)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '0.6rem',
                     width: '100%', padding: '0.65rem 0.9rem', marginBottom: '0.4rem',

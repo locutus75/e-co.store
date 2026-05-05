@@ -111,7 +111,7 @@ function FetchBtn({ p, loading, hasKey, onClick }: {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function LlmConfigSection() {
-  const [activeTab, setActiveTab] = useState<'general' | 'vision'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'vision' | 'analysis'>('general');
 
   // ── General state ─────────────────────────────────────────────────────────────
   const [states, setStates] = useState<Record<ProviderId, ProviderState>>(() => {
@@ -282,6 +282,57 @@ export default function LlmConfigSection() {
     }
   };
 
+  // ── Analysis state ────────────────────────────────────────────────────────────
+  const [analysisState, setAnalysisState] = useState({
+    provider: 'openai' as ProviderId,
+    model: 'gpt-4o',
+    saving: false, saved: false, error: '',
+    fetchedModels: null as ModelEntry[] | null,
+    fetchingModels: false,
+  });
+
+  useEffect(() => {
+    fetch('/api/ai/analysis-config')
+      .then(r => r.json())
+      .then(d => {
+        if (d.provider) setAnalysisState(prev => ({ ...prev, provider: d.provider as ProviderId, model: d.model }));
+      })
+      .catch(err => console.error('[analysis-config load]', err));
+  }, []);
+
+  const fetchAnalysisModels = async (providerId: ProviderId) => {
+    setAnalysisState(prev => ({ ...prev, fetchingModels: true }));
+    try {
+      const res = await fetch(`/api/ai/models?provider=${providerId}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Ophalen mislukt');
+      setAnalysisState(prev => ({ 
+        ...prev, 
+        fetchingModels: false, 
+        fetchedModels: data.models,
+        model: data.models.some((m: any) => m.id === prev.model) ? prev.model : data.models[0]?.id
+      }));
+    } catch (e: any) {
+      setAnalysisState(prev => ({ ...prev, fetchingModels: false }));
+    }
+  };
+
+  const saveAnalysis = async () => {
+    setAnalysisState(prev => ({ ...prev, saving: true, saved: false, error: '' }));
+    try {
+      const res = await fetch('/api/ai/analysis-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: analysisState.provider, model: analysisState.model }),
+      });
+      if (!res.ok) throw new Error('Opslaan mislukt');
+      setAnalysisState(prev => ({ ...prev, saving: false, saved: true }));
+      setTimeout(() => setAnalysisState(prev => ({ ...prev, saved: false })), 3000);
+    } catch (e: any) {
+      setAnalysisState(prev => ({ ...prev, saving: false, error: e.message }));
+    }
+  };
+
   // ── RENDER ────────────────────────────────────────────────────────────────────
   return (
     <div className="glass" style={{ borderRadius: 'var(--radius-lg)', padding: '2rem' }}>
@@ -297,6 +348,7 @@ export default function LlmConfigSection() {
         <div style={{ display: 'flex', gap: '0.4rem' }}>
           <button style={tabStyle(activeTab === 'general')} onClick={() => setActiveTab('general')}>💬 Algemeen</button>
           <button style={tabStyle(activeTab === 'vision')} onClick={() => setActiveTab('vision')}>🖼 Foto AI</button>
+          <button style={tabStyle(activeTab === 'analysis')} onClick={() => setActiveTab('analysis')}>🔍 Product Analyse</button>
         </div>
       </div>
 
@@ -430,6 +482,79 @@ export default function LlmConfigSection() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ══ PRODUCT ANALYSE ══ */}
+      {activeTab === 'analysis' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <div style={{ padding: '1.25rem', backgroundColor: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 'var(--radius)', fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            <strong style={{ color: 'var(--text)' }}>🔍 Product Analyse Standaard</strong><br />
+            Selecteer welk model standaard wordt gebruikt wanneer een teamlid de <strong>🤖 Analyseer</strong> knop gebruikt in het productoverzicht. Dit model moet bij voorkeur goed zijn in het begrijpen van gestructureerde data en het geven van gedetailleerde feedback.
+          </div>
+
+          <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Provider</label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  {PROVIDERS.map(p => (
+                    <button 
+                      key={p.id} 
+                      onClick={() => {
+                        setAnalysisState(prev => ({ ...prev, provider: p.id }));
+                        fetchAnalysisModels(p.id);
+                      }}
+                      style={{
+                        flex: 1, padding: '0.6rem', borderRadius: 'var(--radius)', border: analysisState.provider === p.id ? `2px solid ${p.color}` : '1px solid var(--border)',
+                        backgroundColor: analysisState.provider === p.id ? `${p.color}08` : 'white', cursor: 'pointer',
+                        fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem'
+                      }}
+                    >
+                      {p.icon} {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Model</label>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <select 
+                    value={analysisState.model} 
+                    onChange={e => setAnalysisState(prev => ({ ...prev, model: e.target.value }))}
+                    className="input"
+                    style={{ flex: 1 }}
+                  >
+                    {(analysisState.fetchedModels || PROVIDERS.find(p => p.id === analysisState.provider)?.defaultModels.map(m => ({ id: m, label: m })) || []).map((m: any) => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
+                  </select>
+                  <button 
+                    type="button" 
+                    onClick={() => fetchAnalysisModels(analysisState.provider)}
+                    disabled={analysisState.fetchingModels}
+                    style={{ padding: '0.75rem', borderRadius: 'var(--radius)', border: '1px solid var(--border)', backgroundColor: 'white', cursor: 'pointer' }}
+                  >
+                    {analysisState.fetchingModels ? '...' : '🔄'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {analysisState.error && <div style={{ color: 'var(--error)', fontSize: '0.85rem' }}>❌ {analysisState.error}</div>}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+              <button 
+                onClick={saveAnalysis} 
+                disabled={analysisState.saving} 
+                className="btn btn-primary"
+                style={{ minWidth: '160px' }}
+              >
+                {analysisState.saving ? 'Opslaan...' : analysisState.saved ? '✓ Opgeslagen!' : 'Opslaan'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

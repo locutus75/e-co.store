@@ -183,6 +183,45 @@ export async function getVisionConfigsAction(): Promise<VisionProviderConfig[]> 
   return configs;
 }
 
+// ── Product Analysis config ──────────────────────────────────────────────────
+// Defines the default provider and model for automated product analysis.
+
+const PRODUCT_ANALYSIS_KEY = 'llm_product_analysis_config';
+
+export interface ProductAnalysisConfig {
+  provider: LlmProvider;
+  model: string;
+}
+
+const ANALYSIS_DEFAULT: ProductAnalysisConfig = {
+  provider: 'openai',
+  model: 'gpt-4o',
+};
+
+export async function saveAnalysisConfigAction(config: ProductAnalysisConfig): Promise<{ success: boolean; error?: string }> {
+  try {
+    await assertAdmin();
+    await prisma.systemSetting.upsert({
+      where:  { key: PRODUCT_ANALYSIS_KEY },
+      update: { value: JSON.stringify(config) },
+      create: { key: PRODUCT_ANALYSIS_KEY, value: JSON.stringify(config) },
+    });
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+export async function getAnalysisConfigAction(): Promise<ProductAnalysisConfig> {
+  const row = await prisma.systemSetting.findUnique({ where: { key: PRODUCT_ANALYSIS_KEY } });
+  if (!row) return ANALYSIS_DEFAULT;
+  try {
+    return JSON.parse(row.value) as ProductAnalysisConfig;
+  } catch {
+    return ANALYSIS_DEFAULT;
+  }
+}
+
 // ── Usage stats ───────────────────────────────────────────────────────────────
 
 export interface LlmStatsResult {

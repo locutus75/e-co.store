@@ -104,7 +104,7 @@ function scoreColor(s: number) {
 }
 
 const PREFS_KEY = 'ai_panel_prefs_v1';
-interface Prefs { selectedFields: string[]; customPrompt: string; includeImages: boolean; provider: string; }
+interface Prefs { selectedFields: string[]; customPrompt: string; includeImages: boolean; provider: string; model: string; }
 const loadPrefs = (): Prefs | null => { try { return JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null'); } catch { return null; } };
 const savePrefs = (p: Prefs) => { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /**/ } };
 
@@ -188,6 +188,7 @@ export default function ProductAiPanel({ product, layout }: Props) {
   const [mounted, setMounted]                   = useState(false);
   const [providers, setProviders]               = useState<any[]>([]);
   const [selectedProvider, setSelectedProvider] = useState('');
+  const [selectedModel, setSelectedModel]       = useState('');
   const [selectedFields, setSelectedFields]     = useState<Set<string>>(new Set());
   const [includeImages, setIncludeImages]       = useState(false);
   const [customPrompt, setCustomPrompt]         = useState(DEFAULT_PROMPT);
@@ -251,12 +252,27 @@ export default function ProductAiPanel({ product, layout }: Props) {
       const avail = new Set(allFields.map(f => f.id));
       setSelectedFields(new Set((prefs.selectedFields ?? []).filter((id: string) => avail.has(id))));
       if (prefs.provider) setSelectedProvider(prefs.provider);
+      if (prefs.model) setSelectedModel(prefs.model);
     }
+    
+    // Fetch global analysis config
+    const anaCfgRes = await fetch('/api/ai/analysis-config').catch(() => null);
+    let defaultProvider = '';
+    let defaultModel = '';
+    if (anaCfgRes?.ok) {
+      const cfg = await anaCfgRes.json();
+      if (cfg.provider) defaultProvider = cfg.provider;
+      if (cfg.model) defaultModel = cfg.model;
+    }
+
     const provRes = await fetch('/api/ai/providers').catch(() => null);
     if (provRes?.ok) {
       const active = (await provRes.json()).filter((p: any) => p.hasApiKey);
       setProviders(active);
-      if (active.length > 0) setSelectedProvider(prev => prev || active[0].provider);
+      if (active.length > 0) {
+        setSelectedProvider(prev => prev || defaultProvider || active[0].provider);
+        setSelectedModel(prev => prev || defaultModel || '');
+      }
     }
     const anaRes = await fetch(`/api/ai/analysis?article=${encodeURIComponent(product.internalArticleNumber)}`).catch(() => null);
     if (anaRes?.ok) { const d = await anaRes.json(); if (d.analysis) setSavedResult(hydrateDbAnalysis(d.analysis)); }
@@ -266,8 +282,8 @@ export default function ProductAiPanel({ product, layout }: Props) {
 
   useEffect(() => {
     if (!open) return;
-    savePrefs({ selectedFields: Array.from(selectedFields), customPrompt, includeImages, provider: selectedProvider });
-  }, [selectedFields, customPrompt, includeImages, selectedProvider, open]);
+    savePrefs({ selectedFields: Array.from(selectedFields), customPrompt, includeImages, provider: selectedProvider, model: selectedModel });
+  }, [selectedFields, customPrompt, includeImages, selectedProvider, selectedModel, open]);
 
   const toggleField = (id: string) => setSelectedFields(prev => { const n=new Set(prev); n.has(id)?n.delete(id):n.add(id); return n; });
   const selectAll  = () => setSelectedFields(new Set(allFields.map(f => f.id)));
@@ -290,7 +306,7 @@ export default function ProductAiPanel({ product, layout }: Props) {
     startTransition(async () => {
       const res = await fetch('/api/ai/query', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: selectedProvider, prompt: buildPrompt(), systemPrompt: SYSTEM_PROMPT, context: 'product-analysis' }),
+        body: JSON.stringify({ provider: selectedProvider, model: selectedModel || undefined, prompt: buildPrompt(), systemPrompt: SYSTEM_PROMPT, context: 'product-analysis' }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? 'Onbekende fout'); return; }
@@ -348,7 +364,7 @@ export default function ProductAiPanel({ product, layout }: Props) {
           {/* Provider selector */}
           <div style={{ display:'flex', gap:'0.4rem' }}>
             {providers.map(p => (
-              <button key={p.provider} type="button" onClick={() => setSelectedProvider(p.provider)}
+              <button key={p.provider} type="button" onClick={() => { setSelectedProvider(p.provider); setSelectedModel(''); }}
                 style={{ padding:'0.22rem 0.65rem', borderRadius:'999px', fontSize:'0.75rem', fontWeight:600, cursor:'pointer', border:'1.5px solid', borderColor: selectedProvider===p.provider?'white':'rgba(255,255,255,0.35)', backgroundColor: selectedProvider===p.provider?'white':'transparent', color: selectedProvider===p.provider?'#7c3aed':'rgba(255,255,255,0.85)' }}>
                 {PROVIDER_ICONS[p.provider]} {PROVIDER_LABELS[p.provider]}
               </button>

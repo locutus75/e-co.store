@@ -26,8 +26,9 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Parse body ──────────────────────────────────────────────────────────────
-  const { provider, prompt, systemPrompt, context } = await request.json() as {
+  const { provider, model: explicitModel, prompt, systemPrompt, context } = await request.json() as {
     provider: LlmProvider;
+    model?: string;
     prompt: string;
     systemPrompt?: string;
     context?: string;
@@ -43,6 +44,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `Geen API key geconfigureerd voor ${provider}.` }, { status: 400 });
   }
 
+  const modelToUse = explicitModel || config.activeModel;
+
   const startMs = Date.now();
   let inputTokens = 0;
   let outputTokens = 0;
@@ -56,7 +59,7 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
         body: JSON.stringify({
-          model: config.activeModel,
+          model: modelToUse,
           max_completion_tokens: config.maxOutputTokens,
           messages: [
             ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
@@ -79,7 +82,7 @@ export async function POST(request: NextRequest) {
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: config.activeModel,
+          model: modelToUse,
           max_tokens: config.maxOutputTokens,
           system: systemPrompt || undefined,
           messages: [{ role: 'user', content: prompt }],
@@ -92,7 +95,7 @@ export async function POST(request: NextRequest) {
       outputTokens  = data.usage?.output_tokens ?? 0;
 
     } else if (provider === 'gemini') {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${config.activeModel}:generateContent?key=${config.apiKey}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${config.apiKey}`;
       const parts = [];
       if (systemPrompt) parts.push({ text: systemPrompt + '\n\n' });
       parts.push({ text: prompt });
@@ -118,14 +121,14 @@ export async function POST(request: NextRequest) {
   }
 
   const durationMs = Date.now() - startMs;
-  const costUsd    = estimateCost(config.activeModel, inputTokens, outputTokens);
+  const costUsd    = estimateCost(modelToUse, inputTokens, outputTokens);
 
   // ── Log usage ───────────────────────────────────────────────────────────────
   await prisma.llmUsageLog.create({
     data: {
       userId,
       provider,
-      model:         config.activeModel,
+      model:         modelToUse,
       inputTokens,
       outputTokens,
       durationMs,
@@ -143,7 +146,7 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     response: responseText,
-    model:    config.activeModel,
+    model:    modelToUse,
     usage: { inputTokens, outputTokens, durationMs, costUsd },
   });
 }
