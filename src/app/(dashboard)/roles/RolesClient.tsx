@@ -12,6 +12,7 @@ const MENU_MODULES = [
   { module: 'MENU:assignments', label: 'Toewijzingen' },
   { module: 'MENU:users',       label: 'Team & Gebruikers' },
   { module: 'MENU:roles',       label: 'Rollen & Rechten' },
+  { module: 'MENU:stats',       label: '📊 Statistieken' },
   { module: 'MENU:system',      label: 'Systeeminstellingen' },
 ];
 

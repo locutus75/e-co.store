@@ -13,6 +13,10 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
   
   const userId = (session?.user as any)?.id as string | undefined;
+  const currentUser = userId ? await prisma.user.findUnique({ 
+    where: { id: userId }, 
+    select: { email: true, chatColor: true } 
+  }) : null;
   
   // Fetch active menu permissions purely for non-admins 
   let allowedMenus = new Set<string>();
@@ -75,6 +79,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           {canAccess('MENU:assignments') && (
             <Link href="/assignments" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Toewijzingen</Link>
           )}
+          {canAccess('MENU:stats') && (
+            <Link href="/stats" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>📊 Statistieken</Link>
+          )}
           {canAccess('MENU:users') && (
             <Link href="/admin" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Team & Gebruikers</Link>
           )}
@@ -105,6 +112,40 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           zIndex: 5
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+            {currentUser && (
+              <Link 
+                href="/profile" 
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '0.75rem', 
+                  textDecoration: 'none',
+                  padding: '0.4rem 0.8rem',
+                  borderRadius: 'var(--radius)',
+                  transition: 'background-color 0.2s'
+                }}
+                className="hover-surface"
+              >
+                <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)' }}>
+                    {currentUser.email.split('@')[0]}
+                  </span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    {roles.join(', ')}
+                  </span>
+                </div>
+                <div style={{
+                  width: '36px', height: '36px', borderRadius: '50%',
+                  backgroundColor: currentUser.chatColor || 'var(--primary)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: 'white', fontWeight: 800, fontSize: '0.8rem',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                }}>
+                  {currentUser.email.slice(0, 2).toUpperCase()}
+                </div>
+              </Link>
+            )}
+            <div style={{ width: '1px', height: '24px', backgroundColor: 'var(--border)' }} />
             <LogoutButton />
           </div>
         </header>

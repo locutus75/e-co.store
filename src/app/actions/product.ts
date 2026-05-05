@@ -4,6 +4,22 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
+async function logAuditAction(userId: string, action: string, entity: string, entityId: string, changes?: string) {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        userId,
+        action,
+        entity,
+        entityId,
+        changes
+      }
+    });
+  } catch (e) {
+    console.error("Audit logging failed:", e);
+  }
+}
+
 async function assertProductLock(internalId: string) {
   const session = await getServerSession(authOptions);
   const roles = (session?.user as any)?.roles || [];
@@ -73,6 +89,14 @@ export async function bulkAssignAction(internalIds: string[], userId: string) {
       }))
     }
     
+    const session = await getServerSession(authOptions);
+    const actorId = (session?.user as any)?.id;
+    if (actorId) {
+      for (const id of internalIds) {
+        await logAuditAction(actorId, 'ASSIGN', 'Product', id, `Assigned to ${userId}`);
+      }
+    }
+    
     revalidatePath('/products');
     revalidatePath('/assignments');
     revalidatePath('/', 'layout');
@@ -108,6 +132,12 @@ export async function updateReadyForImportAction(internalId: string, status: str
       where: { internalArticleNumber: internalId },
       data: { readyForImport: status }
     });
+    const session = await getServerSession(authOptions);
+    const actorId = (session?.user as any)?.id;
+    if (actorId) {
+      await logAuditAction(actorId, 'READY_FOR_IMPORT_CHANGE', 'Product', internalId, `Status set to ${status}`);
+    }
+
     revalidatePath('/products');
     revalidatePath('/assignments');
     revalidatePath('/', 'layout');
@@ -125,6 +155,12 @@ export async function updateProductStatusAction(internalId: string, status: stri
       where: { internalArticleNumber: internalId },
       data: { status: status }
     });
+    const session = await getServerSession(authOptions);
+    const actorId = (session?.user as any)?.id;
+    if (actorId) {
+      await logAuditAction(actorId, 'STATUS_CHANGE', 'Product', internalId, `Status set to ${status}`);
+    }
+
     revalidatePath('/products');
     revalidatePath('/assignments');
     revalidatePath('/', 'layout');
@@ -276,7 +312,10 @@ export async function updateProductAction(internalId: string, formData: FormData
   try {
     const session = await getServerSession(authOptions);
     const editorId = (session?.user as any)?.id;
-    if (editorId) data.lastEditedByUserId = editorId;
+    if (editorId) {
+      data.lastEditedByUserId = editorId;
+      await logAuditAction(editorId, 'UPDATE', 'Product', internalId, JSON.stringify(data));
+    }
 
     await prisma.product.update({
       where: { internalArticleNumber: internalId },
