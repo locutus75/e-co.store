@@ -127,14 +127,22 @@ export default function LlmConfigSection() {
   }, []);
 
   const updateProvider = (id: ProviderId, patch: Partial<ProviderState>) =>
-    setProviderStates(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+    setProviderStates(prev => ({ 
+      ...prev, 
+      [id]: { ...prev[id], ...patch } 
+    }));
 
   const updateModule = (providerId: ProviderId, moduleId: ModuleId, patch: Partial<ModuleConfig>) => {
-    setProviderStates(prev => {
-      const next = { ...prev };
-      next[providerId].modules[moduleId] = { ...next[providerId].modules[moduleId], ...patch };
-      return { ...next };
-    });
+    setProviderStates(prev => ({
+      ...prev,
+      [providerId]: {
+        ...prev[providerId],
+        modules: {
+          ...prev[providerId].modules,
+          [moduleId]: { ...prev[providerId].modules[moduleId], ...patch }
+        }
+      }
+    }));
   };
 
   const fetchModels = async (p: typeof PROVIDERS[number]) => {

@@ -33,7 +33,7 @@ function fmt(n: number) { return n.toLocaleString('nl-NL'); }
 function fmtMs(ms: number) { return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`; }
 
 
-interface Message { role: 'user' | 'assistant'; content: string; usage?: any; }
+interface Message { role: 'user' | 'assistant'; content: string; model?: string; usage?: any; }
 
 interface Props {
   providers: LlmProviderPublic[];
@@ -119,7 +119,7 @@ export default function AiClient({ providers, initialStats, isAdmin }: Props) {
         if (!res.ok) {
           setMessages(prev => [...prev, { role: 'assistant', content: `❌ Fout: ${data.error}` }]);
         } else {
-          setMessages(prev => [...prev, { role: 'assistant', content: data.response, usage: data.usage }]);
+          setMessages(prev => [...prev, { role: 'assistant', content: data.response, model: data.model, usage: data.usage }]);
         }
       } catch (e: any) {
         setMessages(prev => [...prev, { role: 'assistant', content: `❌ Netwerkfout: ${e.message}` }]);
@@ -299,6 +299,7 @@ export default function AiClient({ providers, initialStats, isAdmin }: Props) {
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', gap: '0.75rem' }}>
                       <span>📥 {fmt(msg.usage.inputTokens)} tokens</span>
                       <span>📤 {fmt(msg.usage.outputTokens)} tokens</span>
+                      {msg.model && <span style={{ color: 'var(--primary)', fontWeight: 600 }}>🤖 {msg.model}</span>}
                       <span>⏱ {fmtMs(msg.usage.durationMs)}</span>
                       <span>💰 {fmtCost(msg.usage.costUsd)}</span>
                     </div>

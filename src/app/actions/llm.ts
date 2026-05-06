@@ -89,17 +89,30 @@ function parseAndMigrateConfig(provider: LlmProvider, value: string): LlmProvide
   const parsed = JSON.parse(value);
   
   // Migration: if it's the old flat structure, convert to nested modules
-  if (parsed.activeModel && !parsed.modules) {
+  // We check for activeModel AND the absence of the new modules structure.
+  if (!parsed.modules) {
+    const activeModel = parsed.activeModel || MODULE_DEFAULTS[provider].assistant.model;
+    
+    // Safety check: if the activeModel doesn't look like it belongs to this provider, use the default
+    const isGpt = activeModel.toLowerCase().includes('gpt');
+    const isClaude = activeModel.toLowerCase().includes('claude');
+    const isGemini = activeModel.toLowerCase().includes('gemini');
+    
+    let finalModel = activeModel;
+    if (provider === 'openai' && !isGpt) finalModel = MODULE_DEFAULTS.openai.assistant.model;
+    if (provider === 'anthropic' && !isClaude) finalModel = MODULE_DEFAULTS.anthropic.assistant.model;
+    if (provider === 'gemini' && !isGemini) finalModel = MODULE_DEFAULTS.gemini.assistant.model;
+
     return {
-      provider: parsed.provider,
-      label: parsed.label,
-      apiKey: parsed.apiKey,
+      provider: parsed.provider || provider,
+      label: parsed.label || (provider === 'openai' ? 'OpenAI' : provider === 'anthropic' ? 'Anthropic' : 'Google Gemini'),
+      apiKey: parsed.apiKey || '',
       enabled: parsed.enabled ?? true,
       modules: {
         assistant: {
-          model: parsed.activeModel,
-          maxInputTokens: parsed.maxInputTokens ?? 4000,
-          maxOutputTokens: parsed.maxOutputTokens ?? 2000,
+          model: finalModel,
+          maxInputTokens: parsed.maxInputTokens ?? MODULE_DEFAULTS[provider].assistant.maxInputTokens,
+          maxOutputTokens: parsed.maxOutputTokens ?? MODULE_DEFAULTS[provider].assistant.maxOutputTokens,
         },
         analysis: MODULE_DEFAULTS[provider].analysis,
         vision:   MODULE_DEFAULTS[provider].vision,
