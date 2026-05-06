@@ -60,12 +60,24 @@ export default function AiClient({ providers, initialStats, isAdmin }: Props) {
   const [statsLoading, setStatsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Load last used provider from localStorage
+  // Load last used provider from localStorage or module defaults
   useEffect(() => {
-    const saved = localStorage.getItem('ai_assistant_last_provider');
-    if (saved && providers.some(p => p.provider === saved && p.hasApiKey)) {
-      setSelectedProvider(saved);
-    }
+    const loadInitial = async () => {
+      const saved = localStorage.getItem('ai_assistant_last_provider');
+      if (saved && providers.some(p => p.provider === saved && p.hasApiKey)) {
+        setSelectedProvider(saved);
+        return;
+      }
+      
+      const res = await fetch('/api/ai/module-defaults').catch(() => null);
+      if (res?.ok) {
+        const defaults = await res.json();
+        if (defaults.assistant && providers.some(p => p.provider === defaults.assistant && p.hasApiKey)) {
+          setSelectedProvider(defaults.assistant);
+        }
+      }
+    };
+    loadInitial();
   }, [providers]);
 
   // Save selection on change
@@ -197,7 +209,7 @@ export default function AiClient({ providers, initialStats, isAdmin }: Props) {
                     display: 'flex', alignItems: 'center', gap: '0.4rem'
                   }}>
                     <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>⚙️</span>
-                    {MODELS[providerConfig.provider]?.find(m => m.id === providerConfig.activeModel)?.label ?? providerConfig.activeModel}
+                    {providerConfig.modules.assistant.model}
                   </div>
                   <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
                     Instelbaar via Systeeminstellingen
@@ -206,12 +218,12 @@ export default function AiClient({ providers, initialStats, isAdmin }: Props) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                   <div style={{ padding: '0.75rem', borderRadius: 'var(--radius)', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border)', textAlign: 'center' }}>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>MAX INPUT</div>
-                    <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>{fmt(providerConfig.maxInputTokens)}</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>{fmt(providerConfig.modules.assistant.maxInputTokens)}</div>
                     <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>tokens</div>
                   </div>
                   <div style={{ padding: '0.75rem', borderRadius: 'var(--radius)', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border)', textAlign: 'center' }}>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>MAX OUTPUT</div>
-                    <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>{fmt(providerConfig.maxOutputTokens)}</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>{fmt(providerConfig.modules.assistant.maxOutputTokens)}</div>
                     <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>tokens</div>
                   </div>
                 </div>

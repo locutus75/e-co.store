@@ -255,14 +255,12 @@ export default function ProductAiPanel({ product, layout }: Props) {
       if (prefs.model) setSelectedModel(prefs.model);
     }
     
-    // Fetch global analysis config
-    const anaCfgRes = await fetch('/api/ai/analysis-config').catch(() => null);
+    // Fetch global module defaults
+    const modRes = await fetch('/api/ai/module-defaults').catch(() => null);
     let defaultProvider = '';
-    let defaultModel = '';
-    if (anaCfgRes?.ok) {
-      const cfg = await anaCfgRes.json();
-      if (cfg.provider) defaultProvider = cfg.provider;
-      if (cfg.model) defaultModel = cfg.model;
+    if (modRes?.ok) {
+      const defaults = await modRes.json();
+      if (defaults.analysis) defaultProvider = defaults.analysis;
     }
 
     const provRes = await fetch('/api/ai/providers').catch(() => null);
@@ -271,7 +269,7 @@ export default function ProductAiPanel({ product, layout }: Props) {
       setProviders(active);
       if (active.length > 0) {
         setSelectedProvider(prev => prev || defaultProvider || active[0].provider);
-        setSelectedModel(prev => prev || defaultModel || '');
+        setSelectedModel(prev => prev || '');
       }
     }
     const anaRes = await fetch(`/api/ai/analysis?article=${encodeURIComponent(product.internalArticleNumber)}`).catch(() => null);

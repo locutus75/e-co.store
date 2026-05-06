@@ -7,9 +7,30 @@ import { LlmProvider, LlmProviderConfig } from '@/app/actions/llm';
 const PROVIDERS: LlmProvider[] = ['openai', 'anthropic', 'gemini'];
 
 const DEFAULTS: Record<LlmProvider, Omit<LlmProviderConfig, 'apiKey'>> = {
-  openai:    { provider: 'openai',    label: 'OpenAI',        activeModel: 'gpt-4o',                    maxInputTokens: 4000, maxOutputTokens: 2000, enabled: true },
-  anthropic: { provider: 'anthropic', label: 'Anthropic',     activeModel: 'claude-3-5-sonnet-20241022', maxInputTokens: 4000, maxOutputTokens: 2000, enabled: true },
-  gemini:    { provider: 'gemini',    label: 'Google Gemini', activeModel: 'gemini-1.5-pro',             maxInputTokens: 4000, maxOutputTokens: 2000, enabled: true },
+  openai: {
+    provider: 'openai', label: 'OpenAI', enabled: true,
+    modules: {
+      assistant: { model: 'gpt-4o', maxInputTokens: 4000, maxOutputTokens: 2000 },
+      analysis:  { model: 'gpt-4o', maxInputTokens: 8000, maxOutputTokens: 4000 },
+      vision:    { model: 'gpt-4o', maxInputTokens: 4000, maxOutputTokens: 2000 },
+    }
+  },
+  anthropic: {
+    provider: 'anthropic', label: 'Anthropic', enabled: true,
+    modules: {
+      assistant: { model: 'claude-3-5-sonnet-20241022', maxInputTokens: 4000, maxOutputTokens: 2000 },
+      analysis:  { model: 'claude-3-5-sonnet-20241022', maxInputTokens: 8000, maxOutputTokens: 4000 },
+      vision:    { model: 'claude-3-5-sonnet-20241022', maxInputTokens: 4000, maxOutputTokens: 2000 },
+    }
+  },
+  gemini: {
+    provider: 'gemini', label: 'Google Gemini', enabled: true,
+    modules: {
+      assistant: { model: 'gemini-1.5-pro', maxInputTokens: 4000, maxOutputTokens: 2000 },
+      analysis:  { model: 'gemini-1.5-pro', maxInputTokens: 8000, maxOutputTokens: 4000 },
+      vision:    { model: 'gemini-1.5-pro', maxInputTokens: 4000, maxOutputTokens: 2000 },
+    }
+  },
 };
 
 function settingKey(provider: LlmProvider) {
@@ -34,7 +55,20 @@ export async function GET(_request: NextRequest) {
     PROVIDERS.map(async (provider) => {
       const row = await prisma.systemSetting.findUnique({ where: { key: settingKey(provider) } });
       if (row) {
-        const parsed: LlmProviderConfig = JSON.parse(row.value);
+        const parsed = JSON.parse(row.value);
+        // Use migration logic if needed
+        if (parsed.activeModel && !parsed.modules) {
+          const { apiKey: _key, ...rest } = parsed;
+          return {
+            ...rest,
+            hasApiKey: !!_key,
+            modules: {
+              assistant: { model: parsed.activeModel, maxInputTokens: parsed.maxInputTokens, maxOutputTokens: parsed.maxOutputTokens },
+              analysis: DEFAULTS[provider].modules.analysis,
+              vision: DEFAULTS[provider].modules.vision,
+            }
+          };
+        }
         const { apiKey: _key, ...rest } = parsed;
         return { ...rest, hasApiKey: !!_key };
       }
@@ -78,7 +112,5 @@ export async function POST(request: NextRequest) {
     create: { key: settingKey(provider), value: JSON.stringify({ provider, ...rest, apiKey }) },
   });
 
-  console.log(`[llm-config] Saved ${provider}: model=${rest.activeModel}`);
-
-  return NextResponse.json({ success: true, provider, activeModel: rest.activeModel });
+  return NextResponse.json({ success: true, provider });
 }

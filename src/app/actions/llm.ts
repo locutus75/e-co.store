@@ -9,14 +9,21 @@ import { estimateCost } from '@/lib/llmUtils';
 
 export type LlmProvider = 'openai' | 'anthropic' | 'gemini';
 
+export interface LlmModuleConfig {
+  model: string;
+  maxInputTokens: number;
+  maxOutputTokens: number;
+  systemPrompt?: string;
+}
+
+export type LlmModule = 'assistant' | 'analysis' | 'vision';
+
 export interface LlmProviderConfig {
   provider: LlmProvider;
   label: string;
   apiKey: string;
-  activeModel: string;
-  maxInputTokens: number;
-  maxOutputTokens: number;
   enabled: boolean;
+  modules: Record<LlmModule, LlmModuleConfig>;
 }
 
 export interface LlmProviderPublic extends Omit<LlmProviderConfig, 'apiKey'> {
@@ -29,10 +36,28 @@ function settingKey(provider: LlmProvider) {
   return `llm_config_${provider}`;
 }
 
+const MODULE_DEFAULTS: Record<LlmProvider, Record<LlmModule, LlmModuleConfig>> = {
+  openai: {
+    assistant: { model: 'gpt-4o', maxInputTokens: 4000, maxOutputTokens: 2000 },
+    analysis:  { model: 'gpt-4o', maxInputTokens: 8000, maxOutputTokens: 4000, systemPrompt: 'Je bent een product expert. Analyseer het product op basis van de verstrekte gegevens.' },
+    vision:    { model: 'gpt-4o', maxInputTokens: 4000, maxOutputTokens: 2000 },
+  },
+  anthropic: {
+    assistant: { model: 'claude-3-5-sonnet-20241022', maxInputTokens: 4000, maxOutputTokens: 2000 },
+    analysis:  { model: 'claude-3-5-sonnet-20241022', maxInputTokens: 8000, maxOutputTokens: 4000, systemPrompt: 'Je bent een product expert. Analyseer het product op basis van de verstrekte gegevens.' },
+    vision:    { model: 'claude-3-5-sonnet-20241022', maxInputTokens: 4000, maxOutputTokens: 2000 },
+  },
+  gemini: {
+    assistant: { model: 'gemini-1.5-pro', maxInputTokens: 4000, maxOutputTokens: 2000 },
+    analysis:  { model: 'gemini-1.5-pro', maxInputTokens: 8000, maxOutputTokens: 4000, systemPrompt: 'Je bent een product expert. Analyseer het product op basis van de verstrekte gegevens.' },
+    vision:    { model: 'gemini-1.5-pro', maxInputTokens: 4000, maxOutputTokens: 2000 },
+  },
+};
+
 const DEFAULTS: Record<LlmProvider, Omit<LlmProviderConfig, 'apiKey'>> = {
-  openai:    { provider: 'openai',    label: 'OpenAI',          activeModel: 'gpt-4o',                    maxInputTokens: 4000, maxOutputTokens: 2000, enabled: true },
-  anthropic: { provider: 'anthropic', label: 'Anthropic',       activeModel: 'claude-3-5-sonnet-20241022', maxInputTokens: 4000, maxOutputTokens: 2000, enabled: true },
-  gemini:    { provider: 'gemini',    label: 'Google Gemini',   activeModel: 'gemini-1.5-pro',             maxInputTokens: 4000, maxOutputTokens: 2000, enabled: true },
+  openai:    { provider: 'openai',    label: 'OpenAI',          enabled: true, modules: MODULE_DEFAULTS.openai },
+  anthropic: { provider: 'anthropic', label: 'Anthropic',       enabled: true, modules: MODULE_DEFAULTS.anthropic },
+  gemini:    { provider: 'gemini',    label: 'Google Gemini',   enabled: true, modules: MODULE_DEFAULTS.gemini },
 };
 
 // ── Admin: read/write config ──────────────────────────────────────────────────
@@ -60,6 +85,31 @@ async function assertAiAccess() {
   return session;
 }
 
+function parseAndMigrateConfig(provider: LlmProvider, value: string): LlmProviderConfig {
+  const parsed = JSON.parse(value);
+  
+  // Migration: if it's the old flat structure, convert to nested modules
+  if (parsed.activeModel && !parsed.modules) {
+    return {
+      provider: parsed.provider,
+      label: parsed.label,
+      apiKey: parsed.apiKey,
+      enabled: parsed.enabled ?? true,
+      modules: {
+        assistant: {
+          model: parsed.activeModel,
+          maxInputTokens: parsed.maxInputTokens ?? 4000,
+          maxOutputTokens: parsed.maxOutputTokens ?? 2000,
+        },
+        analysis: MODULE_DEFAULTS[provider].analysis,
+        vision:   MODULE_DEFAULTS[provider].vision,
+      }
+    };
+  }
+  
+  return parsed as LlmProviderConfig;
+}
+
 /** Read provider list — usable by anyone with AI access (no API keys exposed) */
 export async function getAvailableProvidersAction(): Promise<LlmProviderPublic[]> {
   await assertAiAccess();
@@ -67,7 +117,7 @@ export async function getAvailableProvidersAction(): Promise<LlmProviderPublic[]
   for (const provider of ['openai', 'anthropic', 'gemini'] as LlmProvider[]) {
     const row = await prisma.systemSetting.findUnique({ where: { key: settingKey(provider) } });
     if (row) {
-      const parsed: LlmProviderConfig = JSON.parse(row.value);
+      const parsed = parseAndMigrateConfig(provider, row.value);
       const { apiKey: _key, ...rest } = parsed;
       results.push({ ...rest, hasApiKey: !!_key });
     } else {
@@ -84,7 +134,7 @@ export async function getLlmConfigsAction(): Promise<LlmProviderPublic[]> {
   for (const provider of ['openai', 'anthropic', 'gemini'] as LlmProvider[]) {
     const row = await prisma.systemSetting.findUnique({ where: { key: settingKey(provider) } });
     if (row) {
-      const parsed: LlmProviderConfig = JSON.parse(row.value);
+      const parsed = parseAndMigrateConfig(provider, row.value);
       const { apiKey: _key, ...rest } = parsed;
       results.push({ ...rest, hasApiKey: !!_key });
     } else {
@@ -120,7 +170,18 @@ export async function saveLlmConfigAction(config: LlmProviderConfig): Promise<{ 
 export async function getLlmProviderConfigInternal(provider: LlmProvider): Promise<LlmProviderConfig | null> {
   const row = await prisma.systemSetting.findUnique({ where: { key: settingKey(provider) } });
   if (!row) return null;
-  return JSON.parse(row.value) as LlmProviderConfig;
+  try {
+    return parseAndMigrateConfig(provider, row.value);
+  } catch {
+    return null;
+  }
+}
+
+/** Get specific module config for a provider */
+export async function getModuleConfig(provider: LlmProvider, module: LlmModule): Promise<LlmModuleConfig & { apiKey: string } | null> {
+  const full = await getLlmProviderConfigInternal(provider);
+  if (!full || !full.apiKey) return null;
+  return { ...full.modules[module], apiKey: full.apiKey };
 }
 
 // ── Vision / Image-edit config ───────────────────────────────────────────────
