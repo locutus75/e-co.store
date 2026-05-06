@@ -15,7 +15,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const normalizedPathParts = resolvedParams.path.map(p => p.replace(/\.\./g, ''));
   
   // Symmetrically resolve exactly as uploadProductImageAction writes it
-  const filePath = path.join(ROOT_DIR, "public", "uploads", ...normalizedPathParts);
+  const filePath = path.join(ROOT_DIR, "public/uploads", ...normalizedPathParts);
 
   if (!fs.existsSync(filePath)) {
     // If running in development or standalone but missing, 404

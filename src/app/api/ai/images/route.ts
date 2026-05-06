@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
   // Sanitise: strip path traversal characters
   const safe = article.replace(/[^a-zA-Z0-9_\-]/g, '');
-  const dir = path.join(ROOT_DIR, 'public', 'uploads', 'products', safe);
+  const dir = path.join(ROOT_DIR, 'public/uploads/products', safe);
 
   if (!fs.existsSync(dir)) return NextResponse.json({ images: [] });
 

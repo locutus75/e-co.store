@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 
 const ROOT_DIR = process.env.APP_ROOT || process.cwd();
-const UPLOADS_DIR = path.join(ROOT_DIR, 'public', 'uploads', 'products');
+const UPLOADS_DIR = path.join(ROOT_DIR, 'public/uploads/products');
 
 // Models that route to the Images Edit API (actual image manipulation)
 const IMAGE_EDIT_MODELS = ['gpt-image-1', 'gpt-image-2', 'dall-e-2'];
@@ -22,7 +22,7 @@ function isImageEditModel(model: string): boolean {
 function loadImageBuffer(articleNumber: string, filename: string): { buffer: Buffer; mimeType: string; sizeKb: number } | null {
   const safe = path.basename(filename);
   const safeArticle = articleNumber.replace(/[^a-zA-Z0-9_\-]/g, '');
-  const filePath = path.join(UPLOADS_DIR, safeArticle, safe);
+  const filePath = path.join(UPLOADS_DIR, safeArticle + '/' + safe);
   if (!fs.existsSync(filePath)) return null;
   const buffer = fs.readFileSync(filePath);
   const ext = path.extname(safe).toLowerCase().replace('.', '');

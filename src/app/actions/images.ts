@@ -8,12 +8,12 @@ import path from "path";
 // APP_ROOT is set by update_and_run.ps1 to the stable project root so that
 // uploaded files survive deployments.
 const ROOT_DIR = process.env.APP_ROOT || process.cwd();
-const UPLOADS_DIR = path.join(ROOT_DIR, "public", "uploads", "products");
+const UPLOADS_DIR = path.join(ROOT_DIR, "public/uploads/products");
 
 export async function getProductImagesAction(articleNumber: string) {
   if (!articleNumber) return [];
   
-  const dir = path.join(ROOT_DIR, "public", "uploads", "products", articleNumber);
+  const dir = path.join(UPLOADS_DIR, articleNumber);
   if (!fs.existsSync(dir)) return [];
 
   const files = fs.readdirSync(dir);
@@ -86,14 +86,14 @@ export async function deleteProductImageAction(articleNumber: string, filename: 
 
   // Secure basename to prevent path traversal
   const safeFilename = path.basename(filename);
-  const filePath = path.join(UPLOADS_DIR, articleNumber, safeFilename);
+  const filePath = path.join(UPLOADS_DIR, articleNumber + "/" + safeFilename);
 
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
   }
 
   // Ensure mirrored standalone file is also purged
-  const standaloneFilePath = path.join(process.cwd(), ".next", "standalone", "public", "uploads", "products", articleNumber, safeFilename);
+  const standaloneFilePath = path.join(process.cwd(), ".next/standalone/public/uploads/products", articleNumber + "/" + safeFilename);
   if (fs.existsSync(standaloneFilePath)) {
     fs.unlinkSync(standaloneFilePath);
   }

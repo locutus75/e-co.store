@@ -187,7 +187,7 @@ export async function sendMessageAction(
     // Attach files
     const validFiles = files.filter((f) => f.name && f.size > 0);
     if (validFiles.length > 0) {
-      const uploadDir = path.join(ROOT_DIR, "public", "uploads", "messages", message.id);
+      const uploadDir = path.join(ROOT_DIR, "public/uploads/messages", message.id);
       fs.mkdirSync(uploadDir, { recursive: true });
 
       for (const file of validFiles) {
