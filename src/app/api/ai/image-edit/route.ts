@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
           body: JSON.stringify({
             model,
-            max_tokens: Math.min(config.maxOutputTokens ?? 1000, 4096),
+            max_tokens: Math.min(config.modules.vision.maxOutputTokens ?? 1000, 4096),
             messages: [
               {
                 role: 'system',
@@ -206,7 +206,7 @@ en geef specifiek advies hoe de bewerking kan worden bereikt. Antwoord in het Ne
           headers: { 'Content-Type': 'application/json', 'x-api-key': config.apiKey, 'anthropic-version': '2023-06-01' },
           body: JSON.stringify({
             model,
-            max_tokens: Math.min(config.maxOutputTokens ?? 1000, 4096),
+            max_tokens: Math.min(config.modules.vision.maxOutputTokens ?? 1000, 4096),
             system: 'Je bent een expert in professionele productfotografie. Analyseer de afbeelding en antwoord in het Nederlands.',
             messages: [{
               role: 'user',
@@ -235,7 +235,7 @@ en geef specifiek advies hoe de bewerking kan worden bereikt. Antwoord in het Ne
               { text: 'Je bent een expert in professionele productfotografie. Antwoord in het Nederlands.\n\nInstructie: ' + instruction },
               { inline_data: { mime_type: img.mimeType, data: base64 } },
             ]}],
-            generationConfig: { maxOutputTokens: Math.min(config.maxOutputTokens ?? 1000, 8192) },
+            generationConfig: { maxOutputTokens: Math.min(config.modules.vision.maxOutputTokens ?? 1000, 8192) },
           }),
         });
 
