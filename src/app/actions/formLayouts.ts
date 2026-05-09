@@ -14,6 +14,7 @@ export type FormField = {
   relationPath?: string; // e.g. 'brand.name' — resolved at render time from the nested product object
   useForSearch?: boolean; // When true, this field's value is included in the Google search URL on the article number link
   aiInstruction?: string; // Optional instruction for the AI field suggestion (e.g. "Alleen hele getallen, geen eenheid")
+  includeInSectionAi?: boolean; // When true, this field is generated during a section-level AI suggestion
 };
 
 export type FormSection = {
@@ -23,6 +24,7 @@ export type FormSection = {
   backgroundColor?: string;
   textColor?: string;
   fields: FormField[];
+  aiInstruction?: string; // Optional instruction for the section-level AI suggestion
 };
 
 const DEFAULT_PRODUCT_LAYOUT: FormSection[] = [

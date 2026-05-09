@@ -179,13 +179,21 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
 
   const saveAiInstruction = () => {
     if (!aiPopover) return;
-    updateFieldAiInstruction(aiPopover.secIdx, aiPopover.fieldIdx, aiPopoverDraft.trim());
+    if (aiPopover.fieldIdx === -1) {
+      updateSectionAiInstruction(aiPopover.secIdx, aiPopoverDraft.trim());
+    } else {
+      updateFieldAiInstruction(aiPopover.secIdx, aiPopover.fieldIdx, aiPopoverDraft.trim());
+    }
     setAiPopover(null);
   };
 
   const clearAiInstruction = () => {
     if (!aiPopover) return;
-    updateFieldAiInstruction(aiPopover.secIdx, aiPopover.fieldIdx, '');
+    if (aiPopover.fieldIdx === -1) {
+      updateSectionAiInstruction(aiPopover.secIdx, '');
+    } else {
+      updateFieldAiInstruction(aiPopover.secIdx, aiPopover.fieldIdx, '');
+    }
     setAiPopover(null);
   };
 
@@ -338,6 +346,23 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
       const newLayout = [...prevLayout];
       newLayout[secIdx] = { ...newLayout[secIdx], fields: [...newLayout[secIdx].fields] };
       newLayout[secIdx].fields[fieldIdx] = { ...newLayout[secIdx].fields[fieldIdx], aiInstruction: value || undefined };
+      return newLayout;
+    });
+  };
+
+  const updateFieldIncludeInSectionAi = (secIdx: number, fieldIdx: number, value: boolean) => {
+    setLayout(prevLayout => {
+      const newLayout = [...prevLayout];
+      newLayout[secIdx] = { ...newLayout[secIdx], fields: [...newLayout[secIdx].fields] };
+      newLayout[secIdx].fields[fieldIdx] = { ...newLayout[secIdx].fields[fieldIdx], includeInSectionAi: value };
+      return newLayout;
+    });
+  };
+
+  const updateSectionAiInstruction = (secIdx: number, value: string) => {
+    setLayout(prevLayout => {
+      const newLayout = [...prevLayout];
+      newLayout[secIdx] = { ...newLayout[secIdx], aiInstruction: value || undefined };
       return newLayout;
     });
   };
@@ -672,6 +697,25 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
               </div>
 
               <div style={{ display: 'flex', gap: '0.2rem' }}>
+                <button
+                  type="button"
+                  onClick={(e) => openAiPopover(e, secIdx, -1, sec.title, sec.aiInstruction || '')}
+                  title={sec.aiInstruction ? `Sectie AI instructie: ${sec.aiInstruction}` : 'Geen sectie AI instructie — klik om in te stellen'}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.3rem',
+                    padding: '0.2rem 0.6rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem',
+                    border: sec.aiInstruction ? '1px solid #7c3aed' : '1px solid #e2e8f0',
+                    backgroundColor: sec.aiInstruction ? '#7c3aed' : 'white',
+                    color: sec.aiInstruction ? 'white' : '#cbd5e1',
+                    boxShadow: sec.aiInstruction ? '0 0 0 2px rgba(124,58,237,0.25)' : 'none',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  ✨ AI
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.2rem' }}>
                 <button onClick={() => moveSection(secIdx, -1)} disabled={secIdx === 0} style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', padding: '0.2rem 0.4rem' }}>↑</button>
                 <button onClick={() => moveSection(secIdx, 1)} disabled={secIdx === layout.length - 1} style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', padding: '0.2rem 0.4rem' }}>↓</button>
                 <button 
@@ -892,6 +936,24 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
                             transition: 'all 0.15s',
                           }}
                         >✨</button>
+                      )}
+                      {/* Include in Section AI toggle — not for chat/media/checkbox/threeway */}
+                      {f.type !== 'chat' && f.type !== 'media' && f.type !== 'checkbox' && f.type !== 'threeway' && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); updateFieldIncludeInSectionAi(secIdx, fieldIdx, !f.includeInSectionAi); }}
+                          title={f.includeInSectionAi ? 'Wordt meegenomen in sectie AI suggestie — klik om uit te sluiten' : 'Wordt NIET meegenomen in sectie AI suggestie — klik om op te nemen'}
+                          style={{
+                            width: '24px', height: '24px', borderRadius: '4px', flexShrink: 0,
+                            border: f.includeInSectionAi ? '1px solid #10b981' : '1px solid #e2e8f0',
+                            backgroundColor: f.includeInSectionAi ? '#10b981' : '#f8fafc',
+                            color: f.includeInSectionAi ? 'white' : '#cbd5e1',
+                            cursor: 'pointer', fontSize: '0.7rem',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: f.includeInSectionAi ? '0 0 0 2px rgba(16,185,129,0.25)' : 'none',
+                            transition: 'all 0.15s',
+                          }}
+                        >📑</button>
                       )}
                       {/* AI Photo Presets button — only for media fields */}
                       {f.type === 'media' && (

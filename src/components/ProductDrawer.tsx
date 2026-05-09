@@ -6,6 +6,7 @@ import ProductCopyModal from './ProductCopyModal';
 import ProductRemarksChat from './ProductRemarksChat';
 import ProductAiPanel from './ProductAiPanel';
 import AiFieldSuggestion from './AiFieldSuggestion';
+import AiSectionSuggestion from './AiSectionSuggestion';
 
 /**
  * Builds a Google search URL using fields marked `useForSearch` in the layout.
@@ -246,7 +247,8 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   const handleSubmit = (formData: FormData) => {
     // Auto-fallback: if the user did NOT touch the status dropdown during this edit session,
     // we forcibly intercept the form save and tag the product as 'EDIT'.
-    if (!statusOverridden && formData.get('status') !== 'EDIT') {
+    // If the status is already 'DONE', we keep it 'DONE'.
+    if (!statusOverridden && currentStatus !== 'DONE' && formData.get('status') !== 'EDIT') {
       formData.set('status', 'EDIT');
     }
     
@@ -264,6 +266,12 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     if (!form) return;
     const el = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${fieldKey}"]`);
     if (el) { el.value = value; setIsDirty(true); }
+  };
+
+  const applyAiSectionSuggestions = (suggestions: Record<string, string>) => {
+    Object.entries(suggestions).forEach(([key, value]) => {
+      applyAiSuggestion(key, value);
+    });
   };
 
   const renderField = (moduleName: string, label: string, val: string, inputComponent: React.ReactNode, isCheckbox: boolean = false, textColor?: string, fieldKey?: string, fieldInstruction?: string) => {
@@ -603,14 +611,43 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
             </div>
 
             <div style={{ padding: '3rem', display: 'flex', flexDirection: 'column', gap: '4rem' }}>
-              {layout?.map((section) => (
+              {layout?.map((section) => {
+                const sectionAiFields = section.fields
+                  .filter((f: any) => f.includeInSectionAi)
+                  .map((f: any) => {
+                    let key = f.id.replace('FIELD:', '');
+                    if (key === 'description') key = 'longDescription';
+                    return {
+                      id: f.id,
+                      key,
+                      label: f.label,
+                      currentValue: key.startsWith('custom_')
+                        ? localProductData?.customData?.[key.replace('custom_', '')] || ''
+                        : localProductData?.[key] || '',
+                      instruction: f.aiInstruction
+                    };
+                  });
+                
+                return (
                 <section key={section.id}>
-                  <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: section.color, marginBottom: '1rem', borderBottom: `2px solid ${section.color}`, paddingBottom: '0.5rem', display: 'inline-block' }}>{section.title}</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: section.color, borderBottom: `2px solid ${section.color}`, paddingBottom: '0.5rem', display: 'inline-block', margin: 0 }}>{section.title}</h3>
+                    {canUseAi && analysisNarrative && sectionAiFields.length > 0 && (
+                      <AiSectionSuggestion
+                        sectionTitle={section.title}
+                        fields={sectionAiFields}
+                        analysisNarrative={analysisNarrative}
+                        productTitle={localProductData?.title || ''}
+                        sectionInstruction={section.aiInstruction}
+                        onApply={applyAiSectionSuggestions}
+                      />
+                    )}
+                  </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(24, minmax(0, 1fr))', gap: '0.75rem', backgroundColor: section.backgroundColor || 'var(--background)', color: section.textColor || 'var(--text)', padding: '1rem', borderRadius: 'var(--radius)', border: `1px solid rgba(0,0,0,0.05)` }}>
                     {section.fields.map((f: any) => renderDataField(f, section))}
                   </div>
                 </section>
-              ))}
+              )})}
             </div>
 
             <div style={{ padding: '2rem 3rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '1rem', position: 'sticky', bottom: 0, backgroundColor: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)', zIndex: 10 }}>
