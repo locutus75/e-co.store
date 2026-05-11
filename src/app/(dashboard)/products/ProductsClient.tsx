@@ -320,6 +320,7 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
   const [statusFilter, setStatusFilter] = useState('');
   const [webshopReadyFilter, setWebshopReadyFilter] = useState('');
   const [assignedUserFilter, setAssignedUserFilter] = useState('');
+  const [aiScoreFilter, setAiScoreFilter] = useState('');
 
   // Multi-select State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -350,9 +351,12 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
       const matchAssigned = assignedUserFilter === '' ||
                             (assignedUserFilter === 'UNASSIGNED' ? !p.assignedUserId : p.assignedUserId === assignedUserFilter);
 
-      return matchSearch && matchSupplier && matchBrand && matchStatus && matchReady && matchAssigned;
+      const matchScore = aiScoreFilter === '' ||
+                         (aiScoreFilter === 'WITH_SCORE' ? aiScoreMap[p.internalArticleNumber] != null : aiScoreMap[p.internalArticleNumber] == null);
+
+      return matchSearch && matchSupplier && matchBrand && matchStatus && matchReady && matchAssigned && matchScore;
     });
-  }, [initialProducts, searchQuery, supplierFilter, brandFilter, statusFilter, webshopReadyFilter, assignedUserFilter]);
+  }, [initialProducts, searchQuery, supplierFilter, brandFilter, statusFilter, webshopReadyFilter, assignedUserFilter, aiScoreFilter, aiScoreMap]);
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredProducts.length && filteredProducts.length > 0) {
@@ -521,6 +525,18 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
           <option value="REVIEW">Review (R)</option>
           <option value="JA">Yes (Y)</option>
         </select>
+        {canUseAi && (
+          <select 
+            className="input" 
+            style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
+            value={aiScoreFilter}
+            onChange={(e) => setAiScoreFilter(e.target.value)}
+          >
+            <option value="">-- AI Score --</option>
+            <option value="WITH_SCORE">Met score</option>
+            <option value="WITHOUT_SCORE">Zonder score</option>
+          </select>
+        )}
         {(isAdmin || canAssignProducts) && (
           <select 
             className="input" 
