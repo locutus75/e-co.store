@@ -214,35 +214,38 @@ export default function ProductGallery({ articleNumber, canUseAi = false }: { ar
   const lightbox = lightboxIndex !== null && images[lightboxIndex] && mounted
     ? createPortal(
         <div
-          onClick={() => setLightboxIndex(null)}
           style={{
             position: 'fixed', inset: 0, zIndex: 99999,
-            backgroundColor: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(6px)',
             display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center',
           }}
         >
-          {images.length > 1 && (
-            <>
-              <NavBtn onClick={() => setLightboxIndex(i => i !== null ? (i - 1 + images.length) % images.length : null)} side="left" />
-              <NavBtn onClick={() => setLightboxIndex(i => i !== null ? (i + 1) % images.length : null)} side="right" />
-            </>
-          )}
-
-          <img
-            src={images[lightboxIndex].url}
-            alt={`Product ${lightboxIndex + 1}`}
-            onClick={e => e.stopPropagation()}
-            style={{
-              maxWidth: '88vw', maxHeight: '76vh',
-              objectFit: 'contain', borderRadius: '10px',
-              boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
-              userSelect: 'none',
-            }}
+          <div 
+            onClick={() => setLightboxIndex(null)}
+            style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(6px)' }}
           />
+          
+          <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+            {images.length > 1 && (
+              <>
+                <NavBtn onClick={() => setLightboxIndex(i => i !== null ? (i - 1 + images.length) % images.length : null)} side="left" />
+                <NavBtn onClick={() => setLightboxIndex(i => i !== null ? (i + 1) % images.length : null)} side="right" />
+              </>
+            )}
+
+            <img
+              src={images[lightboxIndex].url}
+              alt={`Product ${lightboxIndex + 1}`}
+              style={{
+                maxWidth: '88vw', maxHeight: '76vh',
+                objectFit: 'contain', borderRadius: '10px',
+                boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
+                userSelect: 'none',
+              }}
+            />
 
           {/* Counter + dots + actions */}
-          <div onClick={e => e.stopPropagation()} style={{ marginTop: '1.25rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem' }}>
+          <div style={{ marginTop: '1.25rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem' }}>
             {images.length > 1 && (
               <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.82rem', letterSpacing: '0.05em' }}>
                 {lightboxIndex + 1} / {images.length}
@@ -270,7 +273,6 @@ export default function ProductGallery({ articleNumber, canUseAi = false }: { ar
                 download={images[lightboxIndex].name}
                 className="btn btn-primary"
                 style={{ fontSize: '0.85rem', padding: '0.45rem 1rem' }}
-                onClick={e => e.stopPropagation()}
               >
                 ⬇ Download
               </a>
@@ -282,6 +284,7 @@ export default function ProductGallery({ articleNumber, canUseAi = false }: { ar
                 Sluiten
               </button>
             </div>
+          </div>
           </div>
         </div>,
         document.body
@@ -310,13 +313,15 @@ export default function ProductGallery({ articleNumber, canUseAi = false }: { ar
   const aiPanel = aiPanelOpen && mounted
     ? createPortal(
         <div
-          onClick={() => setAiPanelOpen(null)}
-          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 100001, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          style={{ position: 'fixed', inset: 0, zIndex: 100001, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
+          <div 
+            onClick={() => setAiPanelOpen(null)} 
+            style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }} 
+          />
           <div
             className="glass"
-            onClick={e => e.stopPropagation()}
-            style={{ backgroundColor: 'var(--surface)', padding: '2rem', borderRadius: 'var(--radius-lg)', width: '90%', maxWidth: '560px', boxShadow: '0 24px 60px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}
+            style={{ position: 'relative', zIndex: 1, backgroundColor: 'var(--surface)', padding: '2rem', borderRadius: 'var(--radius-lg)', width: '90%', maxWidth: '560px', boxShadow: '0 24px 60px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}
           >
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
