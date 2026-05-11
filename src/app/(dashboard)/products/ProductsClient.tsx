@@ -321,6 +321,7 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
   const [webshopReadyFilter, setWebshopReadyFilter] = useState('');
   const [assignedUserFilter, setAssignedUserFilter] = useState('');
   const [aiScoreFilter, setAiScoreFilter] = useState('');
+  const [unreadFilter, setUnreadFilter] = useState('');
 
   // Multi-select State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -354,9 +355,12 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
       const matchScore = aiScoreFilter === '' ||
                          (aiScoreFilter === 'WITH_SCORE' ? aiScoreMap[p.internalArticleNumber] != null : aiScoreMap[p.internalArticleNumber] == null);
 
-      return matchSearch && matchSupplier && matchBrand && matchStatus && matchReady && matchAssigned && matchScore;
+      const matchUnread = unreadFilter === '' ||
+                          (unreadFilter === 'UNREAD' ? unreadProducts.has(p.internalArticleNumber) : !unreadProducts.has(p.internalArticleNumber));
+
+      return matchSearch && matchSupplier && matchBrand && matchStatus && matchReady && matchAssigned && matchScore && matchUnread;
     });
-  }, [initialProducts, searchQuery, supplierFilter, brandFilter, statusFilter, webshopReadyFilter, assignedUserFilter, aiScoreFilter, aiScoreMap]);
+  }, [initialProducts, searchQuery, supplierFilter, brandFilter, statusFilter, webshopReadyFilter, assignedUserFilter, aiScoreFilter, aiScoreMap, unreadFilter, unreadProducts]);
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredProducts.length && filteredProducts.length > 0) {
@@ -537,6 +541,16 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
             <option value="WITHOUT_SCORE">Zonder score</option>
           </select>
         )}
+        <select 
+          className="input" 
+          style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
+          value={unreadFilter}
+          onChange={(e) => setUnreadFilter(e.target.value)}
+        >
+          <option value="">-- Berichten --</option>
+          <option value="UNREAD">Ongelezen (💬)</option>
+          <option value="READ">Geen ongelezen</option>
+        </select>
         {(isAdmin || canAssignProducts) && (
           <select 
             className="input" 
