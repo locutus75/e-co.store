@@ -220,9 +220,13 @@ export default function LlmConfigSection() {
                 className="input"
                 style={{ width: '100%' }}
               >
-                {PROVIDERS.map(p => (
-                  <option key={p.id} value={p.id}>{p.label}</option>
-                ))}
+                {PROVIDERS.map(p => {
+                  const modelStr = providerStates[p.id]?.modules[m.id]?.model;
+                  const labelSuffix = modelStr ? ` — ${modelStr}` : '';
+                  return (
+                    <option key={p.id} value={p.id}>{p.label}{labelSuffix}</option>
+                  );
+                })}
               </select>
             </div>
           ))}
