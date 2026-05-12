@@ -24,6 +24,7 @@ export interface LlmProviderConfig {
   apiKey: string;
   enabled: boolean;
   modules: Record<LlmModule, LlmModuleConfig>;
+  fetchedModels?: { id: string; label: string }[] | null;
 }
 
 export interface LlmProviderPublic extends Omit<LlmProviderConfig, 'apiKey'> {
@@ -116,7 +117,8 @@ function parseAndMigrateConfig(provider: LlmProvider, value: string): LlmProvide
         },
         analysis: MODULE_DEFAULTS[provider].analysis,
         vision:   MODULE_DEFAULTS[provider].vision,
-      }
+      },
+      fetchedModels: parsed.fetchedModels ?? null
     };
   }
   

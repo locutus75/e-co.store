@@ -109,6 +109,7 @@ export default function LlmConfigSection() {
                 enabled: c.enabled,
                 hasApiKey: c.hasApiKey,
                 modules: c.modules || next[c.provider as ProviderId].modules,
+                fetchedModels: c.fetchedModels || next[c.provider as ProviderId].fetchedModels,
               };
             }
           }
@@ -151,7 +152,30 @@ export default function LlmConfigSection() {
       const res = await fetch(`/api/ai/models?provider=${p.id}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Ophalen mislukt');
-      updateProvider(p.id, { fetchingModels: false, fetchedModels: data.models });
+      
+      // Update state and immediately save to persist the list
+      setProviderStates(prev => {
+        const nextState = {
+          ...prev,
+          [p.id]: { ...prev[p.id], fetchingModels: false, fetchedModels: data.models }
+        };
+        // Trigger a background save
+        const s = nextState[p.id];
+        fetch('/api/ai/llm-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: p.id,
+            label: p.label,
+            apiKey: s.apiKey,
+            enabled: s.enabled,
+            modules: s.modules,
+            fetchedModels: s.fetchedModels,
+          }),
+        }).catch(err => console.error('[fetchModels auto-save]', err));
+        
+        return nextState;
+      });
     } catch (e: any) {
       updateProvider(p.id, { fetchingModels: false, error: e.message });
     }
@@ -170,6 +194,7 @@ export default function LlmConfigSection() {
           apiKey: s.apiKey,
           enabled: s.enabled,
           modules: s.modules,
+          fetchedModels: s.fetchedModels,
         }),
       });
       if (!res.ok) throw new Error('Opslaan mislukt');
