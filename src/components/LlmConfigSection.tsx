@@ -17,7 +17,7 @@ const PROVIDERS = [
     label: 'Anthropic',
     icon: '🟠',
     color: '#c5601a',
-    defaultModels: ['claude-sonnet-4-6-20260401', 'claude-3-7-sonnet-20250219', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
+    defaultModels: ['claude-sonnet-4-6', 'claude-3-7-sonnet-20250219', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
     keyHelp: 'Begint met sk-ant-…',
     keyLink: 'https://console.anthropic.com/settings/keys',
   },
