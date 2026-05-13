@@ -87,7 +87,12 @@ async function assertAiAccess() {
 }
 
 function parseAndMigrateConfig(provider: LlmProvider, value: string): LlmProviderConfig {
-  const parsed = JSON.parse(value);
+  // Bulletproof patch for retired models before even parsing
+  let patchedValue = value.replace(/claude-3-5-sonnet-20241022/g, 'claude-sonnet-4-6');
+  patchedValue = patchedValue.replace(/claude-sonnet-4-6-20260401/g, 'claude-sonnet-4-6');
+  patchedValue = patchedValue.replace(/claude-3-5-sonnet/g, 'claude-sonnet-4-6'); // catch-all for any other variants
+  
+  const parsed = JSON.parse(patchedValue);
   
   // Migration: if it's the old flat structure, convert to nested modules
   // We check for activeModel AND the absence of the new modules structure.
@@ -121,7 +126,17 @@ function parseAndMigrateConfig(provider: LlmProvider, value: string): LlmProvide
       fetchedModels: parsed.fetchedModels ?? null
     };
   }
-  
+  if (parsed.modules) {
+    for (const mod of ['assistant', 'analysis', 'vision'] as const) {
+      if (parsed.modules[mod]) {
+        const m = parsed.modules[mod].model;
+        if (m === 'claude-3-5-sonnet-20241022' || m === 'claude-sonnet-4-6-20260401') {
+          parsed.modules[mod].model = 'claude-sonnet-4-6';
+        }
+      }
+    }
+  }
+
   return parsed as LlmProviderConfig;
 }
 
@@ -236,7 +251,11 @@ export async function saveVisionConfigAction(config: VisionProviderConfig): Prom
 /** Returns the vision model for a provider, falling back to the default */
 export async function getVisionModelForProvider(provider: LlmProvider): Promise<string> {
   const row = await prisma.systemSetting.findUnique({ where: { key: visionSettingKey(provider) } });
-  return row?.value ?? VISION_MODEL_DEFAULTS[provider];
+  let val = row?.value ?? VISION_MODEL_DEFAULTS[provider];
+  val = val.replace(/claude-3-5-sonnet-20241022/g, 'claude-sonnet-4-6');
+  val = val.replace(/claude-sonnet-4-6-20260401/g, 'claude-sonnet-4-6');
+  val = val.replace(/claude-3-5-sonnet/g, 'claude-sonnet-4-6');
+  return val;
 }
 
 /** Returns combined vision config (model + API key from main config) for use in API routes */
@@ -291,7 +310,10 @@ export async function getAnalysisConfigAction(): Promise<ProductAnalysisConfig> 
   const row = await prisma.systemSetting.findUnique({ where: { key: PRODUCT_ANALYSIS_KEY } });
   if (!row) return ANALYSIS_DEFAULT;
   try {
-    return JSON.parse(row.value) as ProductAnalysisConfig;
+    let val = row.value.replace(/claude-3-5-sonnet-20241022/g, 'claude-sonnet-4-6');
+    val = val.replace(/claude-sonnet-4-6-20260401/g, 'claude-sonnet-4-6');
+    val = val.replace(/claude-3-5-sonnet/g, 'claude-sonnet-4-6');
+    return JSON.parse(val) as ProductAnalysisConfig;
   } catch {
     return ANALYSIS_DEFAULT;
   }
