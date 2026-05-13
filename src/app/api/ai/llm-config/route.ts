@@ -18,9 +18,9 @@ const DEFAULTS: Record<LlmProvider, Omit<LlmProviderConfig, 'apiKey'>> = {
   anthropic: {
     provider: 'anthropic', label: 'Anthropic', enabled: true,
     modules: {
-      assistant: { model: 'claude-3-5-sonnet-20241022', maxInputTokens: 4000, maxOutputTokens: 2000 },
-      analysis:  { model: 'claude-3-5-sonnet-20241022', maxInputTokens: 8000, maxOutputTokens: 4000 },
-      vision:    { model: 'claude-3-5-sonnet-20241022', maxInputTokens: 4000, maxOutputTokens: 2000 },
+      assistant: { model: 'claude-3-7-sonnet-20250219', maxInputTokens: 4000, maxOutputTokens: 2000 },
+      analysis:  { model: 'claude-3-7-sonnet-20250219', maxInputTokens: 8000, maxOutputTokens: 4000 },
+      vision:    { model: 'claude-3-7-sonnet-20250219', maxInputTokens: 4000, maxOutputTokens: 2000 },
     }
   },
   gemini: {
