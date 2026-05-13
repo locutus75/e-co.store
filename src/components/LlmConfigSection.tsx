@@ -136,38 +136,44 @@ export default function LlmConfigSection() {
     }));
 
   const updateModule = (providerId: ProviderId, moduleId: ModuleId, patch: Partial<ModuleConfig>) => {
-    setProviderStates(prev => ({
-      ...prev,
-      [providerId]: {
-        ...prev[providerId],
-        modules: {
-          ...prev[providerId].modules,
-          [moduleId]: { ...prev[providerId].modules[moduleId], ...patch }
+    setProviderStates(prev => {
+      const nextState = {
+        ...prev,
+        [providerId]: {
+          ...prev[providerId],
+          modules: {
+            ...prev[providerId].modules,
+            [moduleId]: { ...prev[providerId].modules[moduleId], ...patch }
+          }
         }
+      };
+      
+      // Auto-save logic: instant for non-text patches.
+      // We pass the exact nextState to avoid stale closures in timeouts.
+      const p = PROVIDERS.find(prov => prov.id === providerId);
+      if (p && !('systemPrompt' in patch)) {
+        setTimeout(() => saveProviderState(p, nextState[providerId]), 100);
       }
-    }));
-    
-    // Auto-save logic: instant for non-text patches, debounced handled by useEffect or manual trigger
-    const p = PROVIDERS.find(prov => prov.id === providerId);
-    if (p && !('systemPrompt' in patch)) {
-      setTimeout(() => saveProvider(p), 100);
-    }
+      
+      return nextState;
+    });
   };
 
   // Debounced auto-save for system prompt and other complex changes
   useEffect(() => {
     if (!initialized) return;
     const timer = setTimeout(() => {
-      const p = PROVIDERS.find(prov => prov.id === activeProviderTab);
-      if (p && !providerStates[p.id].saving) {
-        // We could compare with a ref here, but for now simple check is okay
-        // because saveProvider updates state and we check !saving.
-        // Also, we only trigger this if the provider state is likely to have changed.
-        saveProvider(p);
-      }
+      PROVIDERS.forEach(p => {
+        // Find if this provider has any unsaved system prompt changes
+        // Since we don't have a deep diff, we'll just save the active tab's provider
+        // safely without stale closures if it's not currently saving.
+        if (p.id === activeProviderTab && !providerStates[p.id].saving) {
+          saveProviderState(p, providerStates[p.id]);
+        }
+      });
     }, 2000);
     return () => clearTimeout(timer);
-  }, [providerStates[activeProviderTab].modules, providerStates[activeProviderTab].enabled]);
+  }, [providerStates[activeProviderTab].modules, providerStates[activeProviderTab].enabled, activeProviderTab]);
 
   const fetchModels = async (p: typeof PROVIDERS[number]) => {
     updateProvider(p.id, { fetchingModels: true });
@@ -204,8 +210,7 @@ export default function LlmConfigSection() {
     }
   };
 
-  const saveProvider = async (p: typeof PROVIDERS[number]) => {
-    const s = providerStates[p.id];
+  const saveProviderState = async (p: typeof PROVIDERS[number], s: ProviderState) => {
     updateProvider(p.id, { saving: true, saved: false, error: '' });
     try {
       const res = await fetch('/api/ai/llm-config', {
@@ -226,6 +231,12 @@ export default function LlmConfigSection() {
     } catch (e: any) {
       updateProvider(p.id, { saving: false, error: e.message });
     }
+  };
+
+  const saveProvider = async (p: typeof PROVIDERS[number]) => {
+    // This function captures state from the current render. 
+    // It is safe for manual button clicks, but unsafe for setTimeout.
+    saveProviderState(p, providerStates[p.id]);
   };
 
   const saveDefaults = async (defaults: ModuleDefaults) => {
