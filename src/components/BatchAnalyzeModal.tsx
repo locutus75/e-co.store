@@ -310,7 +310,7 @@ export default function BatchAnalyzeModal({ products, layout, onClose, onComplet
               </span>
               <span style={{ fontSize: '0.8rem', fontWeight: 700, color: job.status === 'error' ? '#dc2626' : scoreColor(job.score), textAlign: 'right', whiteSpace: 'nowrap', minWidth: '48px' }}>
                 {job.status === 'done' && job.score !== null ? job.score : ''}
-                {job.status === 'error' ? <span title={job.error} style={{ fontSize: '0.7rem', fontWeight: 400, cursor: 'help' }}>fout ⓘ</span> : ''}
+                {job.status === 'error' ? <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>Fout: {job.error}</span> : ''}
               </span>
             </div>
           ))}
