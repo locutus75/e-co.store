@@ -137,7 +137,23 @@ export default function BatchAnalyzeModal({ products, layout, onClose, onComplet
 
     const run = async () => {
       setRunning(true);
-      const provider = getProvider();
+      
+      // Load system default provider for analysis, fall back to localStorage/openai
+      let provider = 'openai';
+      try {
+        const prefRaw = localStorage.getItem('ai_panel_prefs_v1');
+        if (prefRaw) provider = JSON.parse(prefRaw).provider || 'openai';
+      } catch {}
+
+      try {
+        const modRes = await fetch('/api/ai/module-defaults');
+        if (modRes.ok) {
+          const defaults = await modRes.json();
+          if (defaults.analysis) provider = defaults.analysis;
+        }
+      } catch (err) {
+        console.error('[BatchAnalyze] Failed to fetch module defaults', err);
+      }
 
       for (const product of productsRef.current) {
         if (cancelRef.current) {

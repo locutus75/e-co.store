@@ -268,7 +268,10 @@ export default function ProductAiPanel({ product, layout }: Props) {
       const active = (await provRes.json()).filter((p: any) => p.hasApiKey);
       setProviders(active);
       if (active.length > 0) {
-        setSelectedProvider(prev => prev || defaultProvider || active[0].provider);
+        setSelectedProvider(prev => {
+          if (defaultProvider) return defaultProvider;
+          return prev || active[0].provider;
+        });
         setSelectedModel(prev => prev || '');
       }
     }
