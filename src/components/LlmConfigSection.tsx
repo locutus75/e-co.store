@@ -93,6 +93,7 @@ export default function LlmConfigSection() {
 
   const [activeProviderTab, setActiveProviderTab] = useState<ProviderId>('openai');
   const [activeModuleTab, setActiveModuleTab] = useState<ModuleId>('assistant');
+  const [initialized, setInitialized] = useState(false);
 
   // Load Data
   useEffect(() => {
@@ -116,7 +117,8 @@ export default function LlmConfigSection() {
           return next;
         });
       })
-      .catch(err => console.error('[llm-config load]', err));
+      .catch(err => console.error('[llm-config load]', err))
+      .finally(() => setInitialized(true));
 
     // Load global module defaults
     fetch('/api/ai/module-defaults')
@@ -144,7 +146,28 @@ export default function LlmConfigSection() {
         }
       }
     }));
+    
+    // Auto-save logic: instant for non-text patches, debounced handled by useEffect or manual trigger
+    const p = PROVIDERS.find(prov => prov.id === providerId);
+    if (p && !('systemPrompt' in patch)) {
+      setTimeout(() => saveProvider(p), 100);
+    }
   };
+
+  // Debounced auto-save for system prompt and other complex changes
+  useEffect(() => {
+    if (!initialized) return;
+    const timer = setTimeout(() => {
+      const p = PROVIDERS.find(prov => prov.id === activeProviderTab);
+      if (p && !providerStates[p.id].saving) {
+        // We could compare with a ref here, but for now simple check is okay
+        // because saveProvider updates state and we check !saving.
+        // Also, we only trigger this if the provider state is likely to have changed.
+        saveProvider(p);
+      }
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [providerStates[activeProviderTab].modules, providerStates[activeProviderTab].enabled]);
 
   const fetchModels = async (p: typeof PROVIDERS[number]) => {
     updateProvider(p.id, { fetchingModels: true });
@@ -223,6 +246,10 @@ export default function LlmConfigSection() {
     saveDefaults(next);
   };
 
+  const handleModelChange = (provId: ProviderId, modId: ModuleId, model: string) => {
+    updateModule(provId, modId, { model });
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       
@@ -231,28 +258,46 @@ export default function LlmConfigSection() {
         <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
           🌐 Standaard Provider per Onderdeel
         </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
           {MODULES.map(m => (
-            <div key={m.id} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '1.25rem', backgroundColor: 'rgba(255,255,255,0.4)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
-                <span style={{ fontSize: '1.2rem' }}>{m.icon}</span>
-                <strong style={{ fontSize: '0.9rem' }}>{m.label}</strong>
+            <div key={m.id} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '1.25rem', backgroundColor: 'rgba(255,255,255,0.4)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.4rem' }}>
+                  <span style={{ fontSize: '1.2rem' }}>{m.icon}</span>
+                  <strong style={{ fontSize: '0.9rem' }}>{m.label}</strong>
+                </div>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{m.description}</p>
               </div>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>{m.description}</p>
-              <select 
-                value={moduleDefaults[m.id]} 
-                onChange={e => handleDefaultChange(m.id, e.target.value as ProviderId)}
-                className="input"
-                style={{ width: '100%' }}
-              >
-                {PROVIDERS.map(p => {
-                  const modelStr = providerStates[p.id]?.modules[m.id]?.model;
-                  const labelSuffix = modelStr ? ` — ${modelStr}` : '';
-                  return (
-                    <option key={p.id} value={p.id}>{p.label}{labelSuffix}</option>
-                  );
-                })}
-              </select>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.3rem' }}>Provider</label>
+                  <select 
+                    value={moduleDefaults[m.id]} 
+                    onChange={e => handleDefaultChange(m.id, e.target.value as ProviderId)}
+                    className="input"
+                    style={{ width: '100%', padding: '0.5rem 0.75rem' }}
+                  >
+                    {PROVIDERS.map(p => (
+                      <option key={p.id} value={p.id}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.3rem' }}>Model</label>
+                  <select 
+                    value={providerStates[moduleDefaults[m.id]].modules[m.id].model}
+                    onChange={e => handleModelChange(moduleDefaults[m.id], m.id, e.target.value)}
+                    className="input"
+                    style={{ width: '100%', padding: '0.5rem 0.75rem' }}
+                  >
+                    {(providerStates[moduleDefaults[m.id]].fetchedModels || PROVIDERS.find(p => p.id === moduleDefaults[m.id])!.defaultModels.map(dm => ({ id: dm, label: dm }))).map((mi: any) => (
+                      <option key={mi.id} value={mi.id}>{mi.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
           ))}
         </div>
@@ -410,17 +455,22 @@ export default function LlmConfigSection() {
               </div>
             </div>
 
-            {/* Footer / Save */}
+            {/* Footer / Info */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '1.5rem', marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
               {providerStates[p.id].error && <span style={{ color: 'var(--error)', fontSize: '0.85rem' }}>❌ {providerStates[p.id].error}</span>}
-              <button 
-                onClick={() => saveProvider(p)} 
-                disabled={providerStates[p.id].saving}
-                className="btn btn-primary"
-                style={{ minWidth: '180px' }}
-              >
-                {providerStates[p.id].saving ? 'Opslaan...' : providerStates[p.id].saved ? '✓ Opgeslagen!' : `Opslaan ${p.label}`}
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                  {providerStates[p.id].saving ? '⏳ Bezig met opslaan...' : providerStates[p.id].saved ? '✅ Automatisch opgeslagen' : '✨ Instellingen worden direct bewaard'}
+                </span>
+                <button 
+                  onClick={() => saveProvider(p)} 
+                  disabled={providerStates[p.id].saving}
+                  className="btn"
+                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.75rem', backgroundColor: 'var(--background)' }}
+                >
+                  Nu opslaan
+                </button>
+              </div>
             </div>
 
           </div>
