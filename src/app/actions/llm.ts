@@ -44,9 +44,9 @@ const MODULE_DEFAULTS: Record<LlmProvider, Record<LlmModule, LlmModuleConfig>> =
     vision:    { model: 'gpt-4o', maxInputTokens: 4000, maxOutputTokens: 2000 },
   },
   anthropic: {
-    assistant: { model: 'claude-3-5-sonnet-20241022', maxInputTokens: 4000, maxOutputTokens: 2000 },
-    analysis:  { model: 'claude-3-5-sonnet-20241022', maxInputTokens: 8000, maxOutputTokens: 4000, systemPrompt: 'Je bent een product expert. Analyseer het product op basis van de verstrekte gegevens.' },
-    vision:    { model: 'claude-3-5-sonnet-20241022', maxInputTokens: 4000, maxOutputTokens: 2000 },
+    assistant: { model: 'claude-sonnet-4-6-20260401', maxInputTokens: 4000, maxOutputTokens: 2000 },
+    analysis:  { model: 'claude-sonnet-4-6-20260401', maxInputTokens: 8000, maxOutputTokens: 4000, systemPrompt: 'Je bent een product expert. Analyseer het product op basis van de verstrekte gegevens.' },
+    vision:    { model: 'claude-sonnet-4-6-20260401', maxInputTokens: 4000, maxOutputTokens: 2000 },
   },
   gemini: {
     assistant: { model: 'gemini-1.5-pro', maxInputTokens: 4000, maxOutputTokens: 2000 },
@@ -207,10 +207,9 @@ function visionSettingKey(provider: LlmProvider) {
   return `llm_vision_model_${provider}`;
 }
 
-// Default vision-capable models per provider
 const VISION_MODEL_DEFAULTS: Record<LlmProvider, string> = {
   openai:    'gpt-4o',
-  anthropic: 'claude-3-5-sonnet-20241022',
+  anthropic: 'claude-sonnet-4-6-20260401',
   gemini:    'gemini-1.5-pro',
 };
 
