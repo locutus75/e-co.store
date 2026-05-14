@@ -66,10 +66,14 @@ export async function POST(request: NextRequest) {
   let errorMsg: string | undefined;
 
   try {
-    if (provider === 'openai') {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    if (provider === 'openai' || provider === 'custom') {
+      const baseUrl = (provider === 'custom' && config.baseURL) ? config.baseURL.replace(/\/$/, '') : 'https://api.openai.com/v1';
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
+
+      const res = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
+        headers,
         body: JSON.stringify({
           model: modelToUse,
           max_completion_tokens: maxOut,

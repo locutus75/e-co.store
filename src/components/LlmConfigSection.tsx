@@ -30,6 +30,15 @@ const PROVIDERS = [
     keyHelp: 'Google AI Studio API key',
     keyLink: 'https://aistudio.google.com/app/apikey',
   },
+  {
+    id: 'custom',
+    label: 'Custom (LM Studio)',
+    icon: '💻',
+    color: '#6b7280',
+    defaultModels: ['local-model'],
+    keyHelp: 'Optionele API key',
+    keyLink: '',
+  },
 ] as const;
 
 const MODULES = [
@@ -50,6 +59,7 @@ interface ModuleConfig {
 
 interface ProviderState {
   apiKey: string;
+  baseURL?: string;
   enabled: boolean;
   hasApiKey: boolean;
   showKey: boolean;
@@ -73,6 +83,7 @@ export default function LlmConfigSection() {
     for (const p of PROVIDERS) {
       init[p.id] = {
         apiKey: '', enabled: true, hasApiKey: false, showKey: false,
+        baseURL: p.id === 'custom' ? 'http://localhost:1234/v1' : undefined,
         saving: false, saved: false, error: '',
         fetchedModels: null, fetchingModels: false,
         modules: {
@@ -109,6 +120,7 @@ export default function LlmConfigSection() {
                 ...next[c.provider as ProviderId],
                 enabled: c.enabled,
                 hasApiKey: c.hasApiKey,
+                baseURL: c.baseURL ?? next[c.provider as ProviderId]?.baseURL,
                 modules: c.modules || next[c.provider as ProviderId].modules,
                 fetchedModels: c.fetchedModels || next[c.provider as ProviderId].fetchedModels,
               };
@@ -190,17 +202,19 @@ export default function LlmConfigSection() {
         };
         // Trigger a background save
         const s = nextState[p.id];
+        const payload: any = {
+          provider: p.id,
+          label: p.label,
+          apiKey: s.apiKey,
+          enabled: s.enabled,
+          modules: s.modules,
+          fetchedModels: s.fetchedModels,
+          baseURL: s.baseURL,
+        };
         fetch('/api/ai/llm-config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            provider: p.id,
-            label: p.label,
-            apiKey: s.apiKey,
-            enabled: s.enabled,
-            modules: s.modules,
-            fetchedModels: s.fetchedModels,
-          }),
+          body: JSON.stringify(payload),
         }).catch(err => console.error('[fetchModels auto-save]', err));
         
         return nextState;
@@ -223,6 +237,7 @@ export default function LlmConfigSection() {
           enabled: s.enabled,
           modules: s.modules,
           fetchedModels: s.fetchedModels,
+          baseURL: s.baseURL,
         }),
       });
       if (!res.ok) throw new Error('Opslaan mislukt');
@@ -344,22 +359,42 @@ export default function LlmConfigSection() {
             
             {/* Header / API Key section */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', borderBottom: '1px solid var(--border)', paddingBottom: '2rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem' }}>API Key</label>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <input 
-                    type={providerStates[p.id].showKey ? 'text' : 'password'}
-                    value={providerStates[p.id].apiKey}
-                    onChange={e => updateProvider(p.id, { apiKey: e.target.value })}
-                    placeholder={providerStates[p.id].hasApiKey ? '••••••••••••••••' : p.keyHelp}
-                    className="input"
-                    style={{ flex: 1, fontFamily: providerStates[p.id].showKey ? 'monospace' : undefined }}
-                  />
-                  <button onClick={() => updateProvider(p.id, { showKey: !providerStates[p.id].showKey })} style={{ padding: '0 0.8rem', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'white', cursor: 'pointer' }}>
-                    {providerStates[p.id].showKey ? '🙈' : '👁'}
-                  </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {p.id === 'custom' && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem' }}>Base URL (Lokaal Model / LM Studio)</label>
+                    <input 
+                      type="url"
+                      value={providerStates[p.id].baseURL || ''}
+                      onChange={e => updateProvider(p.id, { baseURL: e.target.value })}
+                      placeholder="http://localhost:1234/v1"
+                      className="input"
+                      style={{ width: '100%', fontFamily: 'monospace' }}
+                    />
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>
+                      Zorg dat LM Studio "Local Server" aan staat (OpenAI Compatible API).
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem' }}>API Key {p.id === 'custom' && '(Optioneel)'}</label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input 
+                      type={providerStates[p.id].showKey ? 'text' : 'password'}
+                      value={providerStates[p.id].apiKey}
+                      onChange={e => updateProvider(p.id, { apiKey: e.target.value })}
+                      placeholder={providerStates[p.id].hasApiKey ? '••••••••••••••••' : p.keyHelp}
+                      className="input"
+                      style={{ flex: 1, fontFamily: providerStates[p.id].showKey ? 'monospace' : undefined }}
+                    />
+                    <button onClick={() => updateProvider(p.id, { showKey: !providerStates[p.id].showKey })} style={{ padding: '0 0.8rem', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'white', cursor: 'pointer' }}>
+                      {providerStates[p.id].showKey ? '🙈' : '👁'}
+                    </button>
+                  </div>
+                  {p.keyLink && (
+                    <a href={p.keyLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.7rem', color: p.color, marginTop: '0.4rem', display: 'inline-block' }}>API key ophalen bij {p.label} →</a>
+                  )}
                 </div>
-                <a href={p.keyLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.7rem', color: p.color, marginTop: '0.4rem', display: 'inline-block' }}>API key ophalen bij {p.label} →</a>
               </div>
               <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

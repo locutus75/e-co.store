@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { getLlmProviderConfigInternal, LlmProvider } from '@/app/actions/llm';
 
 /**
- * GET /api/ai/models?provider=openai|anthropic|gemini
+ * GET /api/ai/models?provider=openai|anthropic|gemini|custom
  * Fetches available models from the provider's API using the stored key.
  * Admin only.
  */
@@ -17,12 +17,13 @@ export async function GET(request: NextRequest) {
   if (!isAdmin) return NextResponse.json({ error: 'Alleen admins' }, { status: 403 });
 
   const provider = request.nextUrl.searchParams.get('provider') as LlmProvider | null;
-  if (!provider || !['openai', 'anthropic', 'gemini'].includes(provider)) {
+  if (!provider || !['openai', 'anthropic', 'gemini', 'custom'].includes(provider)) {
     return NextResponse.json({ error: 'Ongeldige provider' }, { status: 400 });
   }
 
   const config = await getLlmProviderConfigInternal(provider);
-  if (!config?.apiKey) {
+  // Custom provider doesn't strictly require an API key
+  if (!config?.apiKey && provider !== 'custom') {
     return NextResponse.json({ error: `Geen API key geconfigureerd voor ${provider}. Sla eerst een key op.` }, { status: 400 });
   }
 
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
 
     if (provider === 'openai') {
       const res = await fetch('https://api.openai.com/v1/models', {
-        headers: { Authorization: `Bearer ${config.apiKey}` },
+        headers: config?.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {},
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message ?? 'OpenAI fout');
@@ -41,10 +42,23 @@ export async function GET(request: NextRequest) {
         .sort((a: any, b: any) => b.id.localeCompare(a.id))
         .map((m: any) => ({ id: m.id, label: m.id }));
 
+    } else if (provider === 'custom') {
+      const baseUrl = config?.baseURL ? config.baseURL.replace(/\/$/, '') : 'http://localhost:1234/v1';
+      const headers: any = {};
+      if (config?.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
+      
+      const res = await fetch(`${baseUrl}/models`, { headers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message ?? 'Custom provider fout');
+      
+      models = (data.data as any[])
+        .sort((a: any, b: any) => a.id.localeCompare(b.id))
+        .map((m: any) => ({ id: m.id, label: m.id }));
+
     } else if (provider === 'anthropic') {
       const res = await fetch('https://api.anthropic.com/v1/models', {
         headers: {
-          'x-api-key': config.apiKey,
+          'x-api-key': config?.apiKey ?? '',
           'anthropic-version': '2023-06-01',
         },
       });
@@ -56,7 +70,7 @@ export async function GET(request: NextRequest) {
 
     } else if (provider === 'gemini') {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models?key=${config.apiKey}`
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${config?.apiKey ?? ''}`
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message ?? 'Gemini fout');

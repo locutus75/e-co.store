@@ -7,7 +7,7 @@ import { estimateCost } from '@/lib/llmUtils';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type LlmProvider = 'openai' | 'anthropic' | 'gemini';
+export type LlmProvider = 'openai' | 'anthropic' | 'gemini' | 'custom';
 
 export interface LlmModuleConfig {
   model: string;
@@ -23,6 +23,7 @@ export interface LlmProviderConfig {
   label: string;
   apiKey: string;
   enabled: boolean;
+  baseURL?: string;
   modules: Record<LlmModule, LlmModuleConfig>;
   fetchedModels?: { id: string; label: string }[] | null;
 }
@@ -53,12 +54,18 @@ const MODULE_DEFAULTS: Record<LlmProvider, Record<LlmModule, LlmModuleConfig>> =
     analysis:  { model: 'gemini-1.5-pro', maxInputTokens: 8000, maxOutputTokens: 4000, systemPrompt: 'Je bent een product expert. Analyseer het product op basis van de verstrekte gegevens.' },
     vision:    { model: 'gemini-1.5-pro', maxInputTokens: 4000, maxOutputTokens: 2000 },
   },
+  custom: {
+    assistant: { model: 'local-model', maxInputTokens: 4000, maxOutputTokens: 2000 },
+    analysis:  { model: 'local-model', maxInputTokens: 8000, maxOutputTokens: 4000, systemPrompt: 'Je bent een product expert. Analyseer het product op basis van de verstrekte gegevens.' },
+    vision:    { model: 'local-model', maxInputTokens: 4000, maxOutputTokens: 2000 },
+  },
 };
 
 const DEFAULTS: Record<LlmProvider, Omit<LlmProviderConfig, 'apiKey'>> = {
   openai:    { provider: 'openai',    label: 'OpenAI',          enabled: true, modules: MODULE_DEFAULTS.openai },
   anthropic: { provider: 'anthropic', label: 'Anthropic',       enabled: true, modules: MODULE_DEFAULTS.anthropic },
   gemini:    { provider: 'gemini',    label: 'Google Gemini',   enabled: true, modules: MODULE_DEFAULTS.gemini },
+  custom:    { provider: 'custom',    label: 'Custom (LM Studio)', enabled: true, baseURL: 'http://localhost:1234/v1', modules: MODULE_DEFAULTS.custom },
 };
 
 // ── Admin: read/write config ──────────────────────────────────────────────────
@@ -144,7 +151,7 @@ function parseAndMigrateConfig(provider: LlmProvider, value: string): LlmProvide
 export async function getAvailableProvidersAction(): Promise<LlmProviderPublic[]> {
   await assertAiAccess();
   const results: LlmProviderPublic[] = [];
-  for (const provider of ['openai', 'anthropic', 'gemini'] as LlmProvider[]) {
+  for (const provider of ['openai', 'anthropic', 'gemini', 'custom'] as LlmProvider[]) {
     const row = await prisma.systemSetting.findUnique({ where: { key: settingKey(provider) } });
     if (row) {
       const parsed = parseAndMigrateConfig(provider, row.value);
@@ -161,7 +168,7 @@ export async function getAvailableProvidersAction(): Promise<LlmProviderPublic[]
 export async function getLlmConfigsAction(): Promise<LlmProviderPublic[]> {
   await assertAdmin();
   const results: LlmProviderPublic[] = [];
-  for (const provider of ['openai', 'anthropic', 'gemini'] as LlmProvider[]) {
+  for (const provider of ['openai', 'anthropic', 'gemini', 'custom'] as LlmProvider[]) {
     const row = await prisma.systemSetting.findUnique({ where: { key: settingKey(provider) } });
     if (row) {
       const parsed = parseAndMigrateConfig(provider, row.value);
@@ -226,6 +233,7 @@ const VISION_MODEL_DEFAULTS: Record<LlmProvider, string> = {
   openai:    'gpt-4o',
   anthropic: 'claude-sonnet-4-6',
   gemini:    'gemini-1.5-pro',
+  custom:    'local-model',
 };
 
 export interface VisionProviderConfig {

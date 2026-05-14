@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { LlmProvider, LlmProviderConfig } from '@/app/actions/llm';
 
-const PROVIDERS: LlmProvider[] = ['openai', 'anthropic', 'gemini'];
+const PROVIDERS: LlmProvider[] = ['openai', 'anthropic', 'gemini', 'custom'];
 
 const DEFAULTS: Record<LlmProvider, Omit<LlmProviderConfig, 'apiKey'>> = {
   openai: {
@@ -29,6 +29,14 @@ const DEFAULTS: Record<LlmProvider, Omit<LlmProviderConfig, 'apiKey'>> = {
       assistant: { model: 'gemini-1.5-pro', maxInputTokens: 4000, maxOutputTokens: 2000 },
       analysis:  { model: 'gemini-1.5-pro', maxInputTokens: 8000, maxOutputTokens: 4000 },
       vision:    { model: 'gemini-1.5-pro', maxInputTokens: 4000, maxOutputTokens: 2000 },
+    }
+  },
+  custom: {
+    provider: 'custom', label: 'Custom (LM Studio)', enabled: true, baseURL: 'http://localhost:1234/v1',
+    modules: {
+      assistant: { model: 'local-model', maxInputTokens: 4000, maxOutputTokens: 2000 },
+      analysis:  { model: 'local-model', maxInputTokens: 8000, maxOutputTokens: 4000 },
+      vision:    { model: 'local-model', maxInputTokens: 4000, maxOutputTokens: 2000 },
     }
   },
 };
@@ -90,7 +98,7 @@ export async function POST(request: NextRequest) {
   if (!(await assertAdmin(session))) return NextResponse.json({ error: 'Alleen admins.' }, { status: 403 });
 
   const body = await request.json() as LlmProviderConfig;
-  const { provider, apiKey: rawKey, ...rest } = body;
+  const { provider, apiKey: rawKey, baseURL, ...rest } = body;
 
   if (!provider || !PROVIDERS.includes(provider)) {
     return NextResponse.json({ error: 'Ongeldige provider.' }, { status: 400 });
@@ -106,10 +114,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const safeBaseURL = (provider === 'custom' && baseURL) ? baseURL : undefined;
   await prisma.systemSetting.upsert({
     where:  { key: settingKey(provider) },
-    update: { value: JSON.stringify({ provider, ...rest, apiKey }) },
-    create: { key: settingKey(provider), value: JSON.stringify({ provider, ...rest, apiKey }) },
+    update: { value: JSON.stringify({ provider, ...rest, apiKey, baseURL: safeBaseURL }) },
+    create: { key: settingKey(provider), value: JSON.stringify({ provider, ...rest, apiKey, baseURL: safeBaseURL }) },
   });
 
   return NextResponse.json({ success: true, provider });

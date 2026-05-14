@@ -46,7 +46,7 @@ interface Props {
 export default function AiClient({ providers, initialStats, isAdmin }: Props) {
   const { rate: usdToEur } = useExchangeRate();
   const fmtCost = (usd: number) => formatCostEur(usd, usdToEur);
-  const activeProviders = providers.filter(p => p.hasApiKey);
+  const activeProviders = providers.filter(p => p.hasApiKey || p.provider === 'custom');
 
   const [tab, setTab] = useState<'chat' | 'stats'>('chat');
   const [selectedProvider, setSelectedProvider] = useState<string>(activeProviders[0]?.provider ?? '');
@@ -60,31 +60,23 @@ export default function AiClient({ providers, initialStats, isAdmin }: Props) {
   const [statsLoading, setStatsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Load last used provider from localStorage or module defaults
+  // Load default provider from module defaults
   useEffect(() => {
     const loadInitial = async () => {
-      const saved = localStorage.getItem('ai_assistant_last_provider');
-      if (saved && providers.some(p => p.provider === saved && p.hasApiKey)) {
-        setSelectedProvider(saved);
-        return;
-      }
-      
       const res = await fetch('/api/ai/module-defaults').catch(() => null);
       if (res?.ok) {
         const defaults = await res.json();
-        if (defaults.assistant && providers.some(p => p.provider === defaults.assistant && p.hasApiKey)) {
+        if (defaults.assistant && providers.some(p => p.provider === defaults.assistant && (p.hasApiKey || p.provider === 'custom'))) {
           setSelectedProvider(defaults.assistant);
+        } else if (activeProviders.length > 0) {
+          setSelectedProvider(activeProviders[0].provider);
         }
+      } else if (activeProviders.length > 0) {
+        setSelectedProvider(activeProviders[0].provider);
       }
     };
     loadInitial();
   }, [providers]);
-
-  // Save selection on change
-  const handleProviderChange = (p: string) => {
-    setSelectedProvider(p);
-    localStorage.setItem('ai_assistant_last_provider', p);
-  };
 
   const providerConfig = providers.find(p => p.provider === selectedProvider);
 
@@ -172,102 +164,52 @@ export default function AiClient({ providers, initialStats, isAdmin }: Props) {
 
       {/* Chat Tab */}
       {tab === 'chat' && activeProviders.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '1.5rem', alignItems: 'start' }}>
-
-          {/* Left: Settings panel */}
-          <div className="glass" style={{ padding: '1.5rem', borderRadius: 'var(--radius-lg)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Provider</label>
-              {activeProviders.map(p => (
-                <button
-                  key={p.provider}
-                  onClick={() => handleProviderChange(p.provider)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '0.6rem',
-                    width: '100%', padding: '0.65rem 0.9rem', marginBottom: '0.4rem',
-                    borderRadius: 'var(--radius)', cursor: 'pointer',
-                    border: selectedProvider === p.provider ? '1.5px solid var(--primary)' : '1px solid var(--border)',
-                    backgroundColor: selectedProvider === p.provider ? 'rgba(var(--primary-rgb),0.07)' : 'transparent',
-                    fontWeight: selectedProvider === p.provider ? 600 : 400,
-                    fontSize: '0.9rem', color: 'var(--text)', transition: 'all 0.15s',
-                  }}
-                >
-                  <span>{PROVIDER_ICONS[p.provider]}</span>
-                  <span>{p.label}</span>
-                </button>
-              ))}
-            </div>
-
-            {providerConfig && (
-              <>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Actief Model</label>
-                  <div style={{
-                    padding: '0.6rem 0.9rem', borderRadius: 'var(--radius)',
-                    border: '1px solid var(--border)', backgroundColor: 'var(--surface-hover)',
-                    fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)',
-                    display: 'flex', alignItems: 'center', gap: '0.4rem'
-                  }}>
-                    <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>⚙️</span>
-                    {providerConfig.modules.assistant.model}
-                  </div>
-                  <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
-                    Instelbaar via Systeeminstellingen
-                  </p>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                  <div style={{ padding: '0.75rem', borderRadius: 'var(--radius)', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border)', textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>MAX INPUT</div>
-                    <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>{fmt(providerConfig.modules.assistant.maxInputTokens)}</div>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>tokens</div>
-                  </div>
-                  <div style={{ padding: '0.75rem', borderRadius: 'var(--radius)', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border)', textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>MAX OUTPUT</div>
-                    <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>{fmt(providerConfig.modules.assistant.maxOutputTokens)}</div>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>tokens</div>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* System Prompt toggle */}
-            <div>
-              <button onClick={() => setShowSystemPrompt(v => !v)} style={{
-                fontSize: '0.8rem', fontWeight: 600, color: 'var(--primary)',
-                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                display: 'flex', alignItems: 'center', gap: '0.3rem',
-              }}>
-                {showSystemPrompt ? '▾' : '▸'} Systeem prompt
-              </button>
-              {showSystemPrompt && (
-                <textarea
-                  value={systemPrompt}
-                  onChange={e => setSystemPrompt(e.target.value)}
-                  rows={5}
-                  style={{
-                    marginTop: '0.5rem', width: '100%', padding: '0.6rem',
-                    borderRadius: 'var(--radius)', border: '1px solid var(--border)',
-                    backgroundColor: 'var(--surface-hover)', fontSize: '0.78rem',
-                    color: 'var(--text)', resize: 'vertical', lineHeight: 1.5,
-                  }}
-                />
-              )}
-            </div>
-
-            <button
-              onClick={() => { setMessages([]); }}
-              style={{
-                padding: '0.5rem', borderRadius: 'var(--radius)',
-                border: '1px solid var(--border)', backgroundColor: 'transparent',
-                color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem',
-              }}
-            >
-              🗑 Gesprek wissen
-            </button>
-          </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem', alignItems: 'start' }}>
 
           {/* Right: Chat */}
           <div className="glass" style={{ borderRadius: 'var(--radius-lg)', display: 'flex', flexDirection: 'column', minHeight: '600px' }}>
+            {/* Chat Header / Toolbar */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                  Actief Model: <span style={{ color: 'var(--primary)' }}>{providerConfig?.modules.assistant.model}</span> ({providerConfig?.label})
+                </span>
+                <button onClick={() => setShowSystemPrompt(v => !v)} style={{
+                  fontSize: '0.8rem', fontWeight: 600, color: 'var(--primary)',
+                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                  display: 'flex', alignItems: 'center', gap: '0.3rem',
+                }}>
+                  {showSystemPrompt ? '▾' : '▸'} Systeem prompt
+                </button>
+              </div>
+              <button
+                onClick={() => { setMessages([]); }}
+                style={{
+                  padding: '0.4rem 0.8rem', borderRadius: 'var(--radius)',
+                  border: '1px solid var(--border)', backgroundColor: 'transparent',
+                  color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem',
+                }}
+              >
+                🗑 Gesprek wissen
+              </button>
+            </div>
+            
+            {showSystemPrompt && (
+              <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border)', backgroundColor: 'var(--surface-hover)' }}>
+                <textarea
+                  value={systemPrompt}
+                  onChange={e => setSystemPrompt(e.target.value)}
+                  rows={3}
+                  style={{
+                    width: '100%', padding: '0.6rem',
+                    borderRadius: 'var(--radius)', border: '1px solid var(--border)',
+                    backgroundColor: 'white', fontSize: '0.78rem',
+                    color: 'var(--text)', resize: 'vertical', lineHeight: 1.5,
+                  }}
+                />
+              </div>
+            )}
+
             {/* Messages */}
             <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', minHeight: '450px', maxHeight: '600px' }}>
               {messages.length === 0 ? (

@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { getVisionModelForProvider, getVisionProviderConfigInternal, LlmProvider } from '@/app/actions/llm';
 import { prisma } from '@/lib/prisma';
 
-const PROVIDERS: LlmProvider[] = ['openai', 'anthropic', 'gemini'];
+const PROVIDERS: LlmProvider[] = ['openai', 'anthropic', 'gemini', 'custom'];
 
 function visionSettingKey(provider: LlmProvider) {
   return `llm_vision_model_${provider}`;
