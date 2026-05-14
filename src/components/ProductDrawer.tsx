@@ -183,6 +183,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   const [activeStatus, setActiveStatus] = useState(currentStatus);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const initializedProductId = useRef<string | null>(null);
+  const saveModeRef = useRef<'save' | 'save_close'>('save_close');
 
   const lockStatus = (product?.readyForImport || '').toUpperCase();
   const isGloballyLocked = !isAdmin && (lockStatus === 'JA' || lockStatus === 'REVIEW' || lockStatus === 'R' || lockStatus === 'Y');
@@ -341,10 +342,11 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     startTransition(async () => {
       if(product?.internalArticleNumber) {
         await updateProductAction(product.internalArticleNumber, formData);
+        setIsDirty(false);
         
         if (pendingNavigation === 'prev' && onPrev) { onPrev(); setPendingNavigation(null); }
         else if (pendingNavigation === 'next' && onNext) { onNext(); setPendingNavigation(null); }
-        else { onClose(); }
+        else if (saveModeRef.current === 'save_close') { onClose(); }
       }
     });
   };
@@ -639,100 +641,119 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                 </div>
               </div>
               
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                {/* Actions that were previously on the left */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginRight: '1rem' }}>
-                  <select 
-                    name="status"
-                    value={activeStatus}
-                    disabled={isGloballyLocked}
-                    onChange={(e) => {
-                      const newStatus = e.target.value;
-                      setStatusOverridden(true);
-                      setActiveStatus(newStatus);
-                      startTransition(async () => {
-                        await updateProductStatusAction(localProductData.internalArticleNumber, newStatus);
-                      });
-                    }}
-                    style={{ 
-                      padding: '0.25rem 1.75rem 0.25rem 0.75rem', 
-                      borderRadius: '4px', 
-                      fontSize: '0.75rem', 
-                      fontWeight: 600, 
-                      backgroundColor: getStatusColor(activeStatus), 
-                      color: 'white',
-                      border: 'none',
-                      outline: 'none',
-                      WebkitAppearance: 'none',
-                      MozAppearance: 'none',
-                      appearance: 'none',
-                      backgroundImage: `url('data:image/svg+xml;utf8,<svg fill="white" height="20" viewBox="0 0 24 24" width="20" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/><path d="M0 0h24v24H0z" fill="none"/></svg>')`,
-                      backgroundRepeat: 'no-repeat',
-                      backgroundPosition: 'right 2px center',
-                      backgroundSize: '16px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {['NEW', 'EDIT', 'CHECK', 'DONE'].map(s => (
-                      <option key={s} value={s} style={{ color: 'var(--text)', backgroundColor: 'white' }}>{s}</option>
-                    ))}
-                  </select>
-                  
-                  {!isGloballyLocked && (
-                    <button 
-                      type="button"
-                      title="Kopieer data van product (zelfde leverancier)"
-                      onClick={() => setShowCopyModal(true)}
+              <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'flex-end' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <select 
+                      name="status"
+                      value={activeStatus}
+                      disabled={isGloballyLocked}
+                      onChange={(e) => {
+                        const newStatus = e.target.value;
+                        setStatusOverridden(true);
+                        setActiveStatus(newStatus);
+                        startTransition(async () => {
+                          await updateProductStatusAction(localProductData.internalArticleNumber, newStatus);
+                        });
+                      }}
                       style={{ 
-                        padding: '0.25rem 0.6rem', 
+                        padding: '0.25rem 1.75rem 0.25rem 0.75rem', 
                         borderRadius: '4px', 
                         fontSize: '0.75rem', 
                         fontWeight: 600, 
-                        backgroundColor: 'transparent', 
-                        color: 'var(--text-muted)',
-                        border: '1px solid var(--border)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center', gap: '0.3rem'
+                        backgroundColor: getStatusColor(activeStatus), 
+                        color: 'white',
+                        border: 'none',
+                        outline: 'none',
+                        WebkitAppearance: 'none',
+                        MozAppearance: 'none',
+                        appearance: 'none',
+                        backgroundImage: `url('data:image/svg+xml;utf8,<svg fill="white" height="20" viewBox="0 0 24 24" width="20" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/><path d="M0 0h24v24H0z" fill="none"/></svg>')`,
+                        backgroundRepeat: 'no-repeat',
+                        backgroundPosition: 'right 2px center',
+                        backgroundSize: '16px',
+                        cursor: 'pointer'
                       }}
                     >
-                      🖨 Kopieer Data
-                    </button>
-                  )}
-                  {canUseAi && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderLeft: '1px solid var(--border)', paddingLeft: '0.75rem' }}>
-                      <AiAnalysisViewer 
-                        articleNumber={localProductData.internalArticleNumber} 
-                        productTitle={localProductData.title}
-                        score={aiScore} 
-                        canUseAi={canUseAi} 
-                        fallbackIcon={true}
-                      />
-                      <ProductAiPanel product={localProductData} layout={layout} isAdmin={isAdmin} />
+                      {['NEW', 'EDIT', 'CHECK', 'DONE'].map(s => (
+                        <option key={s} value={s} style={{ color: 'var(--text)', backgroundColor: 'white' }}>{s}</option>
+                      ))}
+                    </select>
+                    
+                    {!isGloballyLocked && (
+                      <button 
+                        type="button"
+                        title="Kopieer data van product (zelfde leverancier)"
+                        onClick={() => setShowCopyModal(true)}
+                        style={{ 
+                          padding: '0.25rem 0.6rem', 
+                          borderRadius: '4px', 
+                          fontSize: '0.75rem', 
+                          fontWeight: 600, 
+                          backgroundColor: 'transparent', 
+                          color: 'var(--text-muted)',
+                          border: '1px solid var(--border)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center', gap: '0.3rem'
+                        }}
+                      >
+                        🖨 Kopieer Data
+                      </button>
+                    )}
+                    {canUseAi && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderLeft: '1px solid var(--border)', paddingLeft: '0.75rem' }}>
+                        <AiAnalysisViewer 
+                          articleNumber={localProductData.internalArticleNumber} 
+                          productTitle={localProductData.title}
+                          score={aiScore} 
+                          canUseAi={canUseAi} 
+                          fallbackIcon={true}
+                        />
+                        <ProductAiPanel product={localProductData} layout={layout} isAdmin={isAdmin} />
+                      </div>
+                    )}
+                    <DrawerReadyToggle 
+                      readyMode={(localProductData.readyForImport || 'NEE').toUpperCase()} 
+                      internalArticleNumber={localProductData.internalArticleNumber}
+                      isAdmin={isAdmin} 
+                      onChange={(val) => {
+                        setLocalProductData((prev: any) => ({ ...prev, readyForImport: val }));
+                      }} 
+                    />
+                  </div>
+
+                  {/* Save Buttons */}
+                  {isGloballyLocked ? (
+                    <div style={{ color: 'var(--error)', fontWeight: 600, fontSize: '0.8rem', padding: '0.2rem 0.5rem' }}>
+                      🔒 Vergrendeld voor review/export
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <button type="submit" disabled={isPending} onClick={() => saveModeRef.current = 'save'} className="btn" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border)' }}>
+                        {isPending && saveModeRef.current === 'save' ? 'Bezig...' : 'Opslaan'}
+                      </button>
+                      <button type="submit" disabled={isPending} onClick={() => saveModeRef.current = 'save_close'} className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', boxShadow: '0 2px 8px rgba(225, 191, 220, 0.3)' }}>
+                        {isPending && saveModeRef.current === 'save_close' ? 'Bezig...' : 'Opslaan & Sluiten'}
+                      </button>
                     </div>
                   )}
-                  <DrawerReadyToggle 
-                    readyMode={(localProductData.readyForImport || 'NEE').toUpperCase()} 
-                    internalArticleNumber={localProductData.internalArticleNumber}
-                    isAdmin={isAdmin} 
-                    onChange={(val) => {
-                      setLocalProductData((prev: any) => ({ ...prev, readyForImport: val }));
-                    }} 
-                  />
                 </div>
 
-                {/* Navigation arrows */}
-                {(onPrev || onNext) && (
-                  <div style={{ display: 'flex', gap: '0.25rem', marginRight: '1rem' }}>
-                    <button type="button" onClick={() => handleNavigateAttempt('prev')} disabled={!onPrev} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: onPrev ? 'pointer' : 'not-allowed', opacity: onPrev ? 1 : 0.3, fontSize: '1.2rem', color: 'var(--text)' }} title="Vorige (Arrow Left)">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-                    </button>
-                    <button type="button" onClick={() => handleNavigateAttempt('next')} disabled={!onNext} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: onNext ? 'pointer' : 'not-allowed', opacity: onNext ? 1 : 0.3, fontSize: '1.2rem', color: 'var(--text)' }} title="Volgende (Arrow Right)">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-                    </button>
-                  </div>
-                )}
-                <button type="button" onClick={handleCloseAttempt} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.75rem', color: 'var(--text-muted)' }}>✕</button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', height: '32px' }}>
+                  {/* Navigation arrows */}
+                  {(onPrev || onNext) && (
+                    <div style={{ display: 'flex', gap: '0.25rem' }}>
+                      <button type="button" onClick={() => handleNavigateAttempt('prev')} disabled={!onPrev} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: onPrev ? 'pointer' : 'not-allowed', opacity: onPrev ? 1 : 0.3, fontSize: '1.2rem', color: 'var(--text)' }} title="Vorige (Arrow Left)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                      </button>
+                      <button type="button" onClick={() => handleNavigateAttempt('next')} disabled={!onNext} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: onNext ? 'pointer' : 'not-allowed', opacity: onNext ? 1 : 0.3, fontSize: '1.2rem', color: 'var(--text)' }} title="Volgende (Arrow Right)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                      </button>
+                    </div>
+                  )}
+                  <button type="button" onClick={handleCloseAttempt} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>✕</button>
+                </div>
               </div>
             </div>
 
@@ -778,19 +799,6 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                   </div>
                 </section>
               )})}
-            </div>
-
-            <div style={{ padding: '2rem 3rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '1rem', position: 'sticky', bottom: 0, backgroundColor: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)', zIndex: 10 }}>
-              <button type="button" onClick={handleCloseAttempt} className="btn" style={{ padding: '1rem 2rem', border: '1px solid var(--border)', background: 'transparent' }}>{isGloballyLocked ? 'Sluiten' : 'Annuleren'}</button>
-              {isGloballyLocked ? (
-                <div style={{ color: 'var(--error)', fontWeight: 600, display: 'flex', alignItems: 'center', padding: '0 1rem' }}>
-                  🔒 Product is vergrendeld voor review/export
-                </div>
-              ) : (
-                <button type="submit" disabled={isPending} className="btn btn-primary" style={{ padding: '1rem 3rem', boxShadow: '0 4px 14px rgba(225, 191, 220, 0.4)' }}>
-                  {isPending ? 'Bezig met opslaan...' : 'Opslaan'}
-                </button>
-              )}
             </div>
           </>
         )}
