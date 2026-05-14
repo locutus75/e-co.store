@@ -604,7 +604,10 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
       )}
 
       {/* Drawer */}
-      <form ref={formRef} key={formKey} action={handleSubmit} onChange={() => setIsDirty(true)} className="glass" style={{
+      <form ref={formRef} key={formKey} onSubmit={(e) => {
+        e.preventDefault();
+        handleSubmit(new FormData(e.currentTarget));
+      }} onChange={() => setIsDirty(true)} className="glass" style={{
         position: 'fixed', top: 0, right: 0, bottom: 0,
         width: 'calc(100vw - 250px)',
         backgroundColor: 'var(--surface)',
