@@ -174,8 +174,9 @@ function DrawerReadyToggle({ readyMode, internalArticleNumber, isAdmin, onChange
 }
 
 
-export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, canUseAi = false, layout = [], currentUserId = '', currentUserChatColor = null, userChatColors = {} }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, canUseAi?: boolean, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, userChatColors?: Record<string, string> }) {
+export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, canUseAi = false, layout = [], currentUserId = '', currentUserChatColor = null, userChatColors = {}, onPrev, onNext }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, canUseAi?: boolean, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, userChatColors?: Record<string, string>, onPrev?: () => void, onNext?: () => void }) {
   const [isPending, startTransition] = useTransition();
+  const [pendingNavigation, setPendingNavigation] = useState<'prev' | 'next' | null>(null);
   const [statusOverridden, setStatusOverridden] = useState(false);
   const currentStatus = (product?.status || 'NEW').toUpperCase();
   const [activeStatus, setActiveStatus] = useState(currentStatus);
@@ -226,9 +227,20 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
 
   const handleCloseAttempt = () => {
     if (isDirty) {
+      setPendingNavigation(null);
       setShowUnsavedWarning(true);
     } else {
       onClose();
+    }
+  };
+
+  const handleNavigateAttempt = (direction: 'prev' | 'next') => {
+    if (isDirty) {
+      setPendingNavigation(direction);
+      setShowUnsavedWarning(true);
+    } else {
+      if (direction === 'prev' && onPrev) onPrev();
+      if (direction === 'next' && onNext) onNext();
     }
   };
 
@@ -263,20 +275,40 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     return () => { document.body.style.overflow = ''; };
   }, [isOpen]);
 
-  // Handle escape key
+  // Handle escape key and navigation arrows
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen && !showUnsavedWarning && !showCopyModal) {
-        if (isDirty) {
-          setShowUnsavedWarning(true);
-        } else {
-          onClose();
+      if (isOpen && !showUnsavedWarning && !showCopyModal) {
+        if (e.key === 'Escape') {
+          if (isDirty) {
+            setPendingNavigation(null);
+            setShowUnsavedWarning(true);
+          } else {
+            onClose();
+          }
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          const active = document.activeElement;
+          const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || (active as HTMLElement).isContentEditable);
+          if (!isInput) {
+            e.preventDefault();
+            const direction = e.key === 'ArrowLeft' ? 'prev' : 'next';
+            if (direction === 'prev' && !onPrev) return;
+            if (direction === 'next' && !onNext) return;
+            
+            if (isDirty) {
+              setPendingNavigation(direction);
+              setShowUnsavedWarning(true);
+            } else {
+              if (direction === 'prev') onPrev!();
+              if (direction === 'next') onNext!();
+            }
+          }
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isDirty, showUnsavedWarning, showCopyModal, onClose]);
+  }, [isOpen, isDirty, showUnsavedWarning, showCopyModal, onClose, onPrev, onNext]);
 
   const handleSubmit = (formData: FormData) => {
     // Auto-fallback: if the user did NOT touch the status dropdown during this edit session,
@@ -295,7 +327,10 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     startTransition(async () => {
       if(product?.internalArticleNumber) {
         await updateProductAction(product.internalArticleNumber, formData);
-        onClose();
+        
+        if (pendingNavigation === 'prev' && onPrev) { onPrev(); setPendingNavigation(null); }
+        else if (pendingNavigation === 'next' && onNext) { onNext(); setPendingNavigation(null); }
+        else { onClose(); }
       }
     });
   };
@@ -658,7 +693,19 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                   />
                 </div>
               </div>
-              <button type="button" onClick={handleCloseAttempt} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.75rem', color: 'var(--text-muted)' }}>✕</button>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                {(onPrev || onNext) && (
+                  <div style={{ display: 'flex', gap: '0.25rem', marginRight: '1rem' }}>
+                    <button type="button" onClick={() => handleNavigateAttempt('prev')} disabled={!onPrev} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: onPrev ? 'pointer' : 'not-allowed', opacity: onPrev ? 1 : 0.3, fontSize: '1.2rem', color: 'var(--text)' }} title="Vorige (Arrow Left)">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                    </button>
+                    <button type="button" onClick={() => handleNavigateAttempt('next')} disabled={!onNext} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: onNext ? 'pointer' : 'not-allowed', opacity: onNext ? 1 : 0.3, fontSize: '1.2rem', color: 'var(--text)' }} title="Volgende (Arrow Right)">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                    </button>
+                  </div>
+                )}
+                <button type="button" onClick={handleCloseAttempt} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.75rem', color: 'var(--text-muted)' }}>✕</button>
+              </div>
             </div>
 
             <div style={{ padding: '3rem', display: 'flex', flexDirection: 'column', gap: '4rem' }}>
@@ -767,14 +814,19 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                 💾 Wijzigingen Opslaan
               </button>
               <button 
-                onClick={() => { setShowUnsavedWarning(false); onClose(); }} 
+                onClick={() => { 
+                  setShowUnsavedWarning(false); 
+                  if (pendingNavigation === 'prev' && onPrev) { onPrev(); setPendingNavigation(null); }
+                  else if (pendingNavigation === 'next' && onNext) { onNext(); setPendingNavigation(null); }
+                  else { onClose(); setPendingNavigation(null); }
+                }} 
                 className="btn" 
                 style={{ padding: '1.25rem', fontSize: '1.1rem', backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '12px', fontWeight: 600 }}
               >
-                🗑️ Wijzigingen Negeren & Sluiten
+                {pendingNavigation ? '🗑️ Wijzigingen Negeren & Verdergaan' : '🗑️ Wijzigingen Negeren & Sluiten'}
               </button>
               <button 
-                onClick={() => setShowUnsavedWarning(false)} 
+                onClick={() => { setShowUnsavedWarning(false); setPendingNavigation(null); }} 
                 className="btn ghost" 
                 style={{ padding: '1rem', color: 'var(--text-muted)' }}
               >

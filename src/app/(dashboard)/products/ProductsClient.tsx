@@ -405,6 +405,10 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
     });
   };
 
+  const currentIndex = selectedProduct ? filteredProducts.findIndex(p => p.internalArticleNumber === selectedProduct.internalArticleNumber) : -1;
+  const handlePrev = currentIndex > 0 ? () => setSelectedProduct(filteredProducts[currentIndex - 1]) : undefined;
+  const handleNext = currentIndex >= 0 && currentIndex < filteredProducts.length - 1 ? () => setSelectedProduct(filteredProducts[currentIndex + 1]) : undefined;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%', maxWidth: '1600px' }}>
       {showImportWizard && (
@@ -721,6 +725,8 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
         userChatColors={Object.fromEntries(
           systemUsers.filter((u: any) => u.chatColor).map((u: any) => [u.id, u.chatColor])
         )}
+        onPrev={handlePrev}
+        onNext={handleNext}
       />
     </div>
   );
