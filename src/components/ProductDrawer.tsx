@@ -139,6 +139,30 @@ const ThreeWayToggle = ({ name, defaultValue, disabled, onChange }: { name?: str
   );
 };
 
+function DrawerReadyToggle({ readyMode, isAdmin, onChange }: { readyMode: string, isAdmin: boolean, onChange: (val: string) => void }) {
+  const btnStyle = (val: string, color: string) => ({
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    width: '26px', height: '26px', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.85rem',
+    cursor: !isAdmin ? 'not-allowed' : 'pointer',
+    backgroundColor: readyMode === val ? color : 'var(--surface)',
+    color: readyMode === val ? 'white' : (!isAdmin ? 'var(--border)' : 'var(--text-muted)'),
+    border: readyMode === val ? 'none' : '1px solid var(--border)',
+    transition: 'all 0.2s',
+    opacity: (!isAdmin && readyMode !== val) ? 0.3 : 1
+  });
+
+  return (
+    <div style={{ display: 'flex', gap: '0.4rem', marginLeft: '0.5rem', alignItems: 'center', borderLeft: '1px solid var(--border)', paddingLeft: '0.75rem' }} title="Webshop Ready Status">
+      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginRight: '0.2rem' }}>Ready:</span>
+      <div style={btnStyle('NEE', 'var(--error)')} onClick={() => isAdmin && onChange('NEE')} title="No (N)">N</div>
+      <div style={btnStyle('REVIEW', '#3b82f6')} onClick={() => isAdmin && onChange('REVIEW')} title="Review (R)">R</div>
+      <div style={btnStyle('JA', 'var(--success)')} onClick={() => isAdmin && onChange('JA')} title="Yes (Y)">Y</div>
+      <input type="hidden" name="_present_fields" value="readyForImport" />
+      <input type="hidden" name="readyForImport" value={readyMode} />
+    </div>
+  );
+}
+
 
 export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, canUseAi = false, layout = [], currentUserId = '', currentUserChatColor = null, userChatColors = {} }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, canUseAi?: boolean, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, userChatColors?: Record<string, string> }) {
   const [isPending, startTransition] = useTransition();
@@ -250,6 +274,12 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     // If the status is already 'DONE', we keep it 'DONE'.
     if (!statusOverridden && currentStatus !== 'DONE' && formData.get('status') !== 'EDIT') {
       formData.set('status', 'EDIT');
+    }
+    
+    // Always use the header's readyForImport value if multiple exist in the DOM
+    const readyVal = formData.getAll('readyForImport')[0];
+    if (readyVal) {
+      formData.set('readyForImport', readyVal);
     }
     
     startTransition(async () => {
@@ -605,6 +635,14 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                   {canUseAi && (
                     <ProductAiPanel product={localProductData} layout={layout} isAdmin={isAdmin} />
                   )}
+                  <DrawerReadyToggle 
+                    readyMode={(localProductData.readyForImport || 'NEE').toUpperCase()} 
+                    isAdmin={isAdmin} 
+                    onChange={(val) => {
+                      setLocalProductData((prev: any) => ({ ...prev, readyForImport: val }));
+                      setIsDirty(true);
+                    }} 
+                  />
                 </div>
               </div>
               <button type="button" onClick={handleCloseAttempt} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.75rem', color: 'var(--text-muted)' }}>✕</button>
