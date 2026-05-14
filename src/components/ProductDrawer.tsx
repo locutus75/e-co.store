@@ -7,6 +7,7 @@ import ProductRemarksChat from './ProductRemarksChat';
 import ProductAiPanel from './ProductAiPanel';
 import AiFieldSuggestion from './AiFieldSuggestion';
 import AiSectionSuggestion from './AiSectionSuggestion';
+import AiAnalysisViewer from './AiAnalysisViewer';
 
 /**
  * Builds a Google search URL using fields marked `useForSearch` in the layout.
@@ -174,7 +175,7 @@ function DrawerReadyToggle({ readyMode, internalArticleNumber, isAdmin, onChange
 }
 
 
-export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, canUseAi = false, layout = [], currentUserId = '', currentUserChatColor = null, userChatColors = {}, onPrev, onNext }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, canUseAi?: boolean, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, userChatColors?: Record<string, string>, onPrev?: () => void, onNext?: () => void }) {
+export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, canUseAi = false, layout = [], currentUserId = '', currentUserChatColor = null, userChatColors = {}, onPrev, onNext, aiScore = null }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, canUseAi?: boolean, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, userChatColors?: Record<string, string>, onPrev?: () => void, onNext?: () => void, aiScore?: number | null }) {
   const [isPending, startTransition] = useTransition();
   const [pendingNavigation, setPendingNavigation] = useState<'prev' | 'next' | null>(null);
   const [statusOverridden, setStatusOverridden] = useState(false);
@@ -622,6 +623,12 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.25rem' }}>
 
                   <span style={{ fontSize: '1rem', color: 'var(--color-mustard)', fontWeight: 600 }}>{localProductData.title}</span>
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                {/* Actions that were previously on the left */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginRight: '1rem' }}>
                   <select 
                     name="status"
                     value={activeStatus}
@@ -673,15 +680,23 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                         border: '1px solid var(--border)',
                         cursor: 'pointer',
                         display: 'flex',
-                        alignItems: 'center', gap: '0.3rem',
-                        marginLeft: '0.5rem'
+                        alignItems: 'center', gap: '0.3rem'
                       }}
                     >
                       🖨 Kopieer Data
                     </button>
                   )}
                   {canUseAi && (
-                    <ProductAiPanel product={localProductData} layout={layout} isAdmin={isAdmin} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderLeft: '1px solid var(--border)', paddingLeft: '0.75rem' }}>
+                      <AiAnalysisViewer 
+                        articleNumber={localProductData.internalArticleNumber} 
+                        productTitle={localProductData.title}
+                        score={aiScore} 
+                        canUseAi={canUseAi} 
+                        fallbackIcon={true}
+                      />
+                      <ProductAiPanel product={localProductData} layout={layout} isAdmin={isAdmin} />
+                    </div>
                   )}
                   <DrawerReadyToggle 
                     readyMode={(localProductData.readyForImport || 'NEE').toUpperCase()} 
@@ -692,8 +707,8 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                     }} 
                   />
                 </div>
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+
+                {/* Navigation arrows */}
                 {(onPrev || onNext) && (
                   <div style={{ display: 'flex', gap: '0.25rem', marginRight: '1rem' }}>
                     <button type="button" onClick={() => handleNavigateAttempt('prev')} disabled={!onPrev} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: onPrev ? 'pointer' : 'not-allowed', opacity: onPrev ? 1 : 0.3, fontSize: '1.2rem', color: 'var(--text)' }} title="Vorige (Arrow Left)">

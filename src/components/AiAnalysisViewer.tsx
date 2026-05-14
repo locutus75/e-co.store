@@ -31,6 +31,7 @@ interface Props {
   productTitle?: string;
   score: number | null;
   canUseAi?: boolean;
+  fallbackIcon?: boolean;
 }
 
 function scoreColor(s: number) {
@@ -110,7 +111,7 @@ export function AiScoreBadge({ score, onClick }: { score: number; onClick: (e: R
 }
 
 /** Full read-only analysis viewer modal */
-export default function AiAnalysisViewer({ articleNumber, productTitle, score, canUseAi = false }: Props) {
+export default function AiAnalysisViewer({ articleNumber, productTitle, score, canUseAi = false, fallbackIcon = false }: Props) {
   const { rate: usdToEur } = useExchangeRate();
   const [open, setOpen]         = useState(false);
   const [mounted, setMounted]   = useState(false);
@@ -143,7 +144,13 @@ export default function AiAnalysisViewer({ articleNumber, productTitle, score, c
 
   const badge = score != null ? <AiScoreBadge score={score} onClick={openViewer} /> : null;
 
-  if (!mounted) return badge ?? <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>;
+  const fallback = fallbackIcon ? (
+    <span title="Geen analyse resultaat" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', padding: '0.18rem 0.55rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700, backgroundColor: 'var(--surface-hover)', color: 'var(--text-muted)', border: '1px dashed var(--border)' }}>
+      🤖 ?
+    </span>
+  ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>;
+
+  if (!mounted) return badge ?? fallback;
 
   const { narrative, structured } = analysis ? parseNarrative(analysis.response) : { narrative: '', structured: null };
   const displayStructured = structured ?? (analysis?.structuredData ? (() => { try { return JSON.parse(analysis.structuredData!); } catch { return null; } })() : null);
@@ -264,7 +271,7 @@ export default function AiAnalysisViewer({ articleNumber, productTitle, score, c
 
   return (
     <>
-      {badge ?? <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>}
+      {badge ?? fallback}
       {modal}
     </>
   );

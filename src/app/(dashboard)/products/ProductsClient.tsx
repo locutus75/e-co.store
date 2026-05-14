@@ -727,6 +727,7 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
         )}
         onPrev={handlePrev}
         onNext={handleNext}
+        aiScore={selectedProduct ? (aiScoreMap[selectedProduct.internalArticleNumber] ?? null) : null}
       />
     </div>
   );
