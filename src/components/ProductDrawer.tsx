@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState, useTransition } from 'react';
+import React, { useEffect, useState, useTransition, useRef } from 'react';
 import ProductGallery from './ProductGallery';
 import { updateProductAction, updateProductStatusAction, updateReadyForImportAction } from '@/app/actions/product';
 import ProductCopyModal from './ProductCopyModal';
@@ -182,6 +182,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   const currentStatus = (product?.status || 'NEW').toUpperCase();
   const [activeStatus, setActiveStatus] = useState(currentStatus);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const initializedProductId = useRef<string | null>(null);
 
   const lockStatus = (product?.readyForImport || '').toUpperCase();
   const isGloballyLocked = !isAdmin && (lockStatus === 'JA' || lockStatus === 'REVIEW' || lockStatus === 'R' || lockStatus === 'Y');
@@ -200,7 +201,8 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   const [analysisNarrative, setAnalysisNarrative] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && product?.internalArticleNumber !== initializedProductId.current) {
+      initializedProductId.current = product?.internalArticleNumber || null;
       setActiveStatus((product?.status || 'NEW').toUpperCase());
       setStatusOverridden(false);
       setLocalProductData(product ? JSON.parse(JSON.stringify(product)) : null);
@@ -215,6 +217,8 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
          }
       });
       setCollapsedSections(initialCollapsed);
+    } else if (!isOpen) {
+      initializedProductId.current = null;
     }
   }, [product, isOpen, layout]);
 
