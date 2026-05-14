@@ -181,6 +181,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   const [statusOverridden, setStatusOverridden] = useState(false);
   const currentStatus = (product?.status || 'NEW').toUpperCase();
   const [activeStatus, setActiveStatus] = useState(currentStatus);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
 
   const lockStatus = (product?.readyForImport || '').toUpperCase();
   const isGloballyLocked = !isAdmin && (lockStatus === 'JA' || lockStatus === 'REVIEW' || lockStatus === 'R' || lockStatus === 'Y');
@@ -206,8 +207,16 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
       setFormKey(k => k + 1);
       setIsDirty(false);
       setShowUnsavedWarning(false);
+      
+      const initialCollapsed: Record<string, boolean> = {};
+      layout.forEach(s => {
+         if (s.fields?.some((f: any) => f.type === 'chat')) {
+           initialCollapsed[s.id] = true;
+         }
+      });
+      setCollapsedSections(initialCollapsed);
     }
-  }, [product, isOpen]);
+  }, [product, isOpen, layout]);
 
   // Load the AI analysis narrative for field suggestions (canUseAi users only)
   useEffect(() => {
@@ -519,6 +528,11 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
             isOpen={isOpen}
             height={chatHeight}
             title={f.label}
+            onLoadResult={(hasNew) => {
+              if (hasNew) {
+                setCollapsedSections(prev => ({ ...prev, [section.id]: false }));
+              }
+            }}
           />
         </div>
       );
@@ -740,11 +754,15 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                       instruction: f.aiInstruction
                     };
                   });
+                const isCollapsed = collapsedSections[section.id] || false;
                 
                 return (
                 <section key={section.id}>
-                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
-                    <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: section.color, borderBottom: `2px solid ${section.color}`, paddingBottom: '0.5rem', display: 'inline-block', margin: 0 }}>{section.title}</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', cursor: 'pointer', userSelect: 'none' }} onClick={() => setCollapsedSections(prev => ({...prev, [section.id]: !prev[section.id]}))}>
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: section.color, borderBottom: `2px solid ${section.color}`, paddingBottom: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
+                      <span style={{ fontSize: '0.85rem', transform: isCollapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.2s', display: 'inline-block', opacity: 0.8 }}>▼</span>
+                      {section.title}
+                    </h3>
                     {canUseAi && analysisNarrative && sectionAiFields.length > 0 && (
                       <AiSectionSuggestion
                         sectionTitle={section.title}
@@ -756,7 +774,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                       />
                     )}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(24, minmax(0, 1fr))', gap: '0.75rem', backgroundColor: section.backgroundColor || 'var(--background)', color: section.textColor || 'var(--text)', padding: '1rem', borderRadius: 'var(--radius)', border: `1px solid rgba(0,0,0,0.05)` }}>
+                  <div style={{ display: isCollapsed ? 'none' : 'grid', gridTemplateColumns: 'repeat(24, minmax(0, 1fr))', gap: '0.75rem', backgroundColor: section.backgroundColor || 'var(--background)', color: section.textColor || 'var(--text)', padding: '1rem', borderRadius: 'var(--radius)', border: `1px solid rgba(0,0,0,0.05)` }}>
                     {section.fields.map((f: any) => renderDataField(f, section))}
                   </div>
                 </section>

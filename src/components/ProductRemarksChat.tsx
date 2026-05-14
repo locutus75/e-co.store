@@ -90,11 +90,12 @@ interface Props {
   height?: number | string;
   /** Label from the WYSIWYG layout — default "Interne Communicatie" */
   title?: string;
+  onLoadResult?: (hasNew: boolean) => void;
 }
 
 export default function ProductRemarksChat({
   articleNumber, currentUserId, currentUserChatColor, userChatColors = {},
-  isAdmin, isOpen, height = 380, title = 'Interne Communicatie'
+  isAdmin, isOpen, height = 380, title = 'Interne Communicatie', onLoadResult
 }: Props) {
   const [remarks, setRemarks]   = useState<RemarkEntry[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -142,13 +143,18 @@ export default function ProductRemarksChat({
       if (newFromOthers.length > 0) {
         setHasNewMessages(true);
         setNewCount(newFromOthers.length);
+        if (onLoadResult) onLoadResult(true);
       } else {
         setHasNewMessages(false);
         setNewCount(0);
         // No unread messages — mark as seen now so the badge stays clear after refresh
         markAsSeen();
+        if (onLoadResult) onLoadResult(false);
       }
-    } catch { /* storage unavailable */ }
+    } catch { 
+      /* storage unavailable */ 
+      if (onLoadResult) onLoadResult(false);
+    }
   };
 
   useEffect(() => {
