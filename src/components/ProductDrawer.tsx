@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState, useTransition } from 'react';
 import ProductGallery from './ProductGallery';
-import { updateProductAction } from '@/app/actions/product';
+import { updateProductAction, updateProductStatusAction, updateReadyForImportAction } from '@/app/actions/product';
 import ProductCopyModal from './ProductCopyModal';
 import ProductRemarksChat from './ProductRemarksChat';
 import ProductAiPanel from './ProductAiPanel';
@@ -139,24 +139,34 @@ const ThreeWayToggle = ({ name, defaultValue, disabled, onChange }: { name?: str
   );
 };
 
-function DrawerReadyToggle({ readyMode, isAdmin, onChange }: { readyMode: string, isAdmin: boolean, onChange: (val: string) => void }) {
+function DrawerReadyToggle({ readyMode, internalArticleNumber, isAdmin, onChange }: { readyMode: string, internalArticleNumber: string, isAdmin: boolean, onChange: (val: string) => void }) {
+  const [isPending, startTransition] = useTransition();
+
   const btnStyle = (val: string, color: string) => ({
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     width: '26px', height: '26px', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.85rem',
-    cursor: !isAdmin ? 'not-allowed' : 'pointer',
+    cursor: !isAdmin ? 'not-allowed' : (isPending ? 'wait' : 'pointer'),
     backgroundColor: readyMode === val ? color : 'var(--surface)',
     color: readyMode === val ? 'white' : (!isAdmin ? 'var(--border)' : 'var(--text-muted)'),
     border: readyMode === val ? 'none' : '1px solid var(--border)',
     transition: 'all 0.2s',
-    opacity: (!isAdmin && readyMode !== val) ? 0.3 : 1
+    opacity: (!isAdmin && readyMode !== val) ? 0.3 : (isPending ? 0.5 : 1)
   });
 
+  const handleUpdate = (val: string) => {
+    if (!isAdmin || readyMode === val) return;
+    onChange(val);
+    startTransition(async () => {
+      await updateReadyForImportAction(internalArticleNumber, val);
+    });
+  };
+
   return (
-    <div style={{ display: 'flex', gap: '0.4rem', marginLeft: '0.5rem', alignItems: 'center', borderLeft: '1px solid var(--border)', paddingLeft: '0.75rem' }} title="Webshop Ready Status">
+    <div style={{ display: 'flex', gap: '0.4rem', marginLeft: '0.5rem', alignItems: 'center', borderLeft: '1px solid var(--border)', paddingLeft: '0.75rem' }} title="Webshop Ready Status (direct opgeslagen)">
       <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginRight: '0.2rem' }}>Ready:</span>
-      <div style={btnStyle('NEE', 'var(--error)')} onClick={() => isAdmin && onChange('NEE')} title="No (N)">N</div>
-      <div style={btnStyle('REVIEW', '#3b82f6')} onClick={() => isAdmin && onChange('REVIEW')} title="Review (R)">R</div>
-      <div style={btnStyle('JA', 'var(--success)')} onClick={() => isAdmin && onChange('JA')} title="Yes (Y)">Y</div>
+      <div style={btnStyle('NEE', 'var(--error)')} onClick={() => handleUpdate('NEE')} title="No (N)">N</div>
+      <div style={btnStyle('REVIEW', '#3b82f6')} onClick={() => handleUpdate('REVIEW')} title="Review (R)">R</div>
+      <div style={btnStyle('JA', 'var(--success)')} onClick={() => handleUpdate('JA')} title="Yes (Y)">Y</div>
       <input type="hidden" name="_present_fields" value="readyForImport" />
       <input type="hidden" name="readyForImport" value={readyMode} />
     </div>
@@ -582,9 +592,12 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                     value={activeStatus}
                     disabled={isGloballyLocked}
                     onChange={(e) => {
+                      const newStatus = e.target.value;
                       setStatusOverridden(true);
-                      setActiveStatus(e.target.value);
-                      setIsDirty(true);
+                      setActiveStatus(newStatus);
+                      startTransition(async () => {
+                        await updateProductStatusAction(localProductData.internalArticleNumber, newStatus);
+                      });
                     }}
                     style={{ 
                       padding: '0.25rem 1.75rem 0.25rem 0.75rem', 
@@ -637,10 +650,10 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                   )}
                   <DrawerReadyToggle 
                     readyMode={(localProductData.readyForImport || 'NEE').toUpperCase()} 
+                    internalArticleNumber={localProductData.internalArticleNumber}
                     isAdmin={isAdmin} 
                     onChange={(val) => {
                       setLocalProductData((prev: any) => ({ ...prev, readyForImport: val }));
-                      setIsDirty(true);
                     }} 
                   />
                 </div>
