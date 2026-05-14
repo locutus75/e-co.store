@@ -641,8 +641,10 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                 </div>
               </div>
               
-              <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'flex-end' }}>
+                
+                {/* Top Row: Controls + Navigation + Close */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <select 
                       name="status"
@@ -723,37 +725,37 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                     />
                   </div>
 
-                  {/* Save Buttons */}
-                  {isGloballyLocked ? (
-                    <div style={{ color: 'var(--error)', fontWeight: 600, fontSize: '0.8rem', padding: '0.2rem 0.5rem' }}>
-                      🔒 Vergrendeld voor review/export
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <button type="submit" disabled={isPending} onClick={() => saveModeRef.current = 'save'} className="btn" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border)' }}>
-                        {isPending && saveModeRef.current === 'save' ? 'Bezig...' : 'Opslaan'}
-                      </button>
-                      <button type="submit" disabled={isPending} onClick={() => saveModeRef.current = 'save_close'} className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', boxShadow: '0 2px 8px rgba(225, 191, 220, 0.3)' }}>
-                        {isPending && saveModeRef.current === 'save_close' ? 'Bezig...' : 'Opslaan & Sluiten'}
-                      </button>
-                    </div>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', height: '32px' }}>
+                    {/* Navigation arrows */}
+                    {(onPrev || onNext) && (
+                      <div style={{ display: 'flex', gap: '0.25rem' }}>
+                        <button type="button" onClick={() => handleNavigateAttempt('prev')} disabled={!onPrev} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: onPrev ? 'pointer' : 'not-allowed', opacity: onPrev ? 1 : 0.3, fontSize: '1.2rem', color: 'var(--text)' }} title="Vorige (Arrow Left)">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                        </button>
+                        <button type="button" onClick={() => handleNavigateAttempt('next')} disabled={!onNext} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: onNext ? 'pointer' : 'not-allowed', opacity: onNext ? 1 : 0.3, fontSize: '1.2rem', color: 'var(--text)' }} title="Volgende (Arrow Right)">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                        </button>
+                      </div>
+                    )}
+                    <button type="button" onClick={handleCloseAttempt} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>✕</button>
+                  </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', height: '32px' }}>
-                  {/* Navigation arrows */}
-                  {(onPrev || onNext) && (
-                    <div style={{ display: 'flex', gap: '0.25rem' }}>
-                      <button type="button" onClick={() => handleNavigateAttempt('prev')} disabled={!onPrev} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: onPrev ? 'pointer' : 'not-allowed', opacity: onPrev ? 1 : 0.3, fontSize: '1.2rem', color: 'var(--text)' }} title="Vorige (Arrow Left)">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-                      </button>
-                      <button type="button" onClick={() => handleNavigateAttempt('next')} disabled={!onNext} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: onNext ? 'pointer' : 'not-allowed', opacity: onNext ? 1 : 0.3, fontSize: '1.2rem', color: 'var(--text)' }} title="Volgende (Arrow Right)">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-                      </button>
-                    </div>
-                  )}
-                  <button type="button" onClick={handleCloseAttempt} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>✕</button>
-                </div>
+                {/* Bottom Row: Save Buttons */}
+                {isGloballyLocked ? (
+                  <div style={{ color: 'var(--error)', fontWeight: 600, fontSize: '0.8rem', padding: '0.2rem 0.5rem' }}>
+                    🔒 Vergrendeld voor review/export
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <button type="submit" disabled={isPending} onClick={() => saveModeRef.current = 'save'} className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', opacity: 0.8, boxShadow: '0 2px 8px rgba(225, 191, 220, 0.2)' }}>
+                      {isPending && saveModeRef.current === 'save' ? 'Bezig...' : 'Opslaan'}
+                    </button>
+                    <button type="submit" disabled={isPending} onClick={() => saveModeRef.current = 'save_close'} className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', boxShadow: '0 2px 8px rgba(225, 191, 220, 0.4)' }}>
+                      {isPending && saveModeRef.current === 'save_close' ? 'Bezig...' : 'Opslaan & Sluiten'}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
