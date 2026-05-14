@@ -182,6 +182,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   const currentStatus = (product?.status || 'NEW').toUpperCase();
   const [activeStatus, setActiveStatus] = useState(currentStatus);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [sectionsWithNewMessages, setSectionsWithNewMessages] = useState<Record<string, number>>({});
 
   const lockStatus = (product?.readyForImport || '').toUpperCase();
   const isGloballyLocked = !isAdmin && (lockStatus === 'JA' || lockStatus === 'REVIEW' || lockStatus === 'R' || lockStatus === 'Y');
@@ -528,9 +529,15 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
             isOpen={isOpen}
             height={chatHeight}
             title={f.label}
-            onLoadResult={(hasNew) => {
+            onLoadResult={(hasNew, count) => {
               if (hasNew) {
-                setCollapsedSections(prev => ({ ...prev, [section.id]: false }));
+                setSectionsWithNewMessages(prev => ({ ...prev, [section.id]: count }));
+              } else {
+                setSectionsWithNewMessages(prev => {
+                  const next = { ...prev };
+                  delete next[section.id];
+                  return next;
+                });
               }
             }}
           />
@@ -762,6 +769,15 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                     <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: section.color, borderBottom: `2px solid ${section.color}`, paddingBottom: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
                       <span style={{ fontSize: '0.85rem', transform: isCollapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.2s', display: 'inline-block', opacity: 0.8 }}>▼</span>
                       {section.title}
+                      {sectionsWithNewMessages[section.id] ? (
+                        <span style={{ 
+                          backgroundColor: '#ef4444', color: 'white', fontSize: '0.65rem', 
+                          padding: '0.15rem 0.45rem', borderRadius: '1rem', marginLeft: '0.5rem',
+                          animation: 'chat-pulse 1s ease-in-out infinite', fontWeight: 800
+                        }}>
+                          🔔 {sectionsWithNewMessages[section.id]} nieuw
+                        </span>
+                      ) : null}
                     </h3>
                     {canUseAi && analysisNarrative && sectionAiFields.length > 0 && (
                       <AiSectionSuggestion
