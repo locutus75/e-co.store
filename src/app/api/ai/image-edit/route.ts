@@ -60,6 +60,8 @@ async function hasAiAccess(session: any): Promise<boolean> {
 
 // ── POST /api/ai/image-edit ────────────────────────────────────────────────────
 
+export const maxDuration = 3600; // Allow up to 1 hour for local AI models
+
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: 'Niet ingelogd' }, { status: 401 });

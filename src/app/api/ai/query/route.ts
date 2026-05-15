@@ -5,6 +5,8 @@ import { prisma } from '@/lib/prisma';
 import { getLlmProviderConfigInternal, LlmProvider, LlmModule } from '@/app/actions/llm';
 import { estimateCost } from '@/lib/llmUtils';
 
+export const maxDuration = 3600; // Allow up to 1 hour for local AI models
+
 export async function POST(request: NextRequest) {
   // ── Auth ────────────────────────────────────────────────────────────────────
   const session = await getServerSession(authOptions);
