@@ -58,12 +58,12 @@ if ($LASTEXITCODE -ne 0) {
 # 5. Prepare Standalone Assets
 Write-Host "`n[5/6] Linking Static Assets..." -ForegroundColor Yellow
 if (Test-Path "public") {
-    if (Test-Path ".next/standalone/public") { Remove-Item -Path ".next/standalone/public" -Recurse -Force }
+    if (Test-Path ".next/standalone/public") { cmd /c "rmdir /s /q .next\standalone\public" }
     Copy-Item -Path "public" -Destination ".next/standalone/" -Recurse -Force
 }
 if (Test-Path ".next/static") {
     $destStatic = ".next/standalone/.next/static"
-    if (Test-Path $destStatic) { Remove-Item -Path $destStatic -Recurse -Force }
+    if (Test-Path $destStatic) { cmd /c "rmdir /s /q .next\standalone\.next\static" }
     $destBase = ".next/standalone/.next"
     if (-Not (Test-Path $destBase)) { New-Item -ItemType Directory -Force -Path $destBase | Out-Null }
     Copy-Item -Path ".next/static" -Destination $destBase -Recurse -Force
