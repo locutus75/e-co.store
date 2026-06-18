@@ -5,6 +5,12 @@ import { prisma } from "@/lib/prisma";
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
 
+  const roles: string[] = (session?.user as any)?.roles || [];
+  const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
+  const userId = (session?.user as any)?.id;
+
+  const workflowWhere = (!isAdmin && userId) ? { assignedUserId: userId } : {};
+
   const [
     totalProducts,
     countNew,
@@ -15,12 +21,12 @@ export default async function DashboardPage() {
     readyReview
   ] = await Promise.all([
     prisma.product.count(),
-    prisma.product.count({ where: { status: { equals: 'NEW',   mode: 'insensitive' } } }),
-    prisma.product.count({ where: { status: { equals: 'EDIT',  mode: 'insensitive' } } }),
-    prisma.product.count({ where: { status: { equals: 'CHECK', mode: 'insensitive' } } }),
-    prisma.product.count({ where: { status: { equals: 'DONE',  mode: 'insensitive' } } }),
-    prisma.product.count({ where: { readyForImport: { equals: 'JA',     mode: 'insensitive' } } }),
-    prisma.product.count({ where: { readyForImport: { equals: 'REVIEW', mode: 'insensitive' } } })
+    prisma.product.count({ where: { ...workflowWhere, status: { equals: 'NEW',   mode: 'insensitive' } } }),
+    prisma.product.count({ where: { ...workflowWhere, status: { equals: 'EDIT',  mode: 'insensitive' } } }),
+    prisma.product.count({ where: { ...workflowWhere, status: { equals: 'CHECK', mode: 'insensitive' } } }),
+    prisma.product.count({ where: { ...workflowWhere, status: { equals: 'DONE',  mode: 'insensitive' } } }),
+    prisma.product.count({ where: { ...workflowWhere, readyForImport: { equals: 'JA',     mode: 'insensitive' } } }),
+    prisma.product.count({ where: { ...workflowWhere, readyForImport: { equals: 'REVIEW', mode: 'insensitive' } } })
   ]);
 
   return (
@@ -42,7 +48,14 @@ export default async function DashboardPage() {
 
         {/* Workflow Status — all 4 labels */}
         <div className="glass" style={{ padding: '2rem', borderRadius: 'var(--radius-lg)', gridColumn: 'span 2' }}>
-          <h3 style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1.25rem', fontWeight: 600 }}>Workflow Status</h3>
+          <h3 style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1.25rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            Workflow Status
+            {!isAdmin && (
+              <span style={{ fontSize: '0.7rem', textTransform: 'none', backgroundColor: 'var(--surface-hover)', padding: '0.15rem 0.5rem', borderRadius: '1rem', fontWeight: 500, color: 'var(--text-muted)' }}>
+                Jouw toewijzingen
+              </span>
+            )}
+          </h3>
           <div style={{ display: 'flex', gap: '2.5rem', flexWrap: 'wrap' }}>
             <div>
               <p style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--primary)', lineHeight: 1 }}>{countNew}</p>
@@ -65,7 +78,14 @@ export default async function DashboardPage() {
 
         {/* Webshop Readiness */}
         <div className="glass" style={{ padding: '2rem', borderRadius: 'var(--radius-lg)' }}>
-          <h3 style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem', fontWeight: 600 }}>Webshop Ready</h3>
+          <h3 style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            Webshop Ready
+            {!isAdmin && (
+              <span style={{ fontSize: '0.7rem', textTransform: 'none', backgroundColor: 'var(--surface-hover)', padding: '0.15rem 0.5rem', borderRadius: '1rem', fontWeight: 500, color: 'var(--text-muted)' }}>
+                Jouw toewijzingen
+              </span>
+            )}
+          </h3>
           <div style={{ display: 'flex', gap: '2rem', marginTop: '0.5rem' }}>
              <div>
                <p style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--success)', lineHeight: 1 }}>{readyYes}</p>
