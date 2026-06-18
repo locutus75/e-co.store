@@ -8,6 +8,14 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   DONE:  { bg: '#10b981', text: 'white' },
 };
 
+const SEGMENTS = [
+  { key: 'UPDATE', label: 'Bewerkingen', color: '#c084fc' },
+  { key: 'NEW', label: 'Nieuw', color: 'var(--primary)' },
+  { key: 'EDIT', label: 'Bewerken', color: 'var(--color-mustard)' },
+  { key: 'CHECK', label: 'Controleren', color: '#3b82f6' },
+  { key: 'DONE', label: 'Gereed', color: '#10b981' },
+];
+
 interface RecentEdit {
   internalArticleNumber: string;
   title: string;
@@ -329,14 +337,54 @@ export default function AssignmentsClient({ usersWithAssignments }: { usersWithA
                    </div>
 
                    <div className="glass" style={{ padding: '1.5rem', borderRadius: 'var(--radius)' }}>
-                      <h3 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '1.25rem' }}>Bewerkingen per dag (laatste 30 dagen)</h3>
-                      <div style={{ display: 'flex', alignItems: 'flex-end', height: '120px', gap: '3px', paddingBottom: '20px', borderBottom: '1px solid var(--border)' }}>
+                      <h3 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '1.25rem' }}>Activiteit per dag (laatste 30 dagen)</h3>
+                      <div style={{ display: 'flex', alignItems: 'flex-end', height: '140px', gap: '4px', paddingBottom: '20px', borderBottom: '1px solid var(--border)' }}>
                         {activityStats.map((s, i) => {
                           const max = Math.max(...activityStats.map(x => x.count), 1);
                           const height = (s.count / max) * 100;
                           return (
-                            <div key={i} style={{ flex: 1, backgroundColor: s.count > 0 ? 'var(--primary)' : 'var(--border)', height: `${height}%`, borderRadius: '2px 2px 0 0', position: 'relative' }} title={`${s.date}: ${s.count}`}>
-                              {s.count > 0 && s.count > max * 0.5 && <span style={{ position: 'absolute', top: '-18px', left: '50%', transform: 'translateX(-50%)', fontSize: '0.6rem', fontWeight: 800 }}>{s.count}</span>}
+                            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
+                              {s.count > 0 && s.count > max * 0.3 && (
+                                <span style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--text)', marginBottom: '2px' }}>
+                                  {s.count}
+                                </span>
+                              )}
+                              <div 
+                                style={{ 
+                                  width: '100%', 
+                                  height: `${height}%`, 
+                                  borderRadius: '2px 2px 0 0', 
+                                  position: 'relative',
+                                  minHeight: s.count > 0 ? '4px' : '0',
+                                  display: 'flex',
+                                  flexDirection: 'column-reverse',
+                                  overflow: 'hidden',
+                                  backgroundColor: s.count > 0 ? 'transparent' : 'var(--border)'
+                                }} 
+                                title={`${s.date}: ${s.count} acties\n` + 
+                                  `- Bewerkingen: ${s.breakdown?.UPDATE || 0}\n` +
+                                  `- Status NEW: ${s.breakdown?.NEW || 0}\n` +
+                                  `- Status EDIT: ${s.breakdown?.EDIT || 0}\n` +
+                                  `- Status CHECK: ${s.breakdown?.CHECK || 0}\n` +
+                                  `- Status DONE: ${s.breakdown?.DONE || 0}`
+                                }
+                              >
+                                {s.count > 0 && SEGMENTS.map(seg => {
+                                  const val = s.breakdown?.[seg.key] || 0;
+                                  if (val === 0) return null;
+                                  const share = (val / s.count) * 100;
+                                  return (
+                                    <div 
+                                      key={seg.key} 
+                                      style={{ 
+                                        width: '100%', 
+                                        height: `${share}%`, 
+                                        backgroundColor: seg.color 
+                                      }} 
+                                    />
+                                  );
+                                })}
+                              </div>
                             </div>
                           );
                         })}
@@ -344,6 +392,16 @@ export default function AssignmentsClient({ usersWithAssignments }: { usersWithA
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', fontSize: '0.65rem', color: 'var(--text-muted)' }}>
                         <span>{activityStats[0]?.date}</span>
                         <span>{activityStats[activityStats.length-1]?.date}</span>
+                      </div>
+                      
+                      {/* Legend */}
+                      <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', marginTop: '1rem', flexWrap: 'wrap' }}>
+                        {SEGMENTS.map(seg => (
+                          <div key={seg.key} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.65rem' }}>
+                            <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: seg.color }} />
+                            <span style={{ color: 'var(--text-muted)' }}>{seg.label}</span>
+                          </div>
+                        ))}
                       </div>
                    </div>
 

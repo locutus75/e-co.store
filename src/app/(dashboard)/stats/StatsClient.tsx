@@ -1,6 +1,14 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 
+const SEGMENTS = [
+  { key: 'UPDATE', label: 'Bewerkingen', color: '#c084fc' },
+  { key: 'NEW', label: 'Nieuw', color: 'var(--primary)' },
+  { key: 'EDIT', label: 'Bewerken', color: 'var(--color-mustard)' },
+  { key: 'CHECK', label: 'Controleren', color: '#3b82f6' },
+  { key: 'DONE', label: 'Gereed', color: '#10b981' },
+];
+
 export default function StatsClient({ users }: { users: any[] }) {
   const [globalStats, setGlobalStats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,35 +78,75 @@ export default function StatsClient({ users }: { users: any[] }) {
         {loading ? (
           <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>Laden...</div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'flex-end', height: '300px', gap: '8px', paddingBottom: '40px', borderBottom: '2px solid var(--border)' }}>
-            {globalStats.map((s, i) => {
-              const max = Math.max(...globalStats.map(x => x.count), 1);
-              const height = (s.count / max) * 100;
-              return (
-                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
-                  <div 
-                    style={{ 
-                      width: '100%', 
-                      backgroundColor: s.count > 0 ? 'var(--primary)' : 'var(--border)', 
-                      height: `${height}%`, 
-                      borderRadius: '4px 4px 0 0', 
-                      position: 'relative',
-                      minHeight: s.count > 0 ? '4px' : '0',
-                      transition: 'height 0.3s ease'
-                    }} 
-                    title={`${s.date}: ${s.count}`}
-                  >
-                    {s.count > 0 && <span style={{ position: 'absolute', top: '-25px', left: '50%', transform: 'translateX(-50%)', fontSize: '0.75rem', fontWeight: 800 }}>{s.count}</span>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', height: '300px', gap: '8px', paddingBottom: '40px', borderBottom: '2px solid var(--border)' }}>
+              {globalStats.map((s, i) => {
+                const max = Math.max(...globalStats.map(x => x.count), 1);
+                const height = (s.count / max) * 100;
+                return (
+                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end', position: 'relative' }}>
+                    {s.count > 0 && (
+                      <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text)', marginBottom: '4px' }}>
+                        {s.count}
+                      </span>
+                    )}
+                    <div 
+                      style={{ 
+                        width: '100%', 
+                        height: `${height}%`, 
+                        borderRadius: '4px 4px 0 0', 
+                        position: 'relative',
+                        minHeight: s.count > 0 ? '4px' : '0',
+                        transition: 'height 0.3s ease',
+                        display: 'flex',
+                        flexDirection: 'column-reverse',
+                        overflow: 'hidden',
+                        backgroundColor: s.count > 0 ? 'transparent' : 'var(--border)'
+                      }} 
+                      title={`${s.date}: ${s.count} acties\n` + 
+                        `- Bewerkingen: ${s.breakdown?.UPDATE || 0}\n` +
+                        `- Status NEW: ${s.breakdown?.NEW || 0}\n` +
+                        `- Status EDIT: ${s.breakdown?.EDIT || 0}\n` +
+                        `- Status CHECK: ${s.breakdown?.CHECK || 0}\n` +
+                        `- Status DONE: ${s.breakdown?.DONE || 0}`
+                      }
+                    >
+                      {s.count > 0 && SEGMENTS.map(seg => {
+                        const val = s.breakdown?.[seg.key] || 0;
+                        if (val === 0) return null;
+                        const share = (val / s.count) * 100;
+                        return (
+                          <div 
+                            key={seg.key} 
+                            style={{ 
+                              width: '100%', 
+                              height: `${share}%`, 
+                              backgroundColor: seg.color 
+                            }} 
+                          />
+                        );
+                      })}
+                    </div>
+                    {/* Show date label for every 5th item to keep it clean */}
+                    {(i % 5 === 0 || i === globalStats.length - 1) && (
+                      <span style={{ position: 'absolute', bottom: '-25px', fontSize: '0.65rem', color: 'var(--text-muted)', transform: 'rotate(-45deg)', whiteSpace: 'nowrap' }}>
+                        {new Date(s.date).toLocaleDateString('nl-NL', { day: '2-digit', month: 'short' })}
+                      </span>
+                    )}
                   </div>
-                  {/* Show date label for every 5th item to keep it clean */}
-                  {(i % 5 === 0 || i === globalStats.length - 1) && (
-                    <span style={{ position: 'absolute', bottom: '-25px', fontSize: '0.65rem', color: 'var(--text-muted)', transform: 'rotate(-45deg)', whiteSpace: 'nowrap' }}>
-                      {new Date(s.date).toLocaleDateString('nl-NL', { day: '2-digit', month: 'short' })}
-                    </span>
-                  )}
+                );
+              })}
+            </div>
+            
+            {/* Legend */}
+            <div style={{ display: 'flex', gap: '1.25rem', justifyContent: 'center', marginTop: '1.5rem', flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
+              {SEGMENTS.map(seg => (
+                <div key={seg.key} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem' }}>
+                  <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', backgroundColor: seg.color }} />
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{seg.label}</span>
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
         )}
       </div>

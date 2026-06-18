@@ -38,15 +38,19 @@ export async function GET(req: NextRequest) {
       }
     });
 
-    const dailyStats: Record<string, number> = {};
+    const dailyStats: Record<string, { UPDATE: number; NEW: number; EDIT: number; CHECK: number; DONE: number }> = {};
     let updateLogsCount = 0;
     const statusCounts = { NEW: 0, EDIT: 0, CHECK: 0, DONE: 0 };
 
     logs.forEach(log => {
+      const date = log.timestamp.toISOString().split('T')[0];
+      if (!dailyStats[date]) {
+        dailyStats[date] = { UPDATE: 0, NEW: 0, EDIT: 0, CHECK: 0, DONE: 0 };
+      }
+
       // 1. Calculate daily stats for UPDATE actions (Bewerkingen)
       if (log.action === 'UPDATE') {
-        const date = log.timestamp.toISOString().split('T')[0];
-        dailyStats[date] = (dailyStats[date] || 0) + 1;
+        dailyStats[date].UPDATE++;
         updateLogsCount++;
       }
 
@@ -57,6 +61,7 @@ export async function GET(req: NextRequest) {
           const status = match[1].toUpperCase() as keyof typeof statusCounts;
           if (status in statusCounts) {
             statusCounts[status]++;
+            dailyStats[date][status]++;
           }
         }
       } else if (log.action === 'UPDATE' && log.changes) {
@@ -66,6 +71,7 @@ export async function GET(req: NextRequest) {
             const status = parsed.status.toUpperCase() as keyof typeof statusCounts;
             if (status in statusCounts) {
               statusCounts[status]++;
+              dailyStats[date][status]++;
             }
           }
         } catch (_) {
@@ -80,9 +86,12 @@ export async function GET(req: NextRequest) {
       const date = new Date();
       date.setDate(date.getDate() - i);
       const dateStr = date.toISOString().split('T')[0];
+      const dayData = dailyStats[dateStr] || { UPDATE: 0, NEW: 0, EDIT: 0, CHECK: 0, DONE: 0 };
+      const totalCountForDay = dayData.UPDATE + dayData.NEW + dayData.EDIT + dayData.CHECK + dayData.DONE;
       result.push({
         date: dateStr,
-        count: dailyStats[dateStr] || 0
+        count: totalCountForDay,
+        breakdown: dayData
       });
     }
 
