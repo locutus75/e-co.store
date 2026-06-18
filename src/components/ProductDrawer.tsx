@@ -304,7 +304,8 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
         } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
           const active = document.activeElement;
           const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || (active as HTMLElement).isContentEditable);
-          if (!isInput) {
+          const isLightboxOpen = !!document.querySelector('[data-lightbox="true"]');
+          if (!isInput && !isLightboxOpen) {
             e.preventDefault();
             const direction = e.key === 'ArrowLeft' ? 'prev' : 'next';
             if (direction === 'prev' && !onPrev) return;

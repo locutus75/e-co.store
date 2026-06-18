@@ -214,6 +214,7 @@ export default function ProductGallery({ articleNumber, canUseAi = false }: { ar
   const lightbox = lightboxIndex !== null && images[lightboxIndex] && mounted
     ? createPortal(
         <div
+          data-lightbox="true"
           style={{
             position: 'fixed', inset: 0, zIndex: 99999,
             display: 'flex', flexDirection: 'column',
