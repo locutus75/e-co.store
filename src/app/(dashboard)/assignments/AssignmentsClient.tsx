@@ -26,6 +26,7 @@ export default function AssignmentsClient({ usersWithAssignments }: { usersWithA
   const [panelTab, setPanelTab] = useState<'activity' | 'stats'>('activity');
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
   const [activityStats, setActivityStats] = useState<any[]>([]);
+  const [statusCounts, setStatusCounts] = useState<{ NEW: number; EDIT: number; CHECK: number; DONE: number }>({ NEW: 0, EDIT: 0, CHECK: 0, DONE: 0 });
   const [activitySkip, setActivitySkip] = useState(0);
   const [hasMoreActivity, setHasMoreActivity] = useState(true);
   const [panelLoading, setPanelLoading] = useState(false);
@@ -81,6 +82,7 @@ export default function AssignmentsClient({ usersWithAssignments }: { usersWithA
       const data = await res.json();
       if (res.ok) {
         setActivityStats(data.daily);
+        setStatusCounts(data.statusCounts || { NEW: 0, EDIT: 0, CHECK: 0, DONE: 0 });
       }
     } catch (err) {
       console.error("Stats fetch failed", err);
@@ -88,7 +90,12 @@ export default function AssignmentsClient({ usersWithAssignments }: { usersWithA
   };
 
 
-  const closePanel = () => { setActivePanel(null); setActivityLogs([]); setActivityStats([]); };
+  const closePanel = () => { 
+    setActivePanel(null); 
+    setActivityLogs([]); 
+    setActivityStats([]); 
+    setStatusCounts({ NEW: 0, EDIT: 0, CHECK: 0, DONE: 0 }); 
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem', width: '100%', maxWidth: '1600px' }}>
@@ -283,7 +290,44 @@ export default function AssignmentsClient({ usersWithAssignments }: { usersWithA
               )}
 
               {panelTab === 'stats' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                   
+                   {/* Status Transitions Section */}
+                   <div className="glass" style={{ padding: '1.5rem', borderRadius: 'var(--radius)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                      <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text)' }}>Statuswijzigingen (laatste 30 dagen)</h3>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+                        {[
+                          { label: 'NEW', count: statusCounts.NEW, color: STATUS_COLORS.NEW },
+                          { label: 'EDIT', count: statusCounts.EDIT, color: STATUS_COLORS.EDIT },
+                          { label: 'CHECK', count: statusCounts.CHECK, color: STATUS_COLORS.CHECK },
+                          { label: 'DONE', count: statusCounts.DONE, color: STATUS_COLORS.DONE },
+                        ].map(({ label, count, color }) => (
+                          <div key={label} style={{
+                            padding: '1rem 0.75rem',
+                            backgroundColor: 'var(--background)',
+                            borderRadius: 'var(--radius)',
+                            border: '1px solid var(--border)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.25rem'
+                          }}>
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '0.15rem 0.55rem',
+                              borderRadius: '1rem',
+                              fontSize: '0.65rem',
+                              fontWeight: 700,
+                              backgroundColor: color.bg,
+                              color: color.text
+                            }}>{label}</span>
+                            <p style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0, color: color.bg }}>{count}</p>
+                          </div>
+                        ))}
+                      </div>
+                   </div>
+
                    <div className="glass" style={{ padding: '1.5rem', borderRadius: 'var(--radius)' }}>
                       <h3 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '1.25rem' }}>Bewerkingen per dag (laatste 30 dagen)</h3>
                       <div style={{ display: 'flex', alignItems: 'flex-end', height: '120px', gap: '3px', paddingBottom: '20px', borderBottom: '1px solid var(--border)' }}>
