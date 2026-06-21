@@ -327,40 +327,156 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Unique Lists for Dropdowns
+  // Helper match functions for each filter (reused for dynamic option filtering)
+  const matchSearch = useCallback((p: any) => searchQuery === '' || 
+    p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    p.internalArticleNumber.toLowerCase().includes(searchQuery.toLowerCase()), [searchQuery]);
+
+  const matchSupplier = useCallback((p: any) => supplierFilter === '' || p.supplier?.name === supplierFilter, [supplierFilter]);
+  const matchBrand = useCallback((p: any) => brandFilter === '' || p.brand?.name === brandFilter, [brandFilter]);
+  const matchStatus = useCallback((p: any) => statusFilter === '' || (p.status || 'NEW').toUpperCase() === statusFilter, [statusFilter]);
+  const matchReady = useCallback((p: any) => webshopReadyFilter === '' || (p.readyForImport || 'NEE').toUpperCase() === webshopReadyFilter, [webshopReadyFilter]);
+  const matchAssigned = useCallback((p: any) => assignedUserFilter === '' || (assignedUserFilter === 'UNASSIGNED' ? !p.assignedUserId : p.assignedUserId === assignedUserFilter), [assignedUserFilter]);
+  const matchScore = useCallback((p: any) => aiScoreFilter === '' || (aiScoreFilter === 'WITH_SCORE' ? aiScoreMap[p.internalArticleNumber] != null : aiScoreMap[p.internalArticleNumber] == null), [aiScoreFilter, aiScoreMap]);
+  const matchUnread = useCallback((p: any) => unreadFilter === '' || (unreadFilter === 'UNREAD' ? unreadProducts.has(p.internalArticleNumber) : !unreadProducts.has(p.internalArticleNumber)), [unreadFilter, unreadProducts]);
+
+  // Unique Lists for Dropdowns based on "all other filters except itself" (faceted search)
   const uniqueSuppliers = useMemo(() => {
-    const names = initialProducts.map(p => p.supplier?.name).filter(Boolean);
+    const subset = initialProducts.filter(p => 
+      matchSearch(p) && 
+      matchBrand(p) && 
+      matchStatus(p) && 
+      matchReady(p) && 
+      matchAssigned(p) && 
+      matchScore(p) && 
+      matchUnread(p)
+    );
+    const names = subset.map(p => p.supplier?.name).filter(Boolean);
     return Array.from(new Set(names)).sort();
-  }, [initialProducts]);
+  }, [initialProducts, matchSearch, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread]);
 
   const uniqueBrands = useMemo(() => {
-    const names = initialProducts.map(p => p.brand?.name).filter(Boolean);
+    const subset = initialProducts.filter(p => 
+      matchSearch(p) && 
+      matchSupplier(p) && 
+      matchStatus(p) && 
+      matchReady(p) && 
+      matchAssigned(p) && 
+      matchScore(p) && 
+      matchUnread(p)
+    );
+    const names = subset.map(p => p.brand?.name).filter(Boolean);
     return Array.from(new Set(names)).sort();
-  }, [initialProducts]);
+  }, [initialProducts, matchSearch, matchSupplier, matchStatus, matchReady, matchAssigned, matchScore, matchUnread]);
 
-  // Filtered resulting list
-  const filteredProducts = useMemo(() => {
-    return initialProducts.filter(p => {
-      const matchSearch = searchQuery === '' || 
-        p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        p.internalArticleNumber.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      const matchSupplier = supplierFilter === '' || p.supplier?.name === supplierFilter;
-      const matchBrand = brandFilter === '' || p.brand?.name === brandFilter;
-      const matchStatus = statusFilter === '' || (p.status || 'NEW').toUpperCase() === statusFilter;
-      const matchReady = webshopReadyFilter === '' || (p.readyForImport || 'NEE').toUpperCase() === webshopReadyFilter;
-      
-      const matchAssigned = assignedUserFilter === '' ||
-                            (assignedUserFilter === 'UNASSIGNED' ? !p.assignedUserId : p.assignedUserId === assignedUserFilter);
+  const availableStatuses = useMemo(() => {
+    const subset = initialProducts.filter(p => 
+      matchSearch(p) && 
+      matchSupplier(p) && 
+      matchBrand(p) && 
+      matchReady(p) && 
+      matchAssigned(p) && 
+      matchScore(p) && 
+      matchUnread(p)
+    );
+    const statuses = subset.map(p => (p.status || 'NEW').toUpperCase());
+    return Array.from(new Set(statuses));
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchReady, matchAssigned, matchScore, matchUnread]);
 
-      const matchScore = aiScoreFilter === '' ||
-                         (aiScoreFilter === 'WITH_SCORE' ? aiScoreMap[p.internalArticleNumber] != null : aiScoreMap[p.internalArticleNumber] == null);
+  const availableReadiness = useMemo(() => {
+    const subset = initialProducts.filter(p => 
+      matchSearch(p) && 
+      matchSupplier(p) && 
+      matchBrand(p) && 
+      matchStatus(p) && 
+      matchAssigned(p) && 
+      matchScore(p) && 
+      matchUnread(p)
+    );
+    const readyValues = subset.map(p => (p.readyForImport || 'NEE').toUpperCase());
+    return Array.from(new Set(readyValues));
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchAssigned, matchScore, matchUnread]);
 
-      const matchUnread = unreadFilter === '' ||
-                          (unreadFilter === 'UNREAD' ? unreadProducts.has(p.internalArticleNumber) : !unreadProducts.has(p.internalArticleNumber));
-
-      return matchSearch && matchSupplier && matchBrand && matchStatus && matchReady && matchAssigned && matchScore && matchUnread;
+  const availableAiScores = useMemo(() => {
+    const subset = initialProducts.filter(p => 
+      matchSearch(p) && 
+      matchSupplier(p) && 
+      matchBrand(p) && 
+      matchStatus(p) && 
+      matchReady(p) && 
+      matchAssigned(p) && 
+      matchUnread(p)
+    );
+    const scores = new Set<string>();
+    subset.forEach(p => {
+      if (aiScoreMap[p.internalArticleNumber] != null) {
+        scores.add('WITH_SCORE');
+      } else {
+        scores.add('WITHOUT_SCORE');
+      }
     });
-  }, [initialProducts, searchQuery, supplierFilter, brandFilter, statusFilter, webshopReadyFilter, assignedUserFilter, aiScoreFilter, aiScoreMap, unreadFilter, unreadProducts]);
+    return Array.from(scores);
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchUnread, aiScoreMap]);
+
+  const availableUnreadFilters = useMemo(() => {
+    const subset = initialProducts.filter(p => 
+      matchSearch(p) && 
+      matchSupplier(p) && 
+      matchBrand(p) && 
+      matchStatus(p) && 
+      matchReady(p) && 
+      matchAssigned(p) && 
+      matchScore(p)
+    );
+    const unreadOpts = new Set<string>();
+    subset.forEach(p => {
+      if (unreadProducts.has(p.internalArticleNumber)) {
+        unreadOpts.add('UNREAD');
+      } else {
+        unreadOpts.add('READ');
+      }
+    });
+    return Array.from(unreadOpts);
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, unreadProducts]);
+
+  const availableAssignedUsers = useMemo(() => {
+    const subset = initialProducts.filter(p => 
+      matchSearch(p) && 
+      matchSupplier(p) && 
+      matchBrand(p) && 
+      matchStatus(p) && 
+      matchReady(p) && 
+      matchScore(p) && 
+      matchUnread(p)
+    );
+    const userIds = new Set<string>();
+    let hasUnassigned = false;
+    subset.forEach(p => {
+      if (p.assignedUserId) {
+        userIds.add(p.assignedUserId);
+      } else {
+        hasUnassigned = true;
+      }
+    });
+    return {
+      userIds: Array.from(userIds),
+      hasUnassigned
+    };
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchScore, matchUnread]);
+
+  // Filtered resulting list (uses all filters)
+  const filteredProducts = useMemo(() => {
+    return initialProducts.filter(p => 
+      matchSearch(p) && 
+      matchSupplier(p) && 
+      matchBrand(p) && 
+      matchStatus(p) && 
+      matchReady(p) && 
+      matchAssigned(p) && 
+      matchScore(p) && 
+      matchUnread(p)
+    );
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread]);
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredProducts.length && filteredProducts.length > 0) {
@@ -517,10 +633,10 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
           onChange={(e) => setStatusFilter(e.target.value)}
         >
           <option value="">-- Status --</option>
-          <option value="NEW">NEW</option>
-          <option value="EDIT">EDIT</option>
-          <option value="CHECK">CHECK</option>
-          <option value="DONE">DONE</option>
+          {(availableStatuses.includes('NEW') || statusFilter === 'NEW') && <option value="NEW">NEW</option>}
+          {(availableStatuses.includes('EDIT') || statusFilter === 'EDIT') && <option value="EDIT">EDIT</option>}
+          {(availableStatuses.includes('CHECK') || statusFilter === 'CHECK') && <option value="CHECK">CHECK</option>}
+          {(availableStatuses.includes('DONE') || statusFilter === 'DONE') && <option value="DONE">DONE</option>}
         </select>
         <select 
           className="input" 
@@ -529,9 +645,9 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
           onChange={(e) => setWebshopReadyFilter(e.target.value)}
         >
           <option value="">-- Webshop Ready --</option>
-          <option value="NEE">No (N)</option>
-          <option value="REVIEW">Review (R)</option>
-          <option value="JA">Yes (Y)</option>
+          {(availableReadiness.includes('NEE') || webshopReadyFilter === 'NEE') && <option value="NEE">No (N)</option>}
+          {(availableReadiness.includes('REVIEW') || webshopReadyFilter === 'REVIEW') && <option value="REVIEW">Review (R)</option>}
+          {(availableReadiness.includes('JA') || webshopReadyFilter === 'JA') && <option value="JA">Yes (Y)</option>}
         </select>
         {canUseAi && (
           <select 
@@ -541,8 +657,8 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
             onChange={(e) => setAiScoreFilter(e.target.value)}
           >
             <option value="">-- AI Score --</option>
-            <option value="WITH_SCORE">Met score</option>
-            <option value="WITHOUT_SCORE">Zonder score</option>
+            {(availableAiScores.includes('WITH_SCORE') || aiScoreFilter === 'WITH_SCORE') && <option value="WITH_SCORE">Met score</option>}
+            {(availableAiScores.includes('WITHOUT_SCORE') || aiScoreFilter === 'WITHOUT_SCORE') && <option value="WITHOUT_SCORE">Zonder score</option>}
           </select>
         )}
         <select 
@@ -552,8 +668,8 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
           onChange={(e) => setUnreadFilter(e.target.value)}
         >
           <option value="">-- Berichten --</option>
-          <option value="UNREAD">Ongelezen (💬)</option>
-          <option value="READ">Geen ongelezen</option>
+          {(availableUnreadFilters.includes('UNREAD') || unreadFilter === 'UNREAD') && <option value="UNREAD">Ongelezen (💬)</option>}
+          {(availableUnreadFilters.includes('READ') || unreadFilter === 'READ') && <option value="READ">Geen ongelezen</option>}
         </select>
         {(isAdmin || canAssignProducts) && (
           <select 
@@ -563,10 +679,15 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
             onChange={(e) => setAssignedUserFilter(e.target.value)}
           >
             <option value="">-- Toegewezen --</option>
-            <option value="UNASSIGNED">[ Niet Toegewezen ]</option>
-            {systemUsers.map(su => (
-               <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>
-            ))}
+            {(availableAssignedUsers.hasUnassigned || assignedUserFilter === 'UNASSIGNED') && <option value="UNASSIGNED">[ Niet Toegewezen ]</option>}
+            {systemUsers.map(su => {
+              const hasUser = availableAssignedUsers.userIds.includes(su.id);
+              const isSelected = assignedUserFilter === su.id;
+              if (hasUser || isSelected) {
+                return <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>;
+              }
+              return null;
+            })}
           </select>
         )}
       </div>
