@@ -65,11 +65,6 @@ async function main() {
     },
   });
 
-  // Example Category
-  const category = await prisma.category.create({
-    data: { name: 'Electronics' }
-  });
-
   // Example Brand
   const brand = await prisma.brand.upsert({
     where: { name: 'E-Tech' },
@@ -92,7 +87,6 @@ async function main() {
         internalArticleNumber: '2061',
         title: '3D Marks - Sleutelhanger Domtoren 3D',
         status: 'new',
-        categoryId: category.id,
         supplierId: supplier.id,
         brandId: brand.id,
         assignedUserId: emp1.id,
@@ -120,7 +114,6 @@ async function main() {
         internalArticleNumber: '3441',
         title: 'Zero Waste Club - Theedoek Organisch Katoen',
         status: 'in_review',
-        categoryId: category.id,
         supplierId: supplier.id,
         brandId: brand.id,
         assignedUserId: emp1.id,

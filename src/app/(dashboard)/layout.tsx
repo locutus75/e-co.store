@@ -91,6 +91,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           {canAccess('MENU:system') && (
             <Link href="/admin/system" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Systeeminstellingen</Link>
           )}
+          {isAdmin && (
+            <Link href="/admin/export" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>📦 MplusKassa Export</Link>
+          )}
         </nav>
       </aside>
 
