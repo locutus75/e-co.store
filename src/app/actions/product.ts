@@ -148,6 +148,45 @@ export async function updateReadyForImportAction(internalId: string, status: str
   }
 }
 
+export async function bulkUpdateReadyForImportAction(internalIds: string[], status: string) {
+  if (!internalIds || internalIds.length === 0) return { success: false, error: "Geen ID's meegegeven" };
+
+  try {
+    const session = await getServerSession(authOptions);
+    const roles = (session?.user as any)?.roles || [];
+    const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
+    if (!isAdmin) {
+      return { success: false, error: 'Unauthorized: Admin role required.' };
+    }
+
+    const res = await prisma.product.updateMany({
+      where: {
+        internalArticleNumber: {
+          in: internalIds
+        }
+      },
+      data: {
+        readyForImport: status
+      }
+    });
+
+    const actorId = (session?.user as any)?.id;
+    if (actorId) {
+      for (const id of internalIds) {
+        await logAuditAction(actorId, 'READY_FOR_IMPORT_CHANGE', 'Product', id, `Status set to ${status} via bulk update`);
+      }
+    }
+
+    revalidatePath('/products');
+    revalidatePath('/assignments');
+    revalidatePath('/', 'layout');
+    return { success: true, count: res.count };
+  } catch (e: any) {
+    console.error("BULK READY FOR IMPORT CHANGE ERROR", e);
+    return { success: false, error: e.message };
+  }
+}
+
 export async function updateProductStatusAction(internalId: string, status: string) {
   try {
     await assertProductLock(internalId);

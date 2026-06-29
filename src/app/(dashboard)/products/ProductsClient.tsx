@@ -5,7 +5,7 @@ import ProductDrawer from '@/components/ProductDrawer';
 import ExcelImportWizard from '@/components/ExcelImportWizard';
 import AiAnalysisViewer from '@/components/AiAnalysisViewer';
 import BatchAnalyzeModal from '@/components/BatchAnalyzeModal';
-import { deleteProductsAction, updateReadyForImportAction, updateProductStatusAction, bulkAssignAction } from '@/app/actions/product';
+import { deleteProductsAction, updateReadyForImportAction, updateProductStatusAction, bulkAssignAction, bulkUpdateReadyForImportAction } from '@/app/actions/product';
 
 // ── Completeness helpers ────────────────────────────────────────────────────
 const BASIS_TEXT_TYPES = new Set(['text', 'textarea']);
@@ -521,6 +521,19 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
     });
   };
 
+  const handleBulkReadyForImport = (val: string) => {
+    if (selectedIds.size === 0) return;
+    startTransition(async () => {
+      const idsArray = Array.from(selectedIds);
+      const res = await bulkUpdateReadyForImportAction(idsArray, val);
+      if (res.success) {
+        setSelectedIds(new Set());
+      } else {
+        alert("Fout bij bijwerken: " + res.error);
+      }
+    });
+  };
+
   const currentIndex = selectedProduct ? filteredProducts.findIndex(p => p.internalArticleNumber === selectedProduct.internalArticleNumber) : -1;
   const handlePrev = currentIndex > 0 ? () => setSelectedProduct(filteredProducts[currentIndex - 1]) : undefined;
   const handleNext = currentIndex >= 0 && currentIndex < filteredProducts.length - 1 ? () => setSelectedProduct(filteredProducts[currentIndex + 1]) : undefined;
@@ -557,6 +570,21 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
                   <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>
                 ))}
               </select>
+
+              {isAdmin && (
+                <select
+                  className="input"
+                  style={{ cursor: isDeleting ? 'wait' : 'pointer', border: 'none', backgroundColor: 'transparent', fontWeight: 600, fontSize: '0.85rem', borderLeft: '1px solid var(--border)', borderRadius: 0, paddingLeft: '1rem', marginLeft: '0.5rem' }}
+                  disabled={isDeleting}
+                  value=""
+                  onChange={(e) => handleBulkReadyForImport(e.target.value)}
+                >
+                  <option value="" disabled>Webshop Ready...</option>
+                  <option value="NEE">Nee (N)</option>
+                  <option value="REVIEW">Review (R)</option>
+                  <option value="JA">Ja (Y)</option>
+                </select>
+              )}
               
               {isAdmin && (
                 <button 
