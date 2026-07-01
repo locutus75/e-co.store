@@ -2,6 +2,7 @@
 import React, { useState, useTransition, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { FormSection, saveFormLayoutAction, FormField, bulkMigrateInternalRemarksAction } from '@/app/actions/formLayouts';
+import ConfirmationModal from '@/components/ConfirmationModal';
 
 // ── Product column definitions (derived from Prisma schema) ──────────────────
 const PRODUCT_COLUMNS: {
@@ -136,6 +137,9 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
   // Drag and Drop state
   const [draggedItem, setDraggedItem] = useState<{ secIdx: number, fieldIdx: number } | null>(null);
   const [dragOverItem, setDragOverItem] = useState<{ secIdx: number, fieldIdx: number } | null>(null);
+
+  // Field removal state
+  const [fieldToRemove, setFieldToRemove] = useState<{ secIdx: number, fieldIdx: number, label: string, isLegacyRemarks: boolean } | null>(null);
 
   // Visual Resizing state
   const [resizingItem, setResizingItem] = useState<{ secIdx: number, fieldIdx: number } | null>(null);
@@ -395,12 +399,13 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
   const removeField = (secIdx: number, fieldIdx: number) => {
     const field = layout[secIdx].fields[fieldIdx];
     const isLegacyRemarks = field.id === 'FIELD:internalRemarks' && field.type !== 'chat';
+    setFieldToRemove({ secIdx, fieldIdx, label: field.label, isLegacyRemarks });
+  };
 
-    const confirmMsg = isLegacyRemarks
-      ? 'Dit verwijdert het oude Opmerkingen tekstveld.\n\nBestaande opmerkingen worden automatisch overgezet naar de nieuwe Interne Communicatie chat wanneer een product wordt geopend.\n\nDoorgaan?'
-      : `Veld "${field.label}" verwijderen uit de layout?`;
-
-    if (!confirm(confirmMsg)) return;
+  const confirmRemoveField = () => {
+    if (!fieldToRemove) return;
+    const { secIdx, fieldIdx, isLegacyRemarks } = fieldToRemove;
+    setFieldToRemove(null);
 
     // If removing the legacy remarks textarea, trigger bulk migration
     if (isLegacyRemarks) {
@@ -1347,6 +1352,21 @@ export default function FormLayoutBuilder({ initialLayout }: { initialLayout: Fo
         </>,
         document.body
       )}
+      {/* Field Deletion Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={fieldToRemove !== null}
+        title={fieldToRemove?.isLegacyRemarks ? "Verwijder oud opmerkingenveld" : "Veld verwijderen"}
+        message={
+          fieldToRemove?.isLegacyRemarks 
+            ? "Dit verwijdert het oude Opmerkingen tekstveld.\n\nBestaande opmerkingen worden automatisch overgezet naar de nieuwe Interne Communicatie chat wanneer een product wordt geopend.\n\nWeet je zeker dat je wilt doorgaan?"
+            : `Weet je zeker dat je het veld "${fieldToRemove?.label}" wilt verwijderen uit de layout?`
+        }
+        confirmLabel="Verwijderen"
+        cancelLabel="Annuleren"
+        type="warning"
+        onConfirm={confirmRemoveField}
+        onCancel={() => setFieldToRemove(null)}
+      />
     </div>
   );
 }

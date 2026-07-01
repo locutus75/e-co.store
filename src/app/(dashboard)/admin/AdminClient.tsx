@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useTransition } from 'react';
 import { createUserAction, deleteUserAction, updateUserAction } from '@/app/actions/user';
+import ConfirmationModal from '@/components/ConfirmationModal';
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -97,6 +98,7 @@ export default function AdminClient({ users, availableRoles }: { users: any[], a
   // live preview state for color picker
   const [previewColor, setPreviewColor] = useState('#6366f1');
   const [previewEmail, setPreviewEmail] = useState('');
+  const [userToDelete, setUserToDelete] = useState<{ id: string, email: string } | null>(null);
 
   const openCreateModal = () => {
     setEditingUser(null);
@@ -135,7 +137,13 @@ export default function AdminClient({ users, availableRoles }: { users: any[], a
   };
 
   const submitDelete = (id: string, email: string) => {
-    if (!confirm(`Weet je zeker dat je gebruiker ${email} permanent wilt verwijderen?`)) return;
+    setUserToDelete({ id, email });
+  };
+
+  const confirmDeleteUser = () => {
+    if (!userToDelete) return;
+    const { id } = userToDelete;
+    setUserToDelete(null);
     startTransition(async () => {
       await deleteUserAction(id);
     });
@@ -305,6 +313,18 @@ export default function AdminClient({ users, availableRoles }: { users: any[], a
           </div>
         </>
       )}
+
+      {/* Deletion Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={userToDelete !== null}
+        title="Gebruiker verwijderen"
+        message={`Weet je zeker dat je de gebruiker "${userToDelete?.email}" permanent wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`}
+        confirmLabel="Verwijderen"
+        cancelLabel="Annuleren"
+        type="danger"
+        onConfirm={confirmDeleteUser}
+        onCancel={() => setUserToDelete(null)}
+      />
 
     </div>
   );

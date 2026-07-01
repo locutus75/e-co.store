@@ -5,6 +5,7 @@ import ProductDrawer from '@/components/ProductDrawer';
 import ExcelImportWizard from '@/components/ExcelImportWizard';
 import AiAnalysisViewer from '@/components/AiAnalysisViewer';
 import BatchAnalyzeModal from '@/components/BatchAnalyzeModal';
+import ConfirmationModal from '@/components/ConfirmationModal';
 import { deleteProductsAction, updateReadyForImportAction, updateProductStatusAction, bulkAssignAction, bulkUpdateReadyForImportAction } from '@/app/actions/product';
 
 // ── Completeness helpers ────────────────────────────────────────────────────
@@ -263,6 +264,7 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [showBatchAnalyze, setShowBatchAnalyze] = useState(false);
   const [isDeleting, startTransition] = useTransition();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // ── Unread messages indicator ──────────────────────────────────────────
   const [unreadProducts, setUnreadProducts] = useState<Set<string>>(new Set());
@@ -495,8 +497,11 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
 
   const executeBulkDelete = () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(`Weet je zeker dat je ${selectedIds.size} producten permanent wilt verwijderen?`)) return;
+    setShowDeleteConfirm(true);
+  };
 
+  const confirmDeleteProducts = () => {
+    setShowDeleteConfirm(false);
     startTransition(async () => {
       const idsArray = Array.from(selectedIds);
       const res = await deleteProductsAction(idsArray);
@@ -877,6 +882,17 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
         onPrev={handlePrev}
         onNext={handleNext}
         aiScore={selectedProduct ? (aiScoreMap[selectedProduct.internalArticleNumber] ?? null) : null}
+      />
+
+      <ConfirmationModal
+        isOpen={showDeleteConfirm}
+        title="Producten verwijderen"
+        message={`Weet je zeker dat je de ${selectedIds.size} geselecteerde producten permanent wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`}
+        confirmLabel="Verwijderen"
+        cancelLabel="Annuleren"
+        type="danger"
+        onConfirm={confirmDeleteProducts}
+        onCancel={() => setShowDeleteConfirm(false)}
       />
     </div>
   );

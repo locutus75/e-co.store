@@ -2,6 +2,7 @@
 import React, { useTransition, useState } from 'react';
 import { setRolePermissionAction, createRoleAction, renameRoleAction, deleteRoleAction } from '@/app/actions/role';
 import FormLayoutBuilder from '@/components/FormLayoutBuilder';
+import ConfirmationModal from '@/components/ConfirmationModal';
 
 const MENU_MODULES = [
   { module: 'MENU:dashboard',   label: 'Dashboard' },
@@ -81,6 +82,9 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
   // State to hold which role ID we are currently configuring fields for
   const [fieldConfigModalRoleId, setFieldConfigModalRoleId] = useState<string | null>(null);
 
+  // State for deletion confirmation
+  const [roleToDelete, setRoleToDelete] = useState<{ id: string, name: string } | null>(null);
+
   const handleActionChange = (roleId: string, module: string, newAction: string) => {
     startTransition(async () => {
       await setRolePermissionAction(roleId, module, newAction);
@@ -112,8 +116,14 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
     });
   };
 
-  const handleDeleteRole = (id: string) => {
-    if (!confirm('Weet je zeker dat je deze rol wilt verwijderen?')) return;
+  const handleDeleteRole = (id: string, name: string) => {
+    setRoleToDelete({ id, name });
+  };
+
+  const confirmDeleteRole = () => {
+    if (!roleToDelete) return;
+    const { id } = roleToDelete;
+    setRoleToDelete(null);
     startTransition(async () => {
       const res = await deleteRoleAction(id);
       if (!res?.success) alert(res.error);
@@ -184,7 +194,7 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
                 {!editingRole && (
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <button onClick={() => setEditingRole(role)} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', padding: '0.2rem 0.5rem', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-muted)' }}>✏️</button>
-                    <button onClick={() => handleDeleteRole(role.id)} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', padding: '0.2rem 0.5rem', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--color-rust)' }}>🗑️</button>
+                    <button onClick={() => handleDeleteRole(role.id, role.name)} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', padding: '0.2rem 0.5rem', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--color-rust)' }}>🗑️</button>
                   </div>
                 )}
               </div>
@@ -336,6 +346,18 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
       <div style={{ marginTop: '2rem' }}>
         <FormLayoutBuilder initialLayout={layout} />
       </div>
+
+      {/* Deletion Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={roleToDelete !== null}
+        title="Rol verwijderen"
+        message={`Weet je zeker dat je de rol "${roleToDelete?.name}" permanent wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`}
+        confirmLabel="Verwijderen"
+        cancelLabel="Annuleren"
+        type="danger"
+        onConfirm={confirmDeleteRole}
+        onCancel={() => setRoleToDelete(null)}
+      />
 
     </div>
   );
