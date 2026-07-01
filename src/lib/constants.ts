@@ -3,7 +3,7 @@ export const PRISMA_FIELDS = [
   { key: 'ean', label: 'EAN', type: 'string' },
   { key: 'rel_supplier', label: 'Leverancier (Naam)', type: 'relation' },
   { key: 'rel_brand', label: 'Merk (Naam)', type: 'relation' },
-  { key: 'title', label: 'Titel / Naam', type: 'string' },
+  { key: 'title', label: 'Omschrijving (Titel / Naam)', type: 'string' },
   { key: 'basePrice', label: 'Prijs', type: 'float' },
   { key: 'seoTitle', label: 'SEO Titel', type: 'string' },
   { key: 'longDescription', label: 'Lange Omschrijving', type: 'string' },

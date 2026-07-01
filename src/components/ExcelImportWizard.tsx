@@ -70,15 +70,16 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
         return cleanHeader === cleanField || cleanHeader === cleanKey;
       });
 
-      // Specific hardcoded matches for smooth UX on specifically known headers
+      // Specific hardcoded matches for smooth UX on specifically known headers (case-insensitive)
       if (typeof headerStr === 'string') {
-        if (headerStr.includes('Nummer')) autoMap[colIndex] = 'internalArticleNumber';
-        else if (headerStr.includes('A.Omschrijving') || headerStr.includes('Titel')) autoMap[colIndex] = 'title';
-        else if (headerStr.includes('Web titel')) autoMap[colIndex] = 'seoTitle';
-        else if (headerStr.includes('Web omschrijving')) autoMap[colIndex] = 'longDescription';
-        else if (headerStr.includes('Gewicht')) autoMap[colIndex] = 'weightGr';
-        else if (headerStr.includes('Hoofdmateriaal')) autoMap[colIndex] = 'mainMaterial';
-        else if (headerStr.includes('Compleet/klaar')) autoMap[colIndex] = 'readyForImport';
+        if (rawHeaderStr.includes('nummer')) autoMap[colIndex] = 'internalArticleNumber';
+        else if (rawHeaderStr.includes('web omschrijving') || rawHeaderStr.includes('lange omschrijving')) autoMap[colIndex] = 'longDescription';
+        else if (rawHeaderStr.includes('korte omschrijving')) autoMap[colIndex] = 'shortDescription';
+        else if (rawHeaderStr.includes('web titel')) autoMap[colIndex] = 'seoTitle';
+        else if (rawHeaderStr.includes('omschrijving') || rawHeaderStr.includes('titel') || rawHeaderStr.includes('naam')) autoMap[colIndex] = 'title';
+        else if (rawHeaderStr.includes('gewicht')) autoMap[colIndex] = 'weightGr';
+        else if (rawHeaderStr.includes('hoofdmateriaal')) autoMap[colIndex] = 'mainMaterial';
+        else if (rawHeaderStr.includes('compleet/klaar')) autoMap[colIndex] = 'readyForImport';
         else autoMap[colIndex] = matchedField ? matchedField.key : 'ignore';
       } else {
         autoMap[colIndex] = 'ignore';
