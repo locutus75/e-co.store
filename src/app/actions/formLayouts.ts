@@ -36,7 +36,7 @@ const DEFAULT_PRODUCT_LAYOUT: FormSection[] = [
       { id: "FIELD:internalRemarks", label: "Interne Communicatie", type: "chat", width: 24 },
       { id: "FIELD:internalArticleNumber", label: "Interne Artikelcode", type: "text" },
       { id: "FIELD:ean", label: "EAN Code", type: "text" },
-      { id: "FIELD:title", label: "Titel (Title)", type: "text" },
+      { id: "FIELD:title", label: "Omschrijving", type: "text" },
       { id: "FIELD:seoTitle", label: "SEO Titel", type: "text" },
       { id: "FIELD:price", label: "Basis Prijs (€)", type: "number" },
       { id: "FIELD:description", label: "Lange Omschrijving", type: "textarea" },

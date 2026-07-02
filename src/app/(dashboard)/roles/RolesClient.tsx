@@ -18,7 +18,7 @@ const MENU_MODULES = [
 ];
 
 const FIELD_MODULES = [
-  { module: 'FIELD:title', label: 'Titel' },
+  { module: 'FIELD:title', label: 'Omschrijving' },
   { module: 'FIELD:internalArticleNumber', label: 'Interne Artikelcode' },
   { module: 'FIELD:ean', label: 'EAN Code' },
   { module: 'FIELD:status', label: 'Status' },

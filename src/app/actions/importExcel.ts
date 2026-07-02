@@ -42,6 +42,10 @@ export async function executeImportAction(
   headers: (string|null)[], 
   overwriteRules: Record<string, boolean>
 ) {
+  console.log("=== EXECUTE IMPORT ACTION ===");
+  console.log("mapping:", JSON.stringify(mapping));
+  console.log("overwriteRules:", JSON.stringify(overwriteRules));
+
   const file = formData.get("file") as File;
   if (!file) return { error: "No file uploaded" };
 
@@ -110,12 +114,23 @@ export async function executeImportAction(
       const internalArticleNumber = rowData.internalArticleNumber;
       delete rowData.internalArticleNumber; // Remove from the generic update payload temporarily
 
+      if (internalArticleNumber === '16815' || rowData.title?.includes('Hummingbird') || rowData.title?.includes('Dandelions')) {
+         console.log(`[Import Row] Processing article: ${internalArticleNumber}, rowData:`, JSON.stringify(rowData));
+      }
+
       const existingProduct = await prisma.product.findUnique({
         where: { internalArticleNumber }
       });
 
+      if (internalArticleNumber === '16815') {
+         console.log(`[Import Row] DB lookup result:`, existingProduct ? { id: existingProduct.id, title: existingProduct.title } : "null");
+      }
+
       if (!existingProduct) {
         // Safe Create
+        if (internalArticleNumber === '16815') {
+           console.log(`[Import Row] Creating product in DB with title:`, rowData.title);
+        }
         await prisma.product.create({
           data: {
              internalArticleNumber,
@@ -146,6 +161,10 @@ export async function executeImportAction(
                 updatePayload[key] = value;
              }
           }
+        }
+
+        if (internalArticleNumber === '16815') {
+           console.log(`[Import Row] Updating existing product 16815 in DB with payload:`, JSON.stringify(updatePayload));
         }
 
         if (Object.keys(updatePayload).length > 0) {

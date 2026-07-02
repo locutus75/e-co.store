@@ -8,7 +8,7 @@ const PROVIDER_ICONS: Record<string, string> = { openai: 'ðŸŸ¢', anthropic: 'ðŸŸ
 const PROVIDER_LABELS: Record<string, string> = { openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Google Gemini' };
 
 const KNOWN_FIELDS = [
-  { id: '_title',              label: 'Titel',              path: 'title' },
+  { id: '_title',              label: 'Omschrijving',       path: 'title' },
   { id: '_shortDescription',  label: 'Korte omschrijving', path: 'shortDescription' },
   { id: '_longDescription',   label: 'Lange omschrijving', path: 'longDescription' },
   { id: '_ean',               label: 'EAN Code',           path: 'ean' },

@@ -14,7 +14,7 @@ const PRODUCT_COLUMNS: {
     cols: [
       { label: 'Artikelnummer', field: 'internalArticleNumber', type: 'text' },
       { label: 'EAN Code',      field: 'ean',                   type: 'text' },
-      { label: 'Titel',         field: 'title',                 type: 'text' },
+      { label: 'Omschrijving',  field: 'title',                 type: 'text' },
       { label: 'Status',        field: 'status',                type: 'text' },
       { label: 'Webshop Slug',  field: 'webshopSlug',           type: 'text' },
     ],

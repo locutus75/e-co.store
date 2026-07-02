@@ -28,7 +28,7 @@ Sluit je analyse **altijd** af met een JSON blok in exact dit formaat (geen ande
 \`\`\``;
 
 const KNOWN_FIELDS = [
-  { id: '_title',              label: 'Titel',              path: 'title' },
+  { id: '_title',              label: 'Omschrijving',       path: 'title' },
   { id: '_shortDescription',  label: 'Korte omschrijving', path: 'shortDescription' },
   { id: '_longDescription',   label: 'Lange omschrijving', path: 'longDescription' },
   { id: '_ean',               label: 'EAN Code',           path: 'ean' },
