@@ -546,7 +546,12 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%', maxWidth: '1600px' }}>
       {showImportWizard && (
-        <ExcelImportWizard onClose={() => setShowImportWizard(false)} />
+        <ExcelImportWizard onClose={(shouldRefresh) => {
+          setShowImportWizard(false);
+          if (shouldRefresh) {
+            window.location.reload();
+          }
+        }} />
       )}
       {showBatchAnalyze && (
         <BatchAnalyzeModal

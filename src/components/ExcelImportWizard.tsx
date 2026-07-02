@@ -5,7 +5,7 @@ import { PRISMA_FIELDS } from '@/lib/constants';
 
 type Phase = 'upload' | 'preview' | 'mapping' | 'importing' | 'success';
 
-export default function ExcelImportWizard({ onClose }: { onClose: () => void }) {
+export default function ExcelImportWizard({ onClose }: { onClose: (shouldRefresh?: boolean) => void }) {
   const [phase, setPhase] = useState<Phase>('upload');
   const [file, setFile] = useState<File | null>(null);
   const [previewRows, setPreviewRows] = useState<any[][]>([]);
@@ -130,7 +130,7 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
             {phase === 'success' && "Import Succesvol"}
           </h2>
           {phase !== 'importing' && phase !== 'success' && (
-             <button className="btn" style={{ marginLeft: 'auto', border: 'none', backgroundColor: 'transparent', fontSize: '1.25rem' }} onClick={onClose}>✕</button>
+             <button className="btn" style={{ marginLeft: 'auto', border: 'none', backgroundColor: 'transparent', fontSize: '1.25rem' }} onClick={() => onClose(false)}>✕</button>
           )}
         </div>
 
@@ -281,7 +281,7 @@ export default function ExcelImportWizard({ onClose }: { onClose: () => void }) 
              </>
           )}
           {phase === 'success' && (
-             <button className="btn btn-primary" onClick={onClose}>Sluiten & Vernieuwen</button>
+             <button className="btn btn-primary" onClick={() => onClose(true)}>Sluiten & Vernieuwen</button>
           )}
         </div>
       </div>
