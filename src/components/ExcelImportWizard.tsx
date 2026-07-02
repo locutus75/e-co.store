@@ -56,37 +56,42 @@ export default function ExcelImportWizard({ onClose }: { onClose: (shouldRefresh
       const rawHeaderStr = String(headerStr).toLowerCase().trim();
       const cleanHeader = rawHeaderStr.replace(/[^a-z0-9]/g, '');
       
+      let targetField: string = 'ignore';
+
       // 1. Check Smart Memory First
       if (savedMap[rawHeaderStr]) {
-         autoMap[colIndex] = savedMap[rawHeaderStr];
-         autoOverwrite[savedMap[rawHeaderStr]] = true; // Default to overwrite for mapped
-         return;
-      }
-      
-      // Super naive auto match
-      const matchedField = PRISMA_FIELDS.find(f => {
-        const cleanField = f.label.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const cleanKey = f.key.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return cleanHeader === cleanField || cleanHeader === cleanKey;
-      });
-
-      // Specific hardcoded matches for smooth UX on specifically known headers (case-insensitive)
-      if (typeof headerStr === 'string') {
-        if (rawHeaderStr.includes('nummer')) autoMap[colIndex] = 'internalArticleNumber';
-        else if (rawHeaderStr.includes('web omschrijving') || rawHeaderStr.includes('lange omschrijving')) autoMap[colIndex] = 'longDescription';
-        else if (rawHeaderStr.includes('korte omschrijving')) autoMap[colIndex] = 'shortDescription';
-        else if (rawHeaderStr.includes('web titel')) autoMap[colIndex] = 'seoTitle';
-        else if (rawHeaderStr.includes('omschrijving') || rawHeaderStr.includes('titel') || rawHeaderStr.includes('naam')) autoMap[colIndex] = 'title';
-        else if (rawHeaderStr.includes('gewicht')) autoMap[colIndex] = 'weightGr';
-        else if (rawHeaderStr.includes('hoofdmateriaal')) autoMap[colIndex] = 'mainMaterial';
-        else if (rawHeaderStr.includes('compleet/klaar')) autoMap[colIndex] = 'readyForImport';
-        else autoMap[colIndex] = matchedField ? matchedField.key : 'ignore';
+         targetField = savedMap[rawHeaderStr];
       } else {
-        autoMap[colIndex] = 'ignore';
+         // Super naive auto match
+         const matchedField = PRISMA_FIELDS.find(f => {
+           const cleanField = f.label.toLowerCase().replace(/[^a-z0-9]/g, '');
+           const cleanKey = f.key.toLowerCase().replace(/[^a-z0-9]/g, '');
+           return cleanHeader === cleanField || cleanHeader === cleanKey;
+         });
+
+         // Specific hardcoded matches for smooth UX on specifically known headers (case-insensitive)
+         if (typeof headerStr === 'string') {
+           if (rawHeaderStr.includes('nummer')) targetField = 'internalArticleNumber';
+           else if (rawHeaderStr.includes('web omschrijving') || rawHeaderStr.includes('lange omschrijving')) targetField = 'longDescription';
+           else if (rawHeaderStr.includes('korte omschrijving')) targetField = 'shortDescription';
+           else if (rawHeaderStr.includes('web titel')) targetField = 'seoTitle';
+           else if (rawHeaderStr.includes('omschrijving') || rawHeaderStr.includes('titel') || rawHeaderStr.includes('naam')) targetField = 'title';
+           else if (rawHeaderStr.includes('gewicht')) targetField = 'weightGr';
+           else if (rawHeaderStr.includes('hoofdmateriaal')) targetField = 'mainMaterial';
+           else if (rawHeaderStr.includes('compleet/klaar')) targetField = 'readyForImport';
+           else targetField = matchedField ? matchedField.key : 'ignore';
+         }
       }
 
-      if (autoMap[colIndex] !== 'ignore') {
-         autoOverwrite[autoMap[colIndex]] = true; // Default true
+      // Prevent duplicate mappings: if targetField is already mapped to a previous column, ignore this one
+      if (targetField !== 'ignore' && Object.values(autoMap).includes(targetField)) {
+         targetField = 'ignore';
+      }
+
+      autoMap[colIndex] = targetField;
+
+      if (targetField !== 'ignore') {
+         autoOverwrite[targetField] = true; // Default true
       }
     });
 
@@ -218,9 +223,19 @@ export default function ExcelImportWizard({ onClose }: { onClose: (shouldRefresh
                             className="input" 
                             value={activeMapping} 
                             onChange={e => {
-                                setMapping({...mapping, [cIdx]: e.target.value});
-                                if (e.target.value !== 'ignore' && e.target.value !== 'internalArticleNumber') {
-                                   setOverwriteRules(prev => ({ ...prev, [e.target.value]: true }));
+                                const val = e.target.value;
+                                const newMapping = { ...mapping, [cIdx]: val };
+                                if (val !== 'ignore') {
+                                   for (const [colIdxStr, mappedVal] of Object.entries(mapping)) {
+                                      const otherCIdx = parseInt(colIdxStr, 10);
+                                      if (otherCIdx !== cIdx && mappedVal === val) {
+                                         newMapping[otherCIdx] = 'ignore';
+                                      }
+                                   }
+                                }
+                                setMapping(newMapping);
+                                if (val !== 'ignore' && val !== 'internalArticleNumber') {
+                                   setOverwriteRules(prev => ({ ...prev, [val]: true }));
                                 }
                             }}
                             style={{ padding: '0.4rem', borderRadius: 'var(--radius)', flex: 1 }}
