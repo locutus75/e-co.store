@@ -258,7 +258,30 @@ function InlineReadyToggle({ product, isAdmin }: { product: any, isAdmin: boolea
   );
 }
 
-export default function ProductsClient({ initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canUseAi = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null, aiScoreMap = {}, imageCountMap = {} }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, canAssignProducts?: boolean, canUseAi?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, aiScoreMap?: Record<string, number | null>, imageCountMap?: Record<string, number> }) {
+function getPageNumbers(currentPage: number, totalPages: number) {
+  const pages: (number | string)[] = [];
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pages.push(i);
+  } else {
+    pages.push(1);
+    if (currentPage > 3) {
+      pages.push('...');
+    }
+    const start = Math.max(2, currentPage - 1);
+    const end = Math.min(totalPages - 1, currentPage + 1);
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    if (currentPage < totalPages - 2) {
+      pages.push('...');
+    }
+    pages.push(totalPages);
+  }
+  return pages;
+}
+
+export default function ProductsClient({
+ initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canUseAi = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null, aiScoreMap = {}, imageCountMap = {} }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, canAssignProducts?: boolean, canUseAi?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, aiScoreMap?: Record<string, number | null>, imageCountMap?: Record<string, number> }) {
   const router = useRouter();
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
@@ -324,6 +347,15 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
   const [assignedUserFilter, setAssignedUserFilter] = useState('');
   const [aiScoreFilter, setAiScoreFilter] = useState('');
   const [unreadFilter, setUnreadFilter] = useState('');
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'ALL'>(50);
+
+  // Reset page to 1 when filters or search query change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, supplierFilter, brandFilter, statusFilter, webshopReadyFilter, assignedUserFilter, aiScoreFilter, unreadFilter]);
 
   // Multi-select State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -479,6 +511,30 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
       matchUnread(p)
     );
   }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread]);
+
+  const totalPages = useMemo(() => {
+    if (pageSize === 'ALL') return 1;
+    return Math.ceil(filteredProducts.length / pageSize) || 1;
+  }, [filteredProducts.length, pageSize]);
+
+  const paginatedProducts = useMemo(() => {
+    if (pageSize === 'ALL') return filteredProducts;
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredProducts.slice(startIndex, startIndex + pageSize);
+  }, [filteredProducts, currentPage, pageSize]);
+
+  // Auto-sync currentPage when selectedProduct changes to a product on another page
+  useEffect(() => {
+    if (selectedProduct && pageSize !== 'ALL') {
+      const idx = filteredProducts.findIndex(p => p.internalArticleNumber === selectedProduct.internalArticleNumber);
+      if (idx !== -1) {
+        const expectedPage = Math.floor(idx / pageSize) + 1;
+        if (expectedPage !== currentPage) {
+          setCurrentPage(expectedPage);
+        }
+      }
+    }
+  }, [selectedProduct, filteredProducts, pageSize, currentPage]);
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredProducts.length && filteredProducts.length > 0) {
@@ -759,7 +815,7 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
             </tr>
           </thead>
           <tbody>
-            {filteredProducts.map(product => (
+            {paginatedProducts.map(product => (
               <tr 
                 key={product.id} 
                 onClick={() => setSelectedProduct(product)}
@@ -870,6 +926,120 @@ export default function ProductsClient({ initialProducts, systemUsers = [], isAd
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Controls */}
+      {filteredProducts.length > 0 && (
+        <div className="glass" style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          padding: '0.75rem 1.5rem', 
+          borderRadius: 'var(--radius)', 
+          border: '1px solid var(--border)',
+          gap: '1rem',
+          flexWrap: 'wrap'
+        }}>
+          {/* Left section: Items per page */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+            <span>Producten per pagina:</span>
+            <select
+              className="input"
+              style={{ width: 'auto', padding: '0.35rem 1.75rem 0.35rem 0.75rem', fontSize: '0.875rem', cursor: 'pointer', minWidth: '85px' }}
+              value={pageSize}
+              onChange={(e) => {
+                const val = e.target.value;
+                setPageSize(val === 'ALL' ? 'ALL' : Number(val));
+                setCurrentPage(1);
+              }}
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={250}>250</option>
+              <option value="ALL">Alles</option>
+            </select>
+          </div>
+
+          {/* Middle section: Page buttons */}
+          {pageSize !== 'ALL' && totalPages > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <button
+                className="btn"
+                style={{ 
+                  padding: '0.35rem 0.75rem', 
+                  fontSize: '0.875rem', 
+                  backgroundColor: 'transparent',
+                  border: '1px solid var(--border)',
+                  color: currentPage === 1 ? 'var(--text-muted)' : 'var(--text)',
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                  opacity: currentPage === 1 ? 0.5 : 1
+                }}
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              >
+                Vorige
+              </button>
+
+              {getPageNumbers(currentPage, totalPages).map((p, idx) => {
+                if (p === '...') {
+                  return (
+                    <span key={`dots-${idx}`} style={{ padding: '0.25rem 0.5rem', color: 'var(--text-muted)' }}>
+                      ...
+                    </span>
+                  );
+                }
+                const isSelected = p === currentPage;
+                return (
+                  <button
+                    key={p}
+                    className="btn"
+                    style={{
+                      padding: '0.35rem 0.75rem',
+                      fontSize: '0.875rem',
+                      minWidth: '35px',
+                      backgroundColor: isSelected ? 'var(--primary)' : 'transparent',
+                      color: isSelected ? '#1e293b' : 'var(--text)',
+                      border: isSelected ? 'none' : '1px solid transparent',
+                      fontWeight: isSelected ? 700 : 500,
+                      cursor: 'pointer',
+                      borderRadius: 'var(--radius-sm)',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onClick={() => setCurrentPage(p as number)}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
+
+              <button
+                className="btn"
+                style={{ 
+                  padding: '0.35rem 0.75rem', 
+                  fontSize: '0.875rem', 
+                  backgroundColor: 'transparent',
+                  border: '1px solid var(--border)',
+                  color: currentPage === totalPages ? 'var(--text-muted)' : 'var(--text)',
+                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                  opacity: currentPage === totalPages ? 0.5 : 1
+                }}
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              >
+                Volgende
+              </button>
+            </div>
+          )}
+
+          {/* Right section: Info text */}
+          <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+            Weergave {Math.min(filteredProducts.length, (currentPage - 1) * (pageSize === 'ALL' ? filteredProducts.length : pageSize) + 1)}-
+            {Math.min(filteredProducts.length, currentPage * (pageSize === 'ALL' ? filteredProducts.length : pageSize))} van{' '}
+            <strong>{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'product' : 'producten'}
+          </div>
+        </div>
+      )}
 
       <ProductDrawer 
         product={selectedProduct} 
