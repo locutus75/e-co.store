@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import LlmConfigSection from '@/components/LlmConfigSection';
+import ConfettiSettingsForm from '@/components/ConfettiSettingsForm';
 
 export default function AdminSystemClient() {
   const [checking, setChecking] = useState(true);
@@ -603,6 +604,9 @@ export default function AdminSystemClient() {
 
         <style>{`@keyframes ex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </div>
+
+      {/* Confetti / Surprise Settings */}
+      <ConfettiSettingsForm />
 
       {/* AI / LLM Configuration */}
       <LlmConfigSection />
