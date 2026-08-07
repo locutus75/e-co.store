@@ -1,25 +1,30 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { ConfettiSettings, getConfettiSettings, saveConfettiSettings } from "@/app/actions/confetti";
+import { ConfettiSettings, getConfettiSettings, saveConfettiSettings, getUsersForConfetti } from "@/app/actions/confetti";
 
 export default function ConfettiSettingsForm() {
   const [settings, setSettings] = useState<ConfettiSettings>({
     active: false,
     soundEnabled: true,
     triggers: {
-      statusCount: { active: false, status: "Gepubliceerd", count: 100, message: "Gefeliciteerd met de status mijlpaal!", surpriseType: "confetti" },
-      datetime: { active: false, targetDate: new Date().toISOString(), message: "Gefeliciteerd op deze speciale dag!", surpriseType: "confetti" },
-      editCount: { active: false, count: 1000, message: "Gefeliciteerd met dit aantal bewerkingen!", surpriseType: "confetti" },
+      statusCount: { active: false, status: "Gepubliceerd", count: 100, message: "Gefeliciteerd met de status mijlpaal!", surpriseType: "confetti", userIds: [], viewedBy: [] },
+      datetime: { active: false, targetDate: new Date().toISOString(), message: "Gefeliciteerd op deze speciale dag!", surpriseType: "confetti", userIds: [], viewedBy: [] },
+      editCount: { active: false, count: 1000, message: "Gefeliciteerd met dit aantal bewerkingen!", surpriseType: "confetti", userIds: [], viewedBy: [] },
     }
   });
+  const [users, setUsers] = useState<{id: string, email: string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState({ text: "", type: "" });
 
   useEffect(() => {
-    getConfettiSettings().then((s) => {
+    Promise.all([
+      getConfettiSettings(),
+      getUsersForConfetti()
+    ]).then(([s, u]) => {
       setSettings(s);
+      setUsers(u);
       setLoading(false);
     });
   }, []);
@@ -46,6 +51,80 @@ export default function ConfettiSettingsForm() {
   const handleTestFireworks = () => {
     window.dispatchEvent(
       new CustomEvent("test-confetti", { detail: { messages: ["Dit is een testbericht voor vuurwerk!"], soundEnabled: settings.soundEnabled, surpriseType: "fireworks" } })
+    );
+  };
+
+  const renderUserChecklist = (triggerKey: keyof ConfettiSettings["triggers"]) => {
+    const trigger = settings.triggers[triggerKey];
+    const isAllSelected = trigger.userIds.length === 0 || trigger.userIds.length === users.length;
+
+    const toggleUser = (userId: string) => {
+      let newUserIds = [...trigger.userIds];
+      // Als de lijst leeg was, stonden ze in theorie allemaal aan. 
+      // Als ze nu eentje uitsluiten, moeten de rest aan.
+      if (trigger.userIds.length === 0) {
+        newUserIds = users.map(u => u.id).filter(id => id !== userId);
+      } else {
+        if (newUserIds.includes(userId)) {
+          newUserIds = newUserIds.filter(id => id !== userId);
+        } else {
+          newUserIds.push(userId);
+        }
+      }
+      // Als iedereen is geselecteerd, maken we de lijst leeg (leeg = iedereen)
+      if (newUserIds.length === users.length) newUserIds = [];
+      
+      setSettings({
+        ...settings,
+        triggers: {
+          ...settings.triggers,
+          [triggerKey]: { ...trigger, userIds: newUserIds }
+        }
+      });
+    };
+
+    const toggleAll = () => {
+      setSettings({
+        ...settings,
+        triggers: {
+          ...settings.triggers,
+          [triggerKey]: { ...trigger, userIds: isAllSelected ? [] : [] } // actually if all is selected and they click, we deselect all by passing an array that isn't everyone... wait, empty = all. So to select NONE, we can't easily do it since empty = all. Let's make a special state? Or just let them uncheck. 
+          // If isAllSelected is true, clicking 'Deselect All' should make none selected. But empty array means all. Let's fix that logic: empty array = all. To select none, don't use this trigger.
+        }
+      });
+    };
+
+    return (
+      <div style={{ marginTop: "1rem", backgroundColor: "var(--background-alt)", padding: "1rem", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+          <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)" }}>
+            Geldt voor gebruikers ({trigger.userIds.length === 0 ? "Iedereen" : trigger.userIds.length})
+          </label>
+          <button type="button" className="btn btn-sm" onClick={() => {
+            setSettings({
+              ...settings,
+              triggers: { ...settings.triggers, [triggerKey]: { ...trigger, userIds: [] } }
+            });
+          }}>
+            Selecteer Iedereen
+          </button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "0.5rem", maxHeight: "150px", overflowY: "auto", padding: "0.5rem", border: "1px solid var(--border)", borderRadius: "var(--radius)", backgroundColor: "var(--background)" }}>
+          {users.map(u => {
+            const isChecked = trigger.userIds.length === 0 || trigger.userIds.includes(u.id);
+            return (
+              <label key={u.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => toggleUser(u.id)}
+                />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.email}>{u.email}</span>
+              </label>
+            );
+          })}
+        </div>
+      </div>
     );
   };
 
@@ -132,50 +211,55 @@ export default function ConfettiSettingsForm() {
               </div>
 
               {settings.triggers.statusCount.active && (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", maxWidth: "800px", paddingLeft: "2rem" }}>
-                  <div>
-                    <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Product Status</label>
-                    <input
-                      className="input"
-                      type="text"
-                      value={settings.triggers.statusCount.status}
-                      onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, statusCount: { ...settings.triggers.statusCount, status: e.target.value } } })}
-                      placeholder="Bijv. Gepubliceerd"
-                      required
-                    />
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", maxWidth: "800px", paddingLeft: "2rem" }}>
+                    <div>
+                      <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Product Status</label>
+                      <input
+                        className="input"
+                        type="text"
+                        value={settings.triggers.statusCount.status}
+                        onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, statusCount: { ...settings.triggers.statusCount, status: e.target.value } } })}
+                        placeholder="Bijv. Gepubliceerd"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Aantal Bereikt</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min="1"
+                        value={settings.triggers.statusCount.count}
+                        onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, statusCount: { ...settings.triggers.statusCount, count: parseInt(e.target.value) } } })}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Type Verrassing</label>
+                      <select
+                        className="input"
+                        value={settings.triggers.statusCount.surpriseType}
+                        onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, statusCount: { ...settings.triggers.statusCount, surpriseType: e.target.value as any } } })}
+                        required
+                      >
+                        <option value="confetti">🎉 Confetti</option>
+                        <option value="fireworks">🎆 Vuurwerk</option>
+                      </select>
+                    </div>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Bericht</label>
+                      <input
+                        className="input"
+                        type="text"
+                        value={settings.triggers.statusCount.message}
+                        onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, statusCount: { ...settings.triggers.statusCount, message: e.target.value } } })}
+                        required
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Aantal Bereikt</label>
-                    <input
-                      className="input"
-                      type="number"
-                      min="1"
-                      value={settings.triggers.statusCount.count}
-                      onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, statusCount: { ...settings.triggers.statusCount, count: parseInt(e.target.value) } } })}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Type Verrassing</label>
-                    <select
-                      className="input"
-                      value={settings.triggers.statusCount.surpriseType}
-                      onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, statusCount: { ...settings.triggers.statusCount, surpriseType: e.target.value as any } } })}
-                      required
-                    >
-                      <option value="confetti">🎉 Confetti</option>
-                      <option value="fireworks">🎆 Vuurwerk</option>
-                    </select>
-                  </div>
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Bericht</label>
-                    <input
-                      className="input"
-                      type="text"
-                      value={settings.triggers.statusCount.message}
-                      onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, statusCount: { ...settings.triggers.statusCount, message: e.target.value } } })}
-                      required
-                    />
+                  <div style={{ paddingLeft: "2rem" }}>
+                    {renderUserChecklist("statusCount")}
                   </div>
                 </div>
               )}
@@ -197,38 +281,43 @@ export default function ConfettiSettingsForm() {
               </div>
 
               {settings.triggers.datetime.active && (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", maxWidth: "800px", paddingLeft: "2rem" }}>
-                  <div>
-                    <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Datum en Tijd</label>
-                    <input
-                      className="input"
-                      type="datetime-local"
-                      value={settings.triggers.datetime.targetDate ? new Date(new Date(settings.triggers.datetime.targetDate).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""}
-                      onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, datetime: { ...settings.triggers.datetime, targetDate: new Date(e.target.value).toISOString() } } })}
-                      required
-                    />
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", maxWidth: "800px", paddingLeft: "2rem" }}>
+                    <div>
+                      <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Datum en Tijd</label>
+                      <input
+                        className="input"
+                        type="datetime-local"
+                        value={settings.triggers.datetime.targetDate ? new Date(new Date(settings.triggers.datetime.targetDate).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""}
+                        onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, datetime: { ...settings.triggers.datetime, targetDate: new Date(e.target.value).toISOString() } } })}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Type Verrassing</label>
+                      <select
+                        className="input"
+                        value={settings.triggers.datetime.surpriseType}
+                        onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, datetime: { ...settings.triggers.datetime, surpriseType: e.target.value as any } } })}
+                        required
+                      >
+                        <option value="confetti">🎉 Confetti</option>
+                        <option value="fireworks">🎆 Vuurwerk</option>
+                      </select>
+                    </div>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Bericht</label>
+                      <input
+                        className="input"
+                        type="text"
+                        value={settings.triggers.datetime.message}
+                        onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, datetime: { ...settings.triggers.datetime, message: e.target.value } } })}
+                        required
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Type Verrassing</label>
-                    <select
-                      className="input"
-                      value={settings.triggers.datetime.surpriseType}
-                      onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, datetime: { ...settings.triggers.datetime, surpriseType: e.target.value as any } } })}
-                      required
-                    >
-                      <option value="confetti">🎉 Confetti</option>
-                      <option value="fireworks">🎆 Vuurwerk</option>
-                    </select>
-                  </div>
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Bericht</label>
-                    <input
-                      className="input"
-                      type="text"
-                      value={settings.triggers.datetime.message}
-                      onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, datetime: { ...settings.triggers.datetime, message: e.target.value } } })}
-                      required
-                    />
+                  <div style={{ paddingLeft: "2rem" }}>
+                    {renderUserChecklist("datetime")}
                   </div>
                 </div>
               )}
@@ -250,39 +339,44 @@ export default function ConfettiSettingsForm() {
               </div>
 
               {settings.triggers.editCount.active && (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", maxWidth: "800px", paddingLeft: "2rem" }}>
-                  <div>
-                    <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Aantal Bewerkingen (Totaal)</label>
-                    <input
-                      className="input"
-                      type="number"
-                      min="1"
-                      value={settings.triggers.editCount.count}
-                      onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, editCount: { ...settings.triggers.editCount, count: parseInt(e.target.value) } } })}
-                      required
-                    />
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", maxWidth: "800px", paddingLeft: "2rem" }}>
+                    <div>
+                      <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Aantal Bewerkingen (Totaal)</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min="1"
+                        value={settings.triggers.editCount.count}
+                        onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, editCount: { ...settings.triggers.editCount, count: parseInt(e.target.value) } } })}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Type Verrassing</label>
+                      <select
+                        className="input"
+                        value={settings.triggers.editCount.surpriseType}
+                        onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, editCount: { ...settings.triggers.editCount, surpriseType: e.target.value as any } } })}
+                        required
+                      >
+                        <option value="confetti">🎉 Confetti</option>
+                        <option value="fireworks">🎆 Vuurwerk</option>
+                      </select>
+                    </div>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Bericht</label>
+                      <input
+                        className="input"
+                        type="text"
+                        value={settings.triggers.editCount.message}
+                        onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, editCount: { ...settings.triggers.editCount, message: e.target.value } } })}
+                        required
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Type Verrassing</label>
-                    <select
-                      className="input"
-                      value={settings.triggers.editCount.surpriseType}
-                      onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, editCount: { ...settings.triggers.editCount, surpriseType: e.target.value as any } } })}
-                      required
-                    >
-                      <option value="confetti">🎉 Confetti</option>
-                      <option value="fireworks">🎆 Vuurwerk</option>
-                    </select>
-                  </div>
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.4rem" }}>Bericht</label>
-                    <input
-                      className="input"
-                      type="text"
-                      value={settings.triggers.editCount.message}
-                      onChange={(e) => setSettings({ ...settings, triggers: { ...settings.triggers, editCount: { ...settings.triggers.editCount, message: e.target.value } } })}
-                      required
-                    />
+                  <div style={{ paddingLeft: "2rem" }}>
+                    {renderUserChecklist("editCount")}
                   </div>
                 </div>
               )}

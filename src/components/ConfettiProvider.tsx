@@ -2,11 +2,12 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import confetti from "canvas-confetti";
-import { checkConfettiStatus, SurpriseType } from "@/app/actions/confetti";
+import { checkConfettiStatus, SurpriseType, markConfettiViewed } from "@/app/actions/confetti";
 
 export default function ConfettiProvider() {
   const [showToast, setShowToast] = useState(false);
   const [toastMessages, setToastMessages] = useState<string[]>([]);
+  const [activeTypeKeys, setActiveTypeKeys] = useState<string[]>([]);
   const loopTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isLoopingRef = useRef(false);
   
@@ -97,8 +98,9 @@ export default function ConfettiProvider() {
     }
   };
 
-  const triggerSurpriseLoop = (messages: string[], soundEnabled: boolean, type: SurpriseType) => {
+  const triggerSurpriseLoop = (messages: string[], soundEnabled: boolean, type: SurpriseType, typeKeys: string[]) => {
     setToastMessages(messages);
+    setActiveTypeKeys(typeKeys);
     setShowToast(true);
     isLoopingRef.current = true;
     setCurrentSurpriseType(type);
@@ -162,13 +164,18 @@ export default function ConfettiProvider() {
     }
   };
 
-  const stopSurpriseLoop = () => {
+  const stopSurpriseLoop = async () => {
     if (loopTimeoutRef.current) {
       clearTimeout(loopTimeoutRef.current);
       loopTimeoutRef.current = null;
     }
     isLoopingRef.current = false;
     setShowToast(false);
+    
+    if (activeTypeKeys.length > 0) {
+      await markConfettiViewed(activeTypeKeys);
+      setActiveTypeKeys([]);
+    }
   };
 
   useEffect(() => {
@@ -196,22 +203,20 @@ export default function ConfettiProvider() {
         const { triggersToFire, soundEnabled } = await checkConfettiStatus();
         if (triggersToFire && triggersToFire.length > 0) {
           const newMessages: string[] = [];
+          const typeKeys: string[] = [];
           let hasFireworks = false;
           
           for (const trigger of triggersToFire) {
-            const stored = localStorage.getItem(`confetti_triggered_${trigger.id}`);
-            if (!stored) {
-              localStorage.setItem(`confetti_triggered_${trigger.id}`, "true");
-              newMessages.push(trigger.message);
-              if (trigger.surpriseType === "fireworks") {
-                hasFireworks = true;
-              }
+            newMessages.push(trigger.message);
+            typeKeys.push(trigger.typeKey);
+            if (trigger.surpriseType === "fireworks") {
+              hasFireworks = true;
             }
           }
 
           if (newMessages.length > 0) {
             const chosenType = hasFireworks ? "fireworks" : "confetti";
-            triggerSurpriseLoop(newMessages, soundEnabled, chosenType);
+            triggerSurpriseLoop(newMessages, soundEnabled, chosenType, typeKeys);
           }
         }
       } catch (error) {
