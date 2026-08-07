@@ -186,11 +186,11 @@ export default function ConfettiProvider() {
       const surpriseType = e.detail?.surpriseType || "confetti";
       
       if (!isLoopingRef.current) {
-        triggerSurpriseLoop(msgs, soundEnabled, surpriseType);
+        triggerSurpriseLoop(msgs, soundEnabled, surpriseType, []);
       } else {
         // If already looping, stop it first then start new one
         stopSurpriseLoop();
-        setTimeout(() => triggerSurpriseLoop(msgs, soundEnabled, surpriseType), 100);
+        setTimeout(() => triggerSurpriseLoop(msgs, soundEnabled, surpriseType, []), 100);
       }
     };
     window.addEventListener("test-confetti", handleTest);
