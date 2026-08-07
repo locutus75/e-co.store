@@ -124,6 +124,33 @@ export default function ConfettiSettingsForm() {
             );
           })}
         </div>
+        
+        {trigger.viewedBy && trigger.viewedBy.length > 0 && (
+          <div style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px dashed var(--border)" }}>
+            <label className="label" style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "var(--text-muted)", marginBottom: "0.25rem" }}>
+              Reeds gezien door ({trigger.viewedBy.length}):
+            </label>
+            <div style={{ fontSize: "0.85rem", color: "var(--text)" }}>
+              {trigger.viewedBy.map(vid => {
+                const u = users.find(x => x.id === vid);
+                return u ? u.email : "Onbekende gebruiker";
+              }).join(", ")}
+            </div>
+            <button type="button" className="btn btn-sm" style={{ marginTop: "0.5rem" }} onClick={() => {
+              if (confirm("Weet je zeker dat je de kijk-historie voor dit doel wilt wissen?")) {
+                setSettings({
+                  ...settings,
+                  triggers: {
+                    ...settings.triggers,
+                    [triggerKey]: { ...trigger, viewedBy: [] }
+                  }
+                });
+              }
+            }}>
+              Historie Wissen
+            </button>
+          </div>
+        )}
       </div>
     );
   };
