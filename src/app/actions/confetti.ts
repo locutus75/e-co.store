@@ -165,10 +165,19 @@ export async function saveConfettiSettings(settings: ConfettiSettings): Promise<
     const session = await getServerSession(authOptions);
     if (!session) throw new Error("Unauthorized");
 
-    // Zorg ervoor dat bij het opslaan de viewedBy lijst evt gereset wordt, 
-    // Mocht je dat niet willen dan zou je ze moeten overerven van getConfettiSettings. 
-    // Om het makkelijk te houden overerven we de bestaande viewedBy's als de overige velden (zoals count of status) hetzelfde zijn gebleven.
-    // Voor dit detailniveau slaan we gewoon op wat we uit het formulier krijgen. (Formulier haalt het op en slaat op)
+    const currentSettings = await getConfettiSettings();
+    
+    // Voorkom dat we per ongeluk de kijk-historie overschrijven met een oude versie uit de browser,
+    // tenzij de beheerder expliciet op 'Historie Wissen' heeft gedrukt (dan is de array leeg).
+    if (settings.triggers.statusCount.viewedBy.length > 0) {
+      settings.triggers.statusCount.viewedBy = Array.from(new Set([...currentSettings.triggers.statusCount.viewedBy, ...settings.triggers.statusCount.viewedBy]));
+    }
+    if (settings.triggers.datetime.viewedBy.length > 0) {
+      settings.triggers.datetime.viewedBy = Array.from(new Set([...currentSettings.triggers.datetime.viewedBy, ...settings.triggers.datetime.viewedBy]));
+    }
+    if (settings.triggers.editCount.viewedBy.length > 0) {
+      settings.triggers.editCount.viewedBy = Array.from(new Set([...currentSettings.triggers.editCount.viewedBy, ...settings.triggers.editCount.viewedBy]));
+    }
 
     await prisma.systemSetting.upsert({
       where: { key: SETTING_KEY },
