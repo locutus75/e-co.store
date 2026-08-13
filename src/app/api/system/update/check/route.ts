@@ -27,6 +27,7 @@ export async function GET() {
     let remoteMessage = '';
     let remoteDate = '';
     let remoteAuthor = '';
+    let remoteError = '';
     try {
       const response = await fetch(
         `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/commits/${REPO_BRANCH}`,
@@ -36,7 +37,8 @@ export async function GET() {
             'Accept': 'application/vnd.github.v3+json'
           },
           // Cache control to ensure we hit the API fresh
-          cache: 'no-store'
+          cache: 'no-store',
+          signal: AbortSignal.timeout(5000)
         }
       );
       
@@ -47,14 +49,18 @@ export async function GET() {
         remoteDate = data.commit.author.date;
         remoteAuthor = data.commit.author.name;
       } else {
+        remoteError = `GitHub API status ${response.status}: ${response.statusText}`;
         console.warn("GitHub API error:", response.statusText);
       }
-    } catch (e) {
-      console.error("Error fetching remote commit:", e);
+    } catch (e: any) {
+      remoteError = e.name === 'TimeoutError' || e.code === 'UND_ERR_CONNECT_TIMEOUT'
+        ? "Verbinding met GitHub getimed-out (offline of netwerkblokkade)."
+        : `Kon geen verbinding maken met GitHub: ${e.message || e}`;
+      console.warn(`[Update Check] GitHub API niet bereikbaar: ${e.message || e}`);
     }
 
     // 3. Compare
-    const updateAvailable = remoteHash && localHash && remoteHash !== localHash;
+    const updateAvailable = !!(remoteHash && localHash && remoteHash !== localHash);
 
     return NextResponse.json({
       localHash,
@@ -65,6 +71,7 @@ export async function GET() {
       remoteMessage,
       remoteDate,
       remoteAuthor,
+      remoteError,
       updateAvailable,
       checkedAt: new Date().toISOString()
     });

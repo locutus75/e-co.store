@@ -26,8 +26,9 @@ export async function POST(request: NextRequest) {
 
   // Defend against arbitrary path traversal by resolving only the basename
   const safeFilename = path.basename(filename);
-  if (!safeFilename.toLowerCase().endsWith(".png")) {
-    return NextResponse.json({ error: "Invalid format. Only PNG is supported." }, { status: 400 });
+  const ext = path.extname(safeFilename).toLowerCase();
+  if (![".png", ".jpg", ".jpeg"].includes(ext)) {
+    return NextResponse.json({ error: "Invalid format. Only PNG and JPEG are supported." }, { status: 400 });
   }
 
   try {

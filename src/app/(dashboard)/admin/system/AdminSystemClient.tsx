@@ -125,8 +125,14 @@ export default function AdminSystemClient() {
     try {
       const res = await fetch('/api/system/update/check', { cache: 'no-store' });
       const data = await res.json();
-      if (res.ok) setUpdateInfo(data);
-      else setErrorMsg(data.error || 'Failed to check updates');
+      if (res.ok) {
+        setUpdateInfo(data);
+        if (data.remoteError) {
+          setErrorMsg(data.remoteError);
+        }
+      } else {
+        setErrorMsg(data.error || 'Failed to check updates');
+      }
     } catch (e: any) {
       setErrorMsg(e.message || 'Network error checking updates');
     } finally {

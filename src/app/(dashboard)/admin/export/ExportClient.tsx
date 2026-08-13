@@ -92,6 +92,13 @@ export default function ExportClient({
   // Mapping of field.key -> { selected: boolean, header: string }
   const [columnMapping, setColumnMapping] = useState<Record<string, { selected: boolean; header: string }>>({});
 
+  // Image & Naming export settings
+  const [imageFormat, setImageFormat] = useState<"png" | "jpg">("png"); // Default PNG
+  const [limitImageSize, setLimitImageSize] = useState(true);
+  const [maxImageSize, setMaxImageSize] = useState(1000);
+  const [exportTag, setExportTag] = useState("");
+  const [zipFilename, setZipFilename] = useState<string>("mpluskassa_fotos_export.zip");
+
   // Export process state
   const [exportProgress, setExportProgress] = useState<{
     phase: "idle" | "preparing" | "photos" | "excel" | "marking" | "done" | "error";
@@ -138,6 +145,34 @@ export default function ExportClient({
 
     setColumnMapping(initialMap);
   }, [selectedProfileId, profiles, exportableFields]);
+
+  // Auto-set exportTag based on brand/supplier filter or product selection
+  useEffect(() => {
+    const sName = suppliers.find(s => s.id === filterSupplier)?.name;
+    const bName = brands.find(b => b.id === filterBrand)?.name;
+
+    if (sName) {
+      setExportTag(sName);
+    } else if (bName) {
+      setExportTag(bName);
+    } else if (productsToExport.length > 0) {
+      const firstSupplier = productsToExport[0]?.supplier?.name;
+      const allSameSupplier = firstSupplier && productsToExport.every((p: any) => p.supplier?.name === firstSupplier);
+      if (allSameSupplier) {
+        setExportTag(firstSupplier);
+        return;
+      }
+      const firstBrand = productsToExport[0]?.brand?.name;
+      const allSameBrand = firstBrand && productsToExport.every((p: any) => p.brand?.name === firstBrand);
+      if (allSameBrand) {
+        setExportTag(firstBrand);
+        return;
+      }
+      setExportTag("");
+    } else {
+      setExportTag("");
+    }
+  }, [filterSupplier, filterBrand, productsToExport, suppliers, brands]);
 
   // 2. Fetch products count and preview on Step 1 load or filter change
   const fetchMatchingProducts = async () => {
@@ -269,26 +304,45 @@ export default function ExportClient({
     setConfirmDeleteProfile(false);
   };
 
-  // Helper function to convert client-side image to PNG Blob using Canvas
-  const convertImageToPngBlob = async (imageUrl: string): Promise<Blob> => {
+  // Helper function to convert client-side image to Blob (with resize & compress)
+  const convertImageToBlob = async (imageUrl: string): Promise<{ blob: Blob, extension: string }> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.onload = () => {
         try {
+          let targetWidth = img.naturalWidth;
+          let targetHeight = img.naturalHeight;
+
+          if (limitImageSize) {
+            const max = maxImageSize > 0 ? maxImageSize : 1000;
+            if (targetWidth > max || targetHeight > max) {
+              const ratio = Math.min(max / targetWidth, max / targetHeight);
+              targetWidth = Math.round(targetWidth * ratio);
+              targetHeight = Math.round(targetHeight * ratio);
+            }
+          }
+
           const canvas = document.createElement("canvas");
-          canvas.width = img.naturalWidth;
-          canvas.height = img.naturalHeight;
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
           const ctx = canvas.getContext("2d");
           if (!ctx) {
             reject(new Error("Canvas 2D context retrieval failed."));
             return;
           }
-          ctx.drawImage(img, 0, 0);
+          
+          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+          
+          const isJpg = imageFormat === "jpg";
+          const mimeType = isJpg ? "image/jpeg" : "image/png";
+          const extension = isJpg ? ".jpg" : ".png";
+          const quality = isJpg ? 0.8 : undefined;
+
           canvas.toBlob((blob) => {
-            if (blob) resolve(blob);
-            else reject(new Error("Failed to export Canvas to PNG Blob."));
-          }, "image/png");
+            if (blob) resolve({ blob, extension });
+            else reject(new Error("Failed to export Canvas to Blob."));
+          }, mimeType, quality);
         } catch (err) {
           reject(err);
         }
@@ -336,8 +390,8 @@ export default function ExportClient({
             photoTasks.push({
               productNum: p.internalArticleNumber,
               url: img.url,
-              // Format: <productnummer>-<opvolgnummer>.png (1-based index)
-              targetName: `${p.internalArticleNumber}-${idx + 1}.png`
+              // Format: <productnummer>-<opvolgnummer>
+              targetName: `${p.internalArticleNumber}-${idx + 1}`
             });
           });
         }
@@ -361,16 +415,22 @@ export default function ExportClient({
         }));
 
         try {
-          // Convert to PNG Blob in client browser
-          const pngBlob = await convertImageToPngBlob(task.url);
+          // Convert to Blob in client browser (with resize/compress applied)
+          const { blob, extension } = await convertImageToBlob(task.url);
+          const finalFilename = `${task.targetName}${extension}`;
 
-          // POST PNG to server
-          const response = await fetch(`/api/export/save-image?filename=${encodeURIComponent(task.targetName)}`, {
+          setExportProgress(prev => ({
+            ...prev,
+            currentImageName: finalFilename
+          }));
+
+          // POST Image to server
+          const response = await fetch(`/api/export/save-image?filename=${encodeURIComponent(finalFilename)}`, {
             method: "POST",
             headers: {
-              "Content-Type": "image/png"
+              "Content-Type": imageFormat === "jpg" ? "image/jpeg" : "image/png"
             },
-            body: pngBlob
+            body: blob
           });
 
           if (!response.ok) {
@@ -426,13 +486,21 @@ export default function ExportClient({
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Producten");
 
-      // Generate local download
+      const sanitizeFilenamePart = (str: string) => {
+        return str.replace(/[^a-zA-Z0-9_\-]/g, "_").replace(/_+/g, "_").trim();
+      };
+
+      // Generate local download names with brand/supplier tag
       const dateStr = new Date().toISOString().split("T")[0];
-      const filename = `mpluskassa_export_${dateStr}.xlsx`;
+      const tagPart = exportTag.trim() ? `_${sanitizeFilenamePart(exportTag)}` : "";
+      
+      const filename = `mpluskassa_export${tagPart}_${dateStr}.xlsx`;
+      const calculatedZipFilename = `mpluskassa_fotos_export${tagPart}_${dateStr}.zip`;
       
       // We will trigger download locally
       XLSX.writeFile(workbook, filename);
       setExcelFilename(filename);
+      setZipFilename(calculatedZipFilename);
 
       // 5. Update Database Export Status
       setExportProgress(prev => ({ ...prev, phase: "marking" }));
@@ -791,6 +859,78 @@ export default function ExportClient({
             })}
           </div>
 
+          {/* Image & Export Naming Settings */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem', marginTop: '0.5rem' }}>
+            <h4 style={{ fontSize: '1.1rem', fontWeight: 700 }}>⚙️ Foto & Export Instellingen</h4>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
+              
+              {/* Formaat Selectie */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                  Bestandsformaat Foto's
+                </label>
+                <select 
+                  className="input" 
+                  value={imageFormat} 
+                  onChange={e => setImageFormat(e.target.value as "png" | "jpg")}
+                  style={{ padding: '0.5rem 0.75rem' }}
+                >
+                  <option value="png">PNG (.png) - Standaard (Ongewijzigde kwaliteit)</option>
+                  <option value="jpg">JPEG (.jpg) - Gecomprimeerd (Kleinere bestanden)</option>
+                </select>
+              </div>
+
+              {/* Leverancier / Merk Tag */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                  Leverancier / Merk Tag in Bestandsnaam
+                </label>
+                <input 
+                  type="text" 
+                  className="input" 
+                  value={exportTag} 
+                  onChange={e => setExportTag(e.target.value)}
+                  placeholder="Bijv. Leverancier X of Merk Y"
+                  style={{ padding: '0.5rem 0.75rem' }}
+                />
+              </div>
+
+            </div>
+
+            {/* Afmetingen Limiet */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <input 
+                  type="checkbox" 
+                  id="limitImageSize" 
+                  checked={limitImageSize} 
+                  onChange={e => setLimitImageSize(e.target.checked)} 
+                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                />
+                <label htmlFor="limitImageSize" style={{ fontWeight: 600, cursor: 'pointer' }}>
+                  Limiteer afmetingen (Max breedte/hoogte)
+                </label>
+              </div>
+              
+              {limitImageSize && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input 
+                    type="number" 
+                    className="input" 
+                    value={maxImageSize} 
+                    onChange={e => setMaxImageSize(Number(e.target.value))} 
+                    min={100}
+                    step={100}
+                    style={{ width: '100px', padding: '0.3rem 0.6rem' }}
+                  />
+                  <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>px (standaard 1000x1000)</span>
+                </div>
+              )}
+            </div>
+
+          </div>
+
           {/* Actions */}
           <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '1.5rem', marginTop: '1rem' }}>
             <button className="btn" onClick={prevStep} style={{ backgroundColor: 'var(--border)' }}>
@@ -926,14 +1066,14 @@ export default function ExportClient({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '220px' }}>
               <a 
-                href="/api/export/download-zip" 
-                download
+                href={`/api/export/download-zip?filename=${encodeURIComponent(zipFilename)}`} 
+                download={zipFilename}
                 className="btn"
                 style={{ backgroundColor: 'var(--color-teal)', color: 'white', width: '100%' }}
               >
                 🗂️ Download Foto's (ZIP)
               </a>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Alle PNG foto's gebundeld</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{zipFilename}</span>
             </div>
           </div>
 

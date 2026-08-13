@@ -18,13 +18,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Access Denied: Admin role required." }, { status: 403 });
   }
 
+  // Get custom filename from query params if provided
+  const { searchParams } = new URL(request.url);
+  const customFilename = searchParams.get("filename");
+  let zipFilename = "mpluskassa_fotos_export.zip";
+  if (customFilename) {
+    const safeName = path.basename(customFilename).replace(/[^a-zA-Z0-9_\-\.]/g, "_");
+    zipFilename = safeName.endsWith(".zip") ? safeName : `${safeName}.zip`;
+  }
+
   // Ensure export directory exists and has files
   if (!fs.existsSync(EXPORTS_DIR)) {
     return NextResponse.json({ error: "No export folder found. Execute an export first." }, { status: 404 });
   }
 
   try {
-    const files = fs.readdirSync(EXPORTS_DIR).filter(f => f.toLowerCase().endsWith(".png"));
+    const files = fs.readdirSync(EXPORTS_DIR).filter(f => {
+      const ext = f.toLowerCase();
+      return ext.endsWith(".png") || ext.endsWith(".jpg") || ext.endsWith(".jpeg");
+    });
     if (files.length === 0) {
       return NextResponse.json({ error: "No exported photos found. Execute an export first." }, { status: 404 });
     }
@@ -44,7 +56,7 @@ export async function GET(request: NextRequest) {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',
-        'Content-Disposition': 'attachment; filename=mpluskassa_fotos_export.zip',
+        'Content-Disposition': `attachment; filename="${zipFilename}"`,
         'Cache-Control': 'no-store, no-cache, must-revalidate'
       }
     });
