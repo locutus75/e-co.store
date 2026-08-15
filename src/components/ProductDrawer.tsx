@@ -8,6 +8,7 @@ import ProductAiPanel from './ProductAiPanel';
 import AiFieldSuggestion from './AiFieldSuggestion';
 import AiSectionSuggestion from './AiSectionSuggestion';
 import AiAnalysisViewer from './AiAnalysisViewer';
+import ProductWebEnrichModal from './ProductWebEnrichModal';
 
 /**
  * Builds a Google search URL using fields marked `useForSearch` in the layout.
@@ -196,6 +197,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
 
   const [isDirty, setIsDirty] = useState(false);
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
+  const [showWebEnrichModal, setShowWebEnrichModal] = useState(false);
   const formRef = React.useRef<HTMLFormElement>(null);
 
   // AI field suggestions — narrative loaded from DB when drawer opens
@@ -356,7 +358,13 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   const applyAiSuggestion = (fieldKey: string, value: string) => {
     const form = formRef.current;
     if (!form) return;
-    const el = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${fieldKey}"]`);
+    let el = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${fieldKey}"]`);
+    if (!el && fieldKey === 'longDescription') {
+      el = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="description"]`);
+    }
+    if (!el && fieldKey === 'description') {
+      el = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="longDescription"]`);
+    }
     if (el) { el.value = value; setIsDirty(true); }
   };
 
@@ -768,6 +776,22 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                           fallbackIcon={true}
                         />
                         <ProductAiPanel product={localProductData} layout={layout} isAdmin={isAdmin} />
+                        <button
+                          type="button"
+                          onClick={() => setShowWebEnrichModal(true)}
+                          title="Online productinformatie zoeken en automatisch invullen"
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                            padding: '0.4rem 0.85rem', borderRadius: 'var(--radius)',
+                            border: '1px solid #93c5fd', backgroundColor: '#eff6ff',
+                            color: '#2563eb', fontWeight: 600, fontSize: '0.8rem',
+                            cursor: 'pointer', transition: 'all 0.15s', flexShrink: 0,
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#dbeafe'; }}
+                          onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#eff6ff'; }}
+                        >
+                          🌐 Web Info
+                        </button>
                       </div>
                     )}
                     <DrawerReadyToggle 
@@ -871,6 +895,17 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
           fieldPermissions={fieldPermissions}
           onClose={() => setShowCopyModal(false)}
           onCopy={handleCopyCommit}
+        />
+      )}
+      
+      {showWebEnrichModal && (
+        <ProductWebEnrichModal
+          product={localProductData}
+          isOpen={showWebEnrichModal}
+          onClose={() => setShowWebEnrichModal(false)}
+          onApplyFields={(fields) => {
+            applyAiSectionSuggestions(fields);
+          }}
         />
       )}
       
