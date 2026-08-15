@@ -17,6 +17,7 @@ interface Props {
   analysisNarrative: string;
   productTitle: string;
   sectionInstruction?: string;
+  getProductContext?: () => string;
   onApply: (suggestions: Record<string, string>) => void;
 }
 
@@ -27,7 +28,7 @@ function getProvider(): string {
   catch { return 'openai'; }
 }
 
-export default function AiSectionSuggestion({ sectionTitle, fields, analysisNarrative, productTitle, sectionInstruction, onApply }: Props) {
+export default function AiSectionSuggestion({ sectionTitle, fields, analysisNarrative, productTitle, sectionInstruction, getProductContext, onApply }: Props) {
   const [open, setOpen]             = useState(false);
   const [mounted, setMounted]       = useState(false);
   const [loading, setLoading]       = useState(false);
@@ -48,12 +49,17 @@ export default function AiSectionSuggestion({ sectionTitle, fields, analysisNarr
   const fetchSuggestions = useCallback(async () => {
     setLoading(true); setError(''); setSuggestions(null);
     try {
-      const promptText = `Product: "${productTitle}"\n\n` +
-        `Productanalyse:\n${analysisNarrative}\n\n` +
-        `Vul de volgende velden in voor de sectie "${sectionTitle}":\n` +
-        fields.map(f => `- Key: "${f.key}", Naam: "${f.label}" (huidige waarde: "${f.currentValue || ''}"${f.instruction ? `, specifieke instructie: ${f.instruction}` : ''})`).join('\n') +
-        (sectionInstruction ? `\n\nAlgemene instructie voor deze sectie: ${sectionInstruction}` : '') +
-        `\n\nGeef UITSLUITEND een geldig JSON object terug met de field keys als properties en de gesuggereerde tekst als values. Voorbeeld: {"title": "Nieuwe titel", "color": "Rood"}. Geen markdown, geen tekst buiten de JSON.`;
+      const productContext = getProductContext ? getProductContext() : '';
+
+      const promptParts = [
+        `Product: "${productTitle}"`,
+        productContext ? `\nProductkenmerken en specificaties:\n${productContext}` : null,
+        analysisNarrative ? `\nProductanalyse:\n${analysisNarrative}` : null,
+        `\nVul de volgende velden in voor de sectie "${sectionTitle}":`,
+        fields.map(f => `- Key: "${f.key}", Naam: "${f.label}" (huidige waarde: "${f.currentValue || ''}"${f.instruction ? `, specifieke instructie: ${f.instruction}` : ''})`).join('\n'),
+        sectionInstruction ? `\nAlgemene instructie voor deze sectie: ${sectionInstruction}` : null,
+        `\nGeef UITSLUITEND een geldig JSON object terug met de field keys als properties en de gesuggereerde tekst als values. Voorbeeld: {"title": "Nieuwe titel", "color": "Rood"}. Geen markdown, geen tekst buiten de JSON.`
+      ].filter(Boolean).join('\n');
 
       const res = await fetch('/api/ai/query', {
         method: 'POST',
@@ -61,7 +67,7 @@ export default function AiSectionSuggestion({ sectionTitle, fields, analysisNarr
         body: JSON.stringify({
           provider: getProvider(),
           systemPrompt: SYSTEM_PROMPT,
-          prompt: promptText,
+          prompt: promptParts,
           // We can optionally force JSON mode if the provider supports it, but standard prompt usually works.
         }),
       });
@@ -82,7 +88,7 @@ export default function AiSectionSuggestion({ sectionTitle, fields, analysisNarr
       }
     } catch { setError('Verbindingsfout'); }
     setLoading(false);
-  }, [fields, sectionTitle, analysisNarrative, productTitle, sectionInstruction]);
+  }, [fields, sectionTitle, analysisNarrative, productTitle, sectionInstruction, getProductContext]);
 
   const openPopover = () => {
     if (btnRef.current) {

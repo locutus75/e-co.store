@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState, useTransition, useRef } from 'react';
+import React, { useEffect, useState, useTransition, useRef, useCallback } from 'react';
 import ProductGallery from './ProductGallery';
 import { updateProductAction, updateProductStatusAction, updateReadyForImportAction } from '@/app/actions/product';
 import ProductCopyModal from './ProductCopyModal';
@@ -366,7 +366,56 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     });
   };
 
-  const renderField = (moduleName: string, label: string, val: string, inputComponent: React.ReactNode, isCheckbox: boolean = false, textColor?: string, fieldKey?: string, fieldInstruction?: string) => {
+  // Extract current product specifications and form values to provide rich context to AI suggestions
+  const getLiveProductContext = useCallback(() => {
+    const data: Record<string, any> = { ...(localProductData || {}) };
+    const form = formRef.current;
+    if (form) {
+      const formData = new FormData(form);
+      for (const [k, v] of formData.entries()) {
+        if (typeof v === 'string' && v.trim() && !k.startsWith('_')) {
+          data[k] = v.trim();
+        }
+      }
+    }
+
+    const lines: string[] = [];
+    if (data.title) lines.push(`- Titel / Omschrijving: ${data.title}`);
+    if (data.brand?.name || (typeof data.brand === 'string' && data.brand)) lines.push(`- Merk: ${data.brand?.name || data.brand}`);
+    if (data.supplier?.name || (typeof data.supplier === 'string' && data.supplier)) lines.push(`- Leverancier: ${data.supplier?.name || data.supplier}`);
+    if (data.category?.name || (typeof data.category === 'string' && data.category)) lines.push(`- Categorie: ${data.category?.name || data.category}`);
+    if (data.subcategory?.name || (typeof data.subcategory === 'string' && data.subcategory)) lines.push(`- Subcategorie: ${data.subcategory?.name || data.subcategory}`);
+    if (data.volumeMl) lines.push(`- Inhoud (ml): ${data.volumeMl} ml`);
+    if (data.volumeGr) lines.push(`- Inhoud (gr): ${data.volumeGr} gr`);
+    if (data.mainMaterial) lines.push(`- Hoofdmateriaal: ${data.mainMaterial}`);
+    if (data.material) lines.push(`- Materiaal: ${data.material}`);
+    
+    const dims = [
+      data.lengthCm ? `L: ${data.lengthCm}cm` : null,
+      data.widthCm ? `B: ${data.widthCm}cm` : null,
+      data.heightCm ? `H: ${data.heightCm}cm` : null,
+    ].filter(Boolean);
+    if (dims.length > 0) lines.push(`- Afmetingen: ${dims.join(' x ')}`);
+
+    if (data.weightGr) lines.push(`- Gewicht (gr): ${data.weightGr} gr`);
+    if (data.color) lines.push(`- Kleur: ${data.color}`);
+    if (data.size) lines.push(`- Maat: ${data.size}`);
+    if (data.ingredients) lines.push(`- Ingrediënten: ${data.ingredients}`);
+    if (data.allergens) lines.push(`- Allergenen: ${data.allergens}`);
+    if (data.shortDescription) lines.push(`- Korte omschrijving: ${data.shortDescription}`);
+    if (data.longDescription) lines.push(`- Lange omschrijving: ${data.longDescription}`);
+    if (data.tags) lines.push(`- Tags: ${data.tags}`);
+
+    if (data.customData && typeof data.customData === 'object') {
+      Object.entries(data.customData).forEach(([k, v]) => {
+        if (v != null && v !== '') lines.push(`- ${k}: ${v}`);
+      });
+    }
+
+    return lines.join('\n');
+  }, [localProductData]);
+
+  const renderField = (moduleName: string, label: string, val: string, inputComponent: React.ReactNode, isCheckbox: boolean = false, textColor?: string, fieldKey?: string, fieldInstruction?: string, sectionInstruction?: string) => {
     let action = isAdmin ? 'WRITE' : (fieldPermissions?.[moduleName] ?? 'READ');
     if (isGloballyLocked) action = 'READ';
 
@@ -392,6 +441,8 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
         analysisNarrative={analysisNarrative!}
         productTitle={localProductData?.title || ''}
         fieldInstruction={fieldInstruction}
+        sectionInstruction={sectionInstruction}
+        getProductContext={getLiveProductContext}
         onApply={(suggestion) => applyAiSuggestion(fieldKey!, suggestion)}
       />
     ) : null;
@@ -588,7 +639,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
 
     return (
       <div key={f.id} style={{ gridColumn: `span ${span}`, backgroundColor: f.backgroundColor || 'transparent', padding: f.backgroundColor ? '0.75rem' : '0', borderRadius: 'var(--radius)', color: effectiveTextColor }}>
-        {renderField(f.id, f.label, val?.toString() ?? '', inputComponent, isCheckbox, effectiveTextColor, isAiEligible ? key : undefined, f.aiInstruction)}
+        {renderField(f.id, f.label, val?.toString() ?? '', inputComponent, isCheckbox, effectiveTextColor, isAiEligible ? key : undefined, f.aiInstruction, section?.aiInstruction)}
       </div>
     );
   };
@@ -796,6 +847,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                         analysisNarrative={analysisNarrative}
                         productTitle={localProductData?.title || ''}
                         sectionInstruction={section.aiInstruction}
+                        getProductContext={getLiveProductContext}
                         onApply={applyAiSectionSuggestions}
                       />
                     )}

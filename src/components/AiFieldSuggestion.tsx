@@ -10,6 +10,8 @@ interface Props {
   analysisNarrative: string;
   productTitle: string;
   fieldInstruction?: string; // Admin-defined constraint, e.g. "Alleen hele getallen, geen eenheid"
+  sectionInstruction?: string; // Optional section-level instruction
+  getProductContext?: () => string; // Optional dynamic context of current product specifications
   onApply: (value: string) => void;
 }
 
@@ -20,7 +22,7 @@ function getProvider(): string {
   catch { return 'openai'; }
 }
 
-export default function AiFieldSuggestion({ fieldKey, fieldLabel, currentValue, analysisNarrative, productTitle, fieldInstruction, onApply }: Props) {
+export default function AiFieldSuggestion({ fieldKey, fieldLabel, currentValue, analysisNarrative, productTitle, fieldInstruction, sectionInstruction, getProductContext, onApply }: Props) {
   const [open, setOpen]             = useState(false);
   const [mounted, setMounted]       = useState(false);
   const [loading, setLoading]       = useState(false);
@@ -41,19 +43,25 @@ export default function AiFieldSuggestion({ fieldKey, fieldLabel, currentValue, 
   const fetchSuggestion = useCallback(async () => {
     setLoading(true); setError(''); setSuggestion(null);
     try {
+      const productContext = getProductContext ? getProductContext() : '';
+
+      const promptParts = [
+        `Product: "${productTitle}"`,
+        productContext ? `\nProductkenmerken en specificaties:\n${productContext}` : null,
+        analysisNarrative ? `\nProductanalyse:\n${analysisNarrative}` : null,
+        `\nSchrijf een passende waarde voor het veld "${fieldLabel}"` + (currentValue ? ` (huidige waarde: "${currentValue}")` : ' (veld is leeg)'),
+        sectionInstruction ? `\nAlgemene instructie voor deze sectie: ${sectionInstruction}` : null,
+        fieldInstruction ? `\nSpecifieke instructie voor dit veld (verplicht op te volgen): ${fieldInstruction}` : null,
+        `\nGeef alleen de veldinhoud terug, maximaal 500 tekens.`
+      ].filter(Boolean).join('\n');
+
       const res = await fetch('/api/ai/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider: getProvider(),
           systemPrompt: SYSTEM_PROMPT,
-          prompt:
-            `Product: "${productTitle}"\n\n` +
-            `Productanalyse:\n${analysisNarrative}\n\n` +
-            `Schrijf een passende waarde voor het veld "${fieldLabel}"` +
-            (currentValue ? ` (huidige waarde: "${currentValue}")` : ' (veld is leeg)') +
-            (fieldInstruction ? `\n\nSpecifieke instructie voor dit veld (verplicht op te volgen): ${fieldInstruction}` : '') +
-            `\n\nGeef alleen de veldinhoud terug, maximaal 500 tekens.`,
+          prompt: promptParts,
         }),
       });
       const data = await res.json();
@@ -61,7 +69,7 @@ export default function AiFieldSuggestion({ fieldKey, fieldLabel, currentValue, 
       else { setSuggestion(data.response?.trim() ?? ''); }
     } catch { setError('Verbindingsfout'); }
     setLoading(false);
-  }, [fieldLabel, currentValue, analysisNarrative, productTitle]);
+  }, [fieldLabel, currentValue, analysisNarrative, productTitle, fieldInstruction, sectionInstruction, getProductContext]);
 
   const openPopover = () => {
     if (btnRef.current) {
