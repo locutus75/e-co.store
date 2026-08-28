@@ -48,7 +48,7 @@ export async function getSupplierProductsAction(supplierId: string, currentArtic
         supplierId: supplierId,
         internalArticleNumber: { not: currentArticleId }
       },
-      select: { internalArticleNumber: true, title: true }
+      select: { internalArticleNumber: true, title: true, status: true }
     });
   } catch(e) {
     console.error("Failed to get supplier products", e);

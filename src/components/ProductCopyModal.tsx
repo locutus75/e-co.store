@@ -2,6 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import { getSupplierProductsAction, getProductDataAction } from '@/app/actions/product';
 
+const ALL_STATUSES = ['NEW', 'EDIT', 'CHECK', 'DONE'] as const;
+
 export default function ProductCopyModal({ 
   supplierId, 
   currentArticleId, 
@@ -15,6 +17,25 @@ export default function ProductCopyModal({
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [sourceData, setSourceData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Status filter state (default: NEW and EDIT, persisted in localStorage)
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('eco_copy_status_filter');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) return parsed;
+        } catch (e) {}
+      }
+    }
+    return ['NEW', 'EDIT'];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('eco_copy_status_filter', JSON.stringify(selectedStatuses));
+  }, [selectedStatuses]);
+
   const [deselectedFields, setDeselectedFields] = useState<Set<string>>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('eco_copy_blacklist');
@@ -37,6 +58,20 @@ export default function ProductCopyModal({
     });
   }, [supplierId, currentArticleId]);
 
+  const filteredProducts = React.useMemo(() => {
+    return products.filter(p => {
+      const st = (p.status || 'NEW').toUpperCase();
+      return selectedStatuses.includes(st);
+    });
+  }, [products, selectedStatuses]);
+
+  useEffect(() => {
+    if (selectedProductId && !filteredProducts.some(p => p.internalArticleNumber === selectedProductId)) {
+      setSelectedProductId('');
+      setSourceData(null);
+    }
+  }, [filteredProducts, selectedProductId]);
+
   useEffect(() => {
     if (selectedProductId) {
       getProductDataAction(selectedProductId).then(data => setSourceData(data));
@@ -44,6 +79,63 @@ export default function ProductCopyModal({
       setSourceData(null);
     }
   }, [selectedProductId]);
+
+  const toggleStatus = (status: string) => {
+    setSelectedStatuses(prev => {
+      if (prev.includes(status)) {
+        return prev.filter(s => s !== status);
+      } else {
+        return [...prev, status];
+      }
+    });
+  };
+
+  const getStatusChipStyle = (status: string, isSelected: boolean) => {
+    const norm = status.toUpperCase();
+    if (isSelected) {
+      switch (norm) {
+        case 'NEW':
+          return {
+            backgroundColor: 'rgba(147, 51, 234, 0.15)',
+            borderColor: '#9333ea',
+            color: '#7e22ce',
+            fontWeight: 600,
+            dotColor: '#9333ea'
+          };
+        case 'EDIT':
+          return {
+            backgroundColor: 'rgba(209, 182, 74, 0.25)',
+            borderColor: 'var(--color-mustard)',
+            color: '#854d0e',
+            fontWeight: 600,
+            dotColor: '#b45309'
+          };
+        case 'CHECK':
+          return {
+            backgroundColor: 'rgba(59, 130, 246, 0.15)',
+            borderColor: '#3b82f6',
+            color: '#1d4ed8',
+            fontWeight: 600,
+            dotColor: '#3b82f6'
+          };
+        case 'DONE':
+          return {
+            backgroundColor: 'rgba(16, 185, 129, 0.15)',
+            borderColor: '#10b981',
+            color: '#047857',
+            fontWeight: 600,
+            dotColor: '#10b981'
+          };
+      }
+    }
+    return {
+      backgroundColor: 'transparent',
+      borderColor: 'var(--border)',
+      color: 'var(--text-muted)',
+      fontWeight: 500,
+      dotColor: '#94a3b8'
+    };
+  };
 
   const toggleField = (fieldId: string) => {
     setDeselectedFields(prev => {
@@ -101,21 +193,79 @@ export default function ProductCopyModal({
         ) : (
           <>
             <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>
-                Leverancier Product ({products.length} beschikbaar)
-              </label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                  Leverancier Product ({filteredProducts.length} van {products.length} beschikbaar)
+                </label>
+                
+                {/* Status Filter Chips */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginRight: '0.2rem' }}>
+                    Status filter:
+                  </span>
+                  {ALL_STATUSES.map(st => {
+                    const isSelected = selectedStatuses.includes(st);
+                    const count = products.filter(p => (p.status || 'NEW').toUpperCase() === st).length;
+                    const style = getStatusChipStyle(st, isSelected);
+                    return (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => toggleStatus(st)}
+                        title={`Klik om ${st} ${isSelected ? 'uit te sluiten' : 'weer te geven'}`}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          padding: '0.25rem 0.6rem',
+                          borderRadius: '1rem',
+                          fontSize: '0.75rem',
+                          border: '1px solid',
+                          borderColor: style.borderColor,
+                          backgroundColor: style.backgroundColor,
+                          color: style.color,
+                          fontWeight: style.fontWeight,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          userSelect: 'none'
+                        }}
+                      >
+                        <span style={{
+                          width: '6px',
+                          height: '6px',
+                          borderRadius: '50%',
+                          backgroundColor: style.dotColor,
+                          display: 'inline-block'
+                        }} />
+                        <span>{st}</span>
+                        <span style={{ fontSize: '0.65rem', opacity: 0.8 }}>({count})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <select 
                 className="input" 
                 value={selectedProductId} 
                 onChange={e => setSelectedProductId(e.target.value)}
-                disabled={loading}
+                disabled={loading || filteredProducts.length === 0}
               >
-                <option value="">-- Selecteer bron product --</option>
-                {products.map(p => (
-                  <option key={p.internalArticleNumber} value={p.internalArticleNumber}>
-                    [{p.internalArticleNumber}] {p.title}
-                  </option>
-                ))}
+                <option value="">
+                  {loading 
+                    ? '-- Producten laden... --' 
+                    : filteredProducts.length === 0 
+                      ? '-- Geen producten met de geselecteerde statussen --' 
+                      : '-- Selecteer bron product --'}
+                </option>
+                {filteredProducts.map(p => {
+                  const st = (p.status || 'NEW').toUpperCase();
+                  return (
+                    <option key={p.internalArticleNumber} value={p.internalArticleNumber}>
+                      [{st}] [{p.internalArticleNumber}] {p.title}
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
