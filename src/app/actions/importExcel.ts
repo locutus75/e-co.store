@@ -146,8 +146,13 @@ export async function executeImportAction(
         for (const [key, value] of Object.entries(rowData)) {
           // It's a relation field if it's an object (like { connectOrCreate })
           const isRelation = typeof value === 'object' && value !== null && 'connectOrCreate' in value;
+          const shouldOverwrite = !!(
+            overwriteRules[key] || 
+            overwriteRules[`rel_${key}`] || 
+            overwriteRules[key.replace('rel_', '')]
+          );
 
-          if (overwriteRules[key]) {
+          if (shouldOverwrite) {
              // Overwrite unconditionally
              updatePayload[key] = value;
           } else {

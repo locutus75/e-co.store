@@ -192,6 +192,12 @@ export default function ExcelImportWizard({ onClose }: { onClose: (shouldRefresh
                  <p style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text)' }}>Vaste Unieke Identifier: Artikel Nummer (ID)</p>
                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Producten worden altijd geïdentificeerd aan de hand van het Artikel Nummer. Rijen zonder Artikel Nummer worden overgeslagen.</p>
                  
+                 {!Object.values(mapping).includes('internalArticleNumber') && (
+                   <div style={{ marginTop: '0.75rem', padding: '0.6rem 0.9rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--error)', borderRadius: 'var(--radius)', fontSize: '0.85rem', fontWeight: 600, border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                     ⚠️ Let op: Er is nog geen kolom gekoppeld aan <u>Artikel Nummer (ID)</u>. Koppel eerst de kolom met het artikelnummer om producten te kunnen vinden en bijwerken.
+                   </div>
+                 )}
+
                  <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem' }}>
                     <button className="btn" style={{ fontSize: '0.85rem', padding: '0.4rem 1rem' }} onClick={() => {
                         const newRules: Record<string, boolean> = {};
@@ -292,7 +298,18 @@ export default function ExcelImportWizard({ onClose }: { onClose: (shouldRefresh
           {phase === 'mapping' && (
              <>
                <button className="btn" onClick={() => setPhase('preview')}>← Terug</button>
-               <button className="btn btn-primary" onClick={executeImport}>Start Import</button>
+               <button 
+                 className="btn btn-primary" 
+                 onClick={executeImport}
+                 disabled={!Object.values(mapping).includes('internalArticleNumber')}
+                 style={{ 
+                   opacity: Object.values(mapping).includes('internalArticleNumber') ? 1 : 0.5, 
+                   cursor: Object.values(mapping).includes('internalArticleNumber') ? 'pointer' : 'not-allowed' 
+                 }}
+                 title={!Object.values(mapping).includes('internalArticleNumber') ? "Koppel eerst een kolom aan 'Artikel Nummer (ID)'" : "Start de import"}
+               >
+                 Start Import
+               </button>
              </>
           )}
           {phase === 'success' && (
