@@ -263,6 +263,12 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
 
   const handleCopyCommit = (injectedData: any) => {
     const fresh = { ...localProductData, ...injectedData };
+    if (injectedData.customData) {
+      fresh.customData = {
+        ...(localProductData?.customData || {}),
+        ...injectedData.customData
+      };
+    }
     setLocalProductData(fresh);
     setFormKey(k => k + 1);
     setShowCopyModal(false);
@@ -436,6 +442,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     
     let key = moduleName.replace('FIELD:', '');
     if (key === 'description') key = 'longDescription';
+    if (key === 'price') key = 'basePrice';
     
     const writeIndicator = action !== 'READ' ? <input type="hidden" name="_present_fields" value={key} /> : null;
 
@@ -500,6 +507,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   const renderDataField = (f: any, section: any) => {
     let key = f.id.replace('FIELD:', '');
     if (key === 'description') key = 'longDescription'; // Backward compatibility fix
+    if (key === 'price') key = 'basePrice';
     
     const effectiveTextColor = f.textColor || section?.textColor || 'var(--text)';
     

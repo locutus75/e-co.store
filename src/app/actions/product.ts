@@ -59,7 +59,14 @@ export async function getSupplierProductsAction(supplierId: string, currentArtic
 export async function getProductDataAction(internalId: string) {
   try {
     return await prisma.product.findUnique({
-      where: { internalArticleNumber: internalId }
+      where: { internalArticleNumber: internalId },
+      include: {
+        brand: true,
+        category: true,
+        subcategory: true,
+        supplier: true,
+        assignedUser: true,
+      }
     });
   } catch(e) {
     console.error("Failed to get product data", e);

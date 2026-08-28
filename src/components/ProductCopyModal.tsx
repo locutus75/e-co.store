@@ -146,18 +146,44 @@ export default function ProductCopyModal({
     });
   };
 
+  const selectAllFields = () => {
+    setDeselectedFields(new Set());
+  };
+
+  const deselectAllFields = () => {
+    setDeselectedFields(new Set(validFields.map(f => f.id)));
+  };
+
   const handleCopy = () => {
     if (!sourceData) return;
     const finalDataToInject: any = {};
     layout.forEach((sec: any) => {
       sec.fields.forEach((f: any) => {
-        if (f.id === 'FIELD:internalArticleNumber' || f.id === 'FIELD:media') return;
+        if (f.id === 'FIELD:internalArticleNumber' || f.id === 'FIELD:media' || f.type === 'chat') return;
         const action = isAdmin ? 'WRITE' : (fieldPermissions?.[f.id] ?? 'READ');
         
         if (action === 'WRITE' && !deselectedFields.has(f.id)) {
           let key = f.id.replace('FIELD:', '');
           if (key === 'description') key = 'longDescription'; // Backward compatibility
-          finalDataToInject[key] = sourceData[key];
+          if (key === 'price') key = 'basePrice';
+
+          if (f.type === 'relation' && f.relationPath) {
+            const rootKey = f.relationPath.split('.')[0];
+            finalDataToInject[rootKey] = sourceData[rootKey];
+            if (rootKey === 'brand') finalDataToInject.brandId = sourceData.brandId;
+            if (rootKey === 'category') finalDataToInject.categoryId = sourceData.categoryId;
+            if (rootKey === 'subcategory') finalDataToInject.subcategoryId = sourceData.subcategoryId;
+            if (rootKey === 'assignedUser') finalDataToInject.assignedUserId = sourceData.assignedUserId;
+          } else if (key.startsWith('custom_')) {
+            const customKey = key.replace('custom_', '');
+            if (!finalDataToInject.customData) {
+              finalDataToInject.customData = {};
+            }
+            finalDataToInject.customData[customKey] = sourceData.customData?.[customKey] ?? null;
+          } else {
+            const val = sourceData[key] !== undefined ? sourceData[key] : (sourceData[f.id] !== undefined ? sourceData[f.id] : null);
+            finalDataToInject[key] = val;
+          }
         }
       });
     });
@@ -168,7 +194,7 @@ export default function ProductCopyModal({
     const valid: any[] = [];
     layout.forEach((sec: any) => {
       sec.fields.forEach((f: any) => {
-        if (f.id === 'FIELD:internalArticleNumber' || f.id === 'FIELD:media') return;
+        if (f.id === 'FIELD:internalArticleNumber' || f.id === 'FIELD:media' || f.type === 'chat') return;
         const action = isAdmin ? 'WRITE' : (fieldPermissions?.[f.id] ?? 'READ');
         if (action === 'WRITE') valid.push({ ...f, section: sec.title });
       });
@@ -271,9 +297,19 @@ export default function ProductCopyModal({
 
             {selectedProductId && sourceData && (
               <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '4px', padding: '1rem', marginBottom: '1.5rem', backgroundColor: 'var(--background)' }}>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>
-                  Selecteer welke velden u wilt overschrijven. Uw selectie wordt onthouden voor de volgende keer.
-                </p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
+                    Selecteer welke velden u wilt overschrijven. Uw selectie wordt onthouden voor de volgende keer.
+                  </p>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button type="button" onClick={selectAllFields} style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '4px', cursor: 'pointer', color: 'var(--text)' }}>
+                      Alles selecteren
+                    </button>
+                    <button type="button" onClick={deselectAllFields} style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                      Alles deselecteren
+                    </button>
+                  </div>
+                </div>
                 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.8rem' }}>
                   {validFields.map(f => (
