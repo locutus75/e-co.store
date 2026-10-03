@@ -1007,6 +1007,7 @@ export default function ProductsClient({
                     status={empcoMap[product.internalArticleNumber]?.status ?? null}
                     stale={empcoMap[product.internalArticleNumber]?.stale ?? false}
                     issueCount={empcoMap[product.internalArticleNumber]?.issueCount ?? 0}
+                    onOpenProduct={() => setSelectedProduct(product)}
                   />
                 </td>
                 <td style={{ padding: '1.25rem' }}>

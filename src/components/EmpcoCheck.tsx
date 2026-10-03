@@ -2,10 +2,13 @@
 
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useRouter } from 'next/navigation';
 import {
   EmpcoIssue, EmpcoResult, EmpcoStatus, EMPCO_STATUS_META, ruleLabel, EMPCO_RULES,
   EmpcoGuidelineLink, DEFAULT_EMPCO_GUIDELINE_LINKS, DEFAULT_EMPCO_GUIDELINE_NOTES,
+  isEmpcoIssueFixable,
 } from '@/lib/empco';
+import { applyEmpcoBulkFixesAction } from '@/app/actions/empco';
 
 export const EMPCO_ACCENT = '#0f766e';
 export const EMPCO_GRADIENT = 'linear-gradient(135deg, #0f766e 0%, #065f46 100%)';
@@ -560,24 +563,38 @@ export function EmpcoSpinner({ size = 14, color = EMPCO_ACCENT }: { size?: numbe
   return <span style={{ display: 'inline-block', width: size, height: size, border: `2px solid ${color}33`, borderTopColor: color, borderRadius: '50%', animation: 'empco-spin 0.8s linear infinite', flexShrink: 0 }} />;
 }
 
-// ── Read-only viewer (product list) ──────────────────────────────────────────
-export default function EmpcoViewer({ articleNumber, productTitle, status, stale, issueCount }: {
-  articleNumber: string; productTitle?: string; status?: string | null; stale?: boolean; issueCount?: number;
+// ── Interactive viewer & quick-fix modal (product list) ───────────────────────
+export default function EmpcoViewer({
+  articleNumber,
+  productTitle,
+  status,
+  stale,
+  issueCount,
+  onOpenProduct,
+}: {
+  articleNumber: string;
+  productTitle?: string;
+  status?: string | null;
+  stale?: boolean;
+  issueCount?: number;
+  onOpenProduct?: () => void;
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<{ check: any; stale: boolean; guidelines?: any } | null>(null);
   const [error, setError] = useState('');
+  const [applyingIdx, setApplyingIdx] = useState<number | null>(null);
+  const [appliedStatus, setAppliedStatus] = useState<Record<number, 'ok' | string>>({});
+  const [applyingAll, setApplyingAll] = useState(false);
+  const [actionSuccessMsg, setActionSuccessMsg] = useState('');
+
   useEffect(() => { setMounted(true); }, []);
 
   const state = empcoBadgeState(status, stale);
 
-  const openViewer = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (state === 'NONE') return;
-    setOpen(true);
-    setLoading(true); setError('');
+  const loadCheck = async () => {
     try {
       const res = await fetch(`/api/ai/empco?article=${encodeURIComponent(articleNumber)}`);
       const d = await res.json();
@@ -585,24 +602,235 @@ export default function EmpcoViewer({ articleNumber, productTitle, status, stale
       else if (!d.check?.result) setError('Geen EmpCo-check gevonden.');
       else setData(d);
     } catch { setError('Laden mislukt'); }
+  };
+
+  const openViewer = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (state === 'NONE') return;
+    setOpen(true);
+    setLoading(true); setError(''); setAppliedStatus({}); setActionSuccessMsg('');
+    await loadCheck();
     setLoading(false);
   };
 
-  const badge = <EmpcoBadge state={state} issueCount={issueCount} compact onClick={state === 'NONE' ? undefined : openViewer} title={state === 'NONE' ? 'Nog geen EmpCo-check' : `EmpCo: ${EMPCO_STATUS_META[state].label} — klik voor details`} />;
+  const handleApplySingle = async (idx: number) => {
+    setApplyingIdx(idx);
+    setActionSuccessMsg('');
+    try {
+      const res = await applyEmpcoBulkFixesAction([{ articleNumber, issueIdx: [idx] }]);
+      const r = res[0];
+      if (r?.error) {
+        setAppliedStatus(prev => ({ ...prev, [idx]: r.error || 'Mislukt' }));
+      } else if (r?.applied) {
+        setAppliedStatus(prev => ({ ...prev, [idx]: 'ok' }));
+        setActionSuccessMsg('Voorstel succesvol doorgevoerd en opgeslagen in product!');
+        await loadCheck();
+        router.refresh();
+      }
+    } catch (err: any) {
+      setAppliedStatus(prev => ({ ...prev, [idx]: err?.message || 'Mislukt' }));
+    } finally {
+      setApplyingIdx(null);
+    }
+  };
+
+  const handleApplyAll = async () => {
+    const issues = data?.check?.result?.issues ?? [];
+    const fixableIndices = issues
+      .map((issue: EmpcoIssue, idx: number) => (isEmpcoIssueFixable(issue) ? idx : -1))
+      .filter((idx: number) => idx !== -1);
+    if (fixableIndices.length === 0) return;
+    setApplyingAll(true);
+    setActionSuccessMsg('');
+    try {
+      const res = await applyEmpcoBulkFixesAction([{ articleNumber, issueIdx: fixableIndices }]);
+      const r = res[0];
+      if (r?.applied) {
+        setActionSuccessMsg(`Alle ${r.applied} voorstellen succesvol doorgevoerd en opgeslagen!`);
+        await loadCheck();
+        router.refresh();
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Doorvoeren mislukt');
+    } finally {
+      setApplyingAll(false);
+    }
+  };
+
+  const badge = <EmpcoBadge state={state} issueCount={issueCount} compact onClick={state === 'NONE' ? undefined : openViewer} title={state === 'NONE' ? 'Nog geen EmpCo-check' : `EmpCo: ${EMPCO_STATUS_META[state].label} — klik voor details en aanpassen`} />;
   if (!mounted) return badge;
+
+  const fixableIssues = (data?.check?.result?.issues ?? []).filter((i: EmpcoIssue) => isEmpcoIssueFixable(i));
+  const openFixableCount = fixableIssues.length;
 
   return (
     <>
       {badge}
       {open && (
-        <EmpcoModalShell title="EmpCo-check" subtitle={productTitle ? `${productTitle} — #${articleNumber}` : `#${articleNumber}`} onClose={() => setOpen(false)}
-          headerRight={data?.check && <span style={{ fontSize: '0.72rem', opacity: 0.8 }}>📅 {new Date(data.check.updatedAt).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>}>
+        <EmpcoModalShell
+          title="EmpCo-check"
+          subtitle={productTitle ? `${productTitle} — #${articleNumber}` : `#${articleNumber}`}
+          onClose={() => setOpen(false)}
+          headerRight={
+            <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center' }}>
+              {onOpenProduct && (
+                <button
+                  type="button"
+                  onClick={() => { setOpen(false); onOpenProduct(); }}
+                  style={{
+                    padding: '0.3rem 0.75rem',
+                    borderRadius: '999px',
+                    fontSize: '0.74rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    border: '1px solid rgba(255,255,255,0.45)',
+                    backgroundColor: 'rgba(255,255,255,0.15)',
+                    color: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                  }}
+                  title="Open dit product in de productdrawer"
+                >
+                  ✏️ Open product
+                </button>
+              )}
+              {data?.check && (
+                <span style={{ fontSize: '0.72rem', opacity: 0.85 }}>
+                  📅 {new Date(data.check.updatedAt).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </div>
+          }
+        >
           <div onClick={e => e.stopPropagation()}>
-            {loading && <div style={{ padding: '3rem', display: 'flex', justifyContent: 'center', gap: '0.6rem', color: EMPCO_ACCENT }}><EmpcoSpinner size={18} /> Laden…</div>}
+            {loading && (
+              <div style={{ padding: '3rem', display: 'flex', justifyContent: 'center', gap: '0.6rem', color: EMPCO_ACCENT }}>
+                <EmpcoSpinner size={18} /> Laden…
+              </div>
+            )}
             {error && <div style={{ padding: '2rem', textAlign: 'center', color: '#dc2626' }}>❌ {error}</div>}
+
             {!loading && data?.check?.result && (
-              <EmpcoResultView result={data.check.result} stale={data.stale} guidelines={data.guidelines}
-                footerNote={<> Open het product om voorstellen direct over te nemen.</>} />
+              <>
+                {/* Quick actions top bar */}
+                {openFixableCount > 0 && (
+                  <div style={{
+                    padding: '0.6rem 1.4rem',
+                    backgroundColor: '#ecfdf5',
+                    borderBottom: '1px solid #a7f3d0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '0.8rem',
+                    flexWrap: 'wrap',
+                  }}>
+                    <span style={{ fontSize: '0.78rem', color: '#065f46', fontWeight: 600 }}>
+                      ⚡ {openFixableCount} voorgestelde aanpassing{openFixableCount === 1 ? '' : 'en'} direct doorvoerbaar:
+                    </span>
+                    <button
+                      type="button"
+                      disabled={applyingAll}
+                      onClick={handleApplyAll}
+                      style={{
+                        padding: '0.35rem 0.95rem',
+                        borderRadius: '7px',
+                        border: 'none',
+                        backgroundColor: EMPCO_ACCENT,
+                        color: 'white',
+                        fontWeight: 700,
+                        fontSize: '0.76rem',
+                        cursor: applyingAll ? 'wait' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        boxShadow: '0 2px 6px rgba(15,118,110,0.25)',
+                      }}
+                    >
+                      {applyingAll && <EmpcoSpinner size={12} color="white" />}
+                      ✓ Alle {openFixableCount} voorstellen overnemen
+                    </button>
+                  </div>
+                )}
+
+                {actionSuccessMsg && (
+                  <div style={{
+                    margin: '0.8rem 1.4rem 0',
+                    padding: '0.6rem 0.9rem',
+                    borderRadius: '8px',
+                    backgroundColor: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                    color: '#1e3a8a',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                  }}>
+                    ✓ {actionSuccessMsg}
+                  </div>
+                )}
+
+                <EmpcoResultView
+                  result={data.check.result}
+                  stale={data.stale}
+                  guidelines={data.guidelines}
+                  renderIssueActions={(issue, idx) => {
+                    if (!isEmpcoIssueFixable(issue)) return null;
+                    const st = appliedStatus[idx];
+                    if (st === 'ok') {
+                      return <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#15803d' }}>✓ Overgenomen</span>;
+                    }
+                    return (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        {st && <span style={{ fontSize: '0.7rem', color: '#b91c1c' }}>{st}</span>}
+                        <button
+                          type="button"
+                          disabled={applyingIdx === idx || applyingAll}
+                          onClick={() => handleApplySingle(idx)}
+                          style={{
+                            padding: '0.24rem 0.7rem',
+                            borderRadius: '6px',
+                            border: `1px solid ${EMPCO_ACCENT}`,
+                            backgroundColor: 'white',
+                            color: EMPCO_ACCENT,
+                            fontWeight: 700,
+                            fontSize: '0.72rem',
+                            cursor: applyingIdx === idx ? 'wait' : 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.3rem',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                          }}
+                        >
+                          {applyingIdx === idx && <EmpcoSpinner size={11} />}
+                          ✓ Overnemen
+                        </button>
+                      </span>
+                    );
+                  }}
+                  footerNote={
+                    onOpenProduct ? (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          onClick={() => { setOpen(false); onOpenProduct(); }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#0f766e',
+                            fontWeight: 700,
+                            textDecoration: 'underline',
+                            cursor: 'pointer',
+                            padding: 0,
+                            fontSize: 'inherit',
+                          }}
+                        >
+                          Open product in de editor
+                        </button>
+                      </>
+                    ) : undefined
+                  }
+                />
+              </>
             )}
           </div>
         </EmpcoModalShell>

@@ -23,7 +23,10 @@ if (Test-Path $UpdateRequestFlag) { Remove-Item $UpdateRequestFlag -Force }
 function Stop-Port4000 {
     $conns = Get-NetTCPConnection -LocalPort 4000 -ErrorAction SilentlyContinue
     foreach ($c in $conns) {
-        Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
+        if ($c.OwningProcess -and $c.OwningProcess -gt 0 -and $c.OwningProcess -ne $PID) {
+            Write-Host "Vrijmaken poort 4000: proces $($c.OwningProcess) beëindigen..." -ForegroundColor Yellow
+            Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
+        }
     }
     Start-Sleep -Seconds 1
 }
@@ -34,6 +37,9 @@ while ($true) {
     Write-Host "=========================================" -ForegroundColor Cyan
     Write-Host "  E-Co Store : Booting Production Server" -ForegroundColor Cyan
     Write-Host "=========================================" -ForegroundColor Cyan
+
+    # Ensure port 4000 is clean before starting
+    Stop-Port4000
 
     $env:NODE_ENV  = "production"
     $env:PORT      = "4000"
@@ -129,6 +135,7 @@ while ($true) {
                 $crashOutput = Receive-Job -Job $serverJob
                 if ($crashOutput) { Write-Host $crashOutput -ForegroundColor Red }
                 Remove-Job -Job $serverJob -Force
+                Stop-Port4000
 
                 Write-Host "Herstart poging over 5 seconden..." -ForegroundColor Yellow
                 Start-Sleep -Seconds 5
