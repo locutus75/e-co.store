@@ -93,7 +93,7 @@ export async function executeImportAction(
           if (!Number.isNaN(parsed)) rowData[dbField] = parsed;
         } else if (fieldDef.type === 'boolean') {
           const upper = cellVal.toUpperCase();
-          rowData[dbField] = (upper === "JA" || upper === "TRUE" || upper === "1" || upper === "Y");
+          rowData[dbField] = (upper === "JA" || upper === "TRUE" || upper === "1" || upper === "Y" || upper === "J" || upper === "X" || upper === "UITLOPEND");
         } else if (fieldDef.type === 'relation') {
           // It's either rel_supplier or rel_brand
           const relationName = dbField.replace('rel_', ''); // 'supplier' or 'brand'

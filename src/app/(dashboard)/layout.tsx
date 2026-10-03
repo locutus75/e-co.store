@@ -8,8 +8,13 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import ConfettiProvider from "@/components/ConfettiProvider";
 
+import { redirect } from 'next/navigation';
+
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const session = await getServerSession(authOptions);
+  if (!session) {
+    redirect('/login');
+  }
   const roles = (session?.user as any)?.roles || [];
   const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
   

@@ -4,12 +4,14 @@ import React from 'react';
 interface ConfirmationModalProps {
   isOpen: boolean;
   title: string;
-  message: string;
+  message?: string;
   confirmLabel?: string;
   cancelLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
-  type?: 'danger' | 'warning' | 'info';
+  type?: 'danger' | 'warning' | 'info' | 'success';
+  customIcon?: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 export default function ConfirmationModal({
@@ -20,7 +22,9 @@ export default function ConfirmationModal({
   cancelLabel = "Annuleren",
   onConfirm,
   onCancel,
-  type = 'warning'
+  type = 'warning',
+  customIcon,
+  children
 }: ConfirmationModalProps) {
   if (!isOpen) return null;
 
@@ -28,7 +32,7 @@ export default function ConfirmationModal({
     switch (type) {
       case 'danger':
         return {
-          icon: '🗑️',
+          icon: customIcon || '🗑️',
           iconBg: 'rgba(239, 68, 68, 0.1)',
           titleColor: '#ef4444',
           btnBg: '#ef4444',
@@ -37,17 +41,26 @@ export default function ConfirmationModal({
         };
       case 'info':
         return {
-          icon: 'ℹ️',
+          icon: customIcon || 'ℹ️',
           iconBg: 'rgba(59, 130, 246, 0.1)',
           titleColor: '#3b82f6',
           btnBg: 'var(--primary)',
           btnHoverBg: 'var(--primary-hover)',
           btnShadow: '0 4px 14px rgba(59, 130, 246, 0.3)',
         };
+      case 'success':
+        return {
+          icon: customIcon || '⚖️',
+          iconBg: 'rgba(15, 118, 110, 0.12)',
+          titleColor: '#0f766e',
+          btnBg: '#0f766e',
+          btnHoverBg: '#115e59',
+          btnShadow: '0 4px 14px rgba(15, 118, 110, 0.35)',
+        };
       case 'warning':
       default:
         return {
-          icon: '⚠️',
+          icon: customIcon || '⚠️',
           iconBg: '#fff7ed',
           titleColor: '#9a3412',
           btnBg: '#ea580c',
@@ -70,9 +83,16 @@ export default function ConfirmationModal({
             <h3 style={{ margin: 0, fontSize: '1.35rem', color: theme.titleColor, fontWeight: 700 }}>
               {title}
             </h3>
-            <p style={{ margin: '0.75rem 0 0 0', color: 'var(--text-muted, #4b5563)', fontSize: '0.95rem', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-              {message}
-            </p>
+            {message && (
+              <p style={{ margin: '0.75rem 0 0 0', color: 'var(--text-muted, #4b5563)', fontSize: '0.95rem', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                {message}
+              </p>
+            )}
+            {children && (
+              <div style={{ marginTop: message ? '0.75rem' : '0.5rem' }}>
+                {children}
+              </div>
+            )}
           </div>
         </div>
         

@@ -3,6 +3,8 @@
 import React, { useState, useTransition, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useExchangeRate, formatCostEur } from '@/hooks/useExchangeRate';
+import { getEmpcoSettingsAction } from '@/app/actions/empco';
+import { EmpcoBadge, empcoBadgeState, EmpcoSpinner } from './EmpcoCheck';
 
 const PROVIDER_ICONS: Record<string, string> = { openai: '🟢', anthropic: '🟠', gemini: '🔵' };
 const PROVIDER_LABELS: Record<string, string> = { openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Google Gemini' };
@@ -201,6 +203,29 @@ export default function ProductAiPanel({ product, layout }: Props) {
   const [saved, setSaved]                       = useState(false);
   const [error, setError]                       = useState('');
   const [initialized, setInitialized]           = useState(false);
+  const [includeEmpco, setIncludeEmpco]         = useState(true);
+  const [empcoRun, setEmpcoRun]                 = useState<{ loading: boolean; check?: any; error?: string } | null>(null);
+
+  // Default for "include EmpCo check" comes from the admin EmpCo settings
+  useEffect(() => {
+    if (!open) return;
+    getEmpcoSettingsAction().then(s => setIncludeEmpco(s.includeInAnalysisByDefault)).catch(() => {});
+  }, [open]);
+
+  const runEmpcoCheck = async () => {
+    setEmpcoRun({ loading: true });
+    try {
+      const r = await fetch('/api/ai/empco', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ articleNumber: product.internalArticleNumber }),
+      });
+      const d = await r.json();
+      if (!r.ok) setEmpcoRun({ loading: false, error: d.error ?? 'EmpCo-check mislukt' });
+      else setEmpcoRun({ loading: false, check: d.check });
+    } catch (e: any) {
+      setEmpcoRun({ loading: false, error: e?.message ?? 'EmpCo-check mislukt' });
+    }
+  };
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -314,6 +339,7 @@ export default function ProductAiPanel({ product, layout }: Props) {
       const { narrative, structured } = parseResponse(data.response);
       setResult({ response: data.response, narrative, structured, structuredData: structured ? JSON.stringify(structured) : undefined, provider: selectedProvider, model: data.model, inputTokens: data.usage.inputTokens, outputTokens: data.usage.outputTokens, costUsd: data.usage.costUsd, durationMs: Date.now() - t0 });
       setShowInputs(false);
+      if (includeEmpco) runEmpcoCheck(); else setEmpcoRun(null);
     });
   };
 
@@ -441,6 +467,12 @@ export default function ProductAiPanel({ product, layout }: Props) {
                   </button>
                 </div>
 
+                {/* EmpCo option */}
+                <label htmlFor="ai-include-empco" style={{ display:'flex', alignItems:'center', gap:'0.45rem', fontSize:'0.78rem', color:'#0f766e', fontWeight:600, cursor:'pointer' }}>
+                  <input id="ai-include-empco" type="checkbox" checked={includeEmpco} onChange={e => setIncludeEmpco(e.target.checked)} style={{ accentColor:'#0f766e' }} />
+                  ⚖️ Inclusief EmpCo-check (groene claims, EU 2024/825)
+                </label>
+
                 {error && <div style={{ padding:'0.65rem 0.85rem', borderRadius:'var(--radius)', backgroundColor:'#fef2f2', border:'1px solid #fca5a5', color:'#dc2626', fontSize:'0.82rem' }}>❌ {error}</div>}
               </>)}
             </div>
@@ -451,6 +483,26 @@ export default function ProductAiPanel({ product, layout }: Props) {
             <div style={{ flex:1, display:'flex', flexDirection:'column' }}>
               {/* Scorecard */}
               {displayResult.structured && <Scorecard s={displayResult.structured} />}
+
+              {/* EmpCo result (compact) */}
+              {empcoRun && (
+                <div style={{ display:'flex', alignItems:'flex-start', gap:'0.75rem', padding:'0.65rem 1.25rem', backgroundColor:'#f0fdfa', borderBottom:'1px solid #99f6e4', flexShrink:0 }}>
+                  <span style={{ fontWeight:700, fontSize:'0.8rem', color:'#0f766e', whiteSpace:'nowrap', paddingTop:'0.1rem' }}>⚖️ EmpCo</span>
+                  {empcoRun.loading ? (
+                    <span style={{ display:'flex', alignItems:'center', gap:'0.4rem', fontSize:'0.8rem', color:'#0f766e' }}><EmpcoSpinner /> Bezig met EmpCo-check…</span>
+                  ) : empcoRun.error ? (
+                    <span style={{ fontSize:'0.8rem', color:'#dc2626' }}>❌ {empcoRun.error}</span>
+                  ) : empcoRun.check ? (
+                    <div style={{ display:'flex', flexDirection:'column', gap:'0.25rem', flex:1 }}>
+                      <div><EmpcoBadge state={empcoBadgeState(empcoRun.check.status)} issueCount={empcoRun.check.issueCount} /></div>
+                      {empcoRun.check.summary && <span style={{ fontSize:'0.78rem', color:'#134e4a' }}>{empcoRun.check.summary}</span>}
+                      {empcoRun.check.issueCount > 0 && (
+                        <span style={{ fontSize:'0.72rem', color:'#64748b' }}>Open het product en klik op <strong>⚖️ EmpCo</strong> om de suggesties direct over te nemen.</span>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              )}
 
               {/* Meta bar */}
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.5rem 1.25rem', backgroundColor:'#ede9fe', borderBottom:'1px solid #ddd6fe', flexShrink:0, flexWrap:'wrap', gap:'0.5rem' }}>

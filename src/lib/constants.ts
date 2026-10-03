@@ -25,6 +25,7 @@ export const PRISMA_FIELDS = [
   { key: 'volumeGr', label: 'Inhoud (gr)', type: 'number' },
   { key: 'critTransportDistance', label: 'Afstand (km)', type: 'number' },
   // Bools
+  { key: 'uitlopend', label: 'Uitlopend (Uitl.)', type: 'boolean' },
   { key: 'systemActive', label: 'Actief in Systeem?', type: 'boolean' },
   { key: 'webshopActive', label: 'Actief op Webshop?', type: 'boolean' },
   // Criteria

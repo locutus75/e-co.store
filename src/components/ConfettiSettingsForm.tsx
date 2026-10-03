@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { ConfettiSettings, getConfettiSettings, saveConfettiSettings, getUsersForConfetti } from "@/app/actions/confetti";
+import ConfirmationModal from "@/components/ConfirmationModal";
 
 export default function ConfettiSettingsForm() {
   const [settings, setSettings] = useState<ConfettiSettings>({
@@ -17,6 +18,7 @@ export default function ConfettiSettingsForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState({ text: "", type: "" });
+  const [clearHistoryTarget, setClearHistoryTarget] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -137,15 +139,7 @@ export default function ConfettiSettingsForm() {
               }).join(", ")}
             </div>
             <button type="button" className="btn btn-sm" style={{ marginTop: "0.5rem" }} onClick={() => {
-              if (confirm("Weet je zeker dat je de kijk-historie voor dit doel wilt wissen?")) {
-                setSettings({
-                  ...settings,
-                  triggers: {
-                    ...settings.triggers,
-                    [triggerKey]: { ...trigger, viewedBy: [] }
-                  }
-                });
-              }
+              setClearHistoryTarget(triggerKey);
             }}>
               Historie Wissen
             </button>
@@ -418,6 +412,30 @@ export default function ConfettiSettingsForm() {
           </button>
         </div>
       </form>
+
+      <ConfirmationModal
+        isOpen={!!clearHistoryTarget}
+        title="Kijk-historie wissen"
+        message="Weet je zeker dat je de kijk-historie voor dit doel wilt wissen? Hierdoor kunnen gebruikers de confetti-animatie opnieuw te zien krijgen."
+        confirmLabel="Historie Wissen"
+        cancelLabel="Annuleren"
+        type="warning"
+        onCancel={() => setClearHistoryTarget(null)}
+        onConfirm={() => {
+          if (!clearHistoryTarget) return;
+          const targetTrigger = (settings.triggers as any)[clearHistoryTarget];
+          if (targetTrigger) {
+            setSettings({
+              ...settings,
+              triggers: {
+                ...settings.triggers,
+                [clearHistoryTarget]: { ...targetTrigger, viewedBy: [] }
+              }
+            });
+          }
+          setClearHistoryTarget(null);
+        }}
+      />
     </div>
   );
 }

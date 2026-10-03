@@ -2,8 +2,13 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+import { redirect } from "next/navigation";
+
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
+  if (!session) {
+    redirect('/login');
+  }
 
   const roles: string[] = (session?.user as any)?.roles || [];
   const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');

@@ -61,7 +61,8 @@ model Brand {
   id   String @id @default(cuid())
   name String @unique
   
-  products Product[]
+  products   Product[]
+  empcoRules BrandEmpcoRule[]
 }
 
 model Supplier {
@@ -117,6 +118,7 @@ model Product {
   readyForImport        String   @default("NEE")
   webshopActive         Boolean  @default(false)
   systemActive          Boolean  @default(true)
+  uitlopend             Boolean  @default(false)
   supplierContacted     String?
   internalRemarks       String? // Interne Communicatie
   customData            Json?   // Dynamic user-generated custom fields
@@ -302,4 +304,67 @@ model ProductAiAnalysis {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
+
+// -- EmpCo (EU 2024/825) compliance check --
+// Stored separately from the full analysis so products can be (re)checked
+// for EmpCo without re-running the complete product analysis.
+model ProductEmpcoCheck {
+  id             String   @id @default(cuid())
+  articleNumber  String   @unique
+  status         String   // PASS | WARNING | FAIL
+  issueCount     Int      @default(0)
+  summary        String?
+  structuredData String?  // JSON: { status, summary, issues[], compliant_claims[] }
+  contentHash    String?  // hash of the checked texts — used to detect "stale" checks
+  provider       String
+  model          String
+  inputTokens    Int      @default(0)
+  outputTokens   Int      @default(0)
+  costUsd        Float    @default(0)
+  checkedById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// -- Per-field change history (text fields) --
+// Keeps previous values so earlier texts can always be looked up / restored.
+model ProductFieldHistory {
+  id            String   @id @default(cuid())
+  articleNumber String
+  fieldKey      String
+  fieldLabel    String?
+  oldValue      String?
+  newValue      String?
+  source        String   @default("MANUAL") // MANUAL | EMPCO | RESTORE
+  userId        String?
+  userEmail     String?
+  createdAt     DateTime @default(now())
+
+  @@index([articleNumber, createdAt])
+}
+
+// -- Learned EmpCo rules / memory per brand --
+// Automatically learns from applied fixes and approved claims for a brand,
+// so other products of the same brand can reuse them without unnecessary LLM calls.
+model BrandEmpcoRule {
+  id            String   @id @default(cuid())
+  brandId       String
+  ruleType      String   @default("REPLACEMENT") // REPLACEMENT (offending text -> replacement) | COMPLIANT (verified claim)
+  fieldKey      String   @default("*")           // '*' = any field, or specific key like 'longDescription'
+  original      String                           // offending text or verified compliant claim
+  replacement   String?                          // suggested replacement (empty = remove)
+  rule          String?                          // EmpCo rule code (e.g. GENERIC_CLAIM)
+  severity      String   @default("FAIL")        // FAIL | WARNING
+  explanation   String?
+  sourceArticle String?                          // article number where this rule was learned from
+  appliedCount  Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, original, fieldKey])
+  @@index([brandId])
+}
+
 

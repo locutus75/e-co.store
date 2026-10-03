@@ -79,6 +79,7 @@ export default function ExcelImportWizard({ onClose }: { onClose: (shouldRefresh
            else if (rawHeaderStr.includes('gewicht')) targetField = 'weightGr';
            else if (rawHeaderStr.includes('hoofdmateriaal')) targetField = 'mainMaterial';
            else if (rawHeaderStr.includes('compleet/klaar')) targetField = 'readyForImport';
+           else if (rawHeaderStr.includes('uitlopend') || rawHeaderStr === 'uitl.' || rawHeaderStr === 'uitl' || rawHeaderStr.includes('discontinued')) targetField = 'uitlopend';
            else targetField = matchedField ? matchedField.key : 'ignore';
          }
       }

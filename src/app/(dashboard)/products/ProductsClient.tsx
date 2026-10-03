@@ -4,9 +4,14 @@ import React, { useState, useMemo, useTransition, useEffect, useCallback } from 
 import ProductDrawer from '@/components/ProductDrawer';
 import ExcelImportWizard from '@/components/ExcelImportWizard';
 import AiAnalysisViewer from '@/components/AiAnalysisViewer';
-import BatchAnalyzeModal from '@/components/BatchAnalyzeModal';
+import BatchAnalyzeModal, { BatchMode } from '@/components/BatchAnalyzeModal';
 import ConfirmationModal from '@/components/ConfirmationModal';
+import EmpcoViewer from '@/components/EmpcoCheck';
+import EmpcoBulkFixModal from '@/components/EmpcoBulkFixModal';
+import { confirmEmpcoReady } from '@/lib/empcoGateClient';
 import { deleteProductsAction, updateReadyForImportAction, updateProductStatusAction, bulkAssignAction, bulkUpdateReadyForImportAction } from '@/app/actions/product';
+
+export interface EmpcoMapEntry { status: string; stale: boolean; issueCount: number }
 
 // ── Completeness helpers ────────────────────────────────────────────────────
 const BASIS_TEXT_TYPES = new Set(['text', 'textarea']);
@@ -226,7 +231,10 @@ function InlineReadyToggle({ product, isAdmin }: { product: any, isAdmin: boolea
     if (!isAdmin) return; // Enforce authorization
     if (product.readyForImport === val) return;
     startTransition(async () => {
-      await updateReadyForImportAction(product.internalArticleNumber, val);
+      // EmpCo policy (warn / block) before marking as webshop-ready
+      if (val === 'JA' && !(await confirmEmpcoReady([product.internalArticleNumber]))) return;
+      const res = await updateReadyForImportAction(product.internalArticleNumber, val);
+      if (!res.success) alert(res.error ?? 'Bijwerken mislukt');
     });
   }
 
@@ -281,11 +289,13 @@ function getPageNumbers(currentPage: number, totalPages: number) {
 }
 
 export default function ProductsClient({
- initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canUseAi = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null, aiScoreMap = {}, imageCountMap = {} }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, canAssignProducts?: boolean, canUseAi?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, aiScoreMap?: Record<string, number | null>, imageCountMap?: Record<string, number> }) {
+ initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canUseAi = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null, aiScoreMap = {}, imageCountMap = {}, empcoMap = {} }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, canAssignProducts?: boolean, canUseAi?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, aiScoreMap?: Record<string, number | null>, imageCountMap?: Record<string, number>, empcoMap?: Record<string, EmpcoMapEntry> }) {
   const router = useRouter();
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [showBatchAnalyze, setShowBatchAnalyze] = useState(false);
+  const [batchMode, setBatchMode] = useState<BatchMode | undefined>(undefined);
+  const [bulkFixIds, setBulkFixIds] = useState<string[] | null>(null); // EmpCo bulk-fix modal (stable id list)
   const [isDeleting, startTransition] = useTransition();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -347,6 +357,7 @@ export default function ProductsClient({
   const [assignedUserFilter, setAssignedUserFilter] = useState('');
   const [aiScoreFilter, setAiScoreFilter] = useState('');
   const [unreadFilter, setUnreadFilter] = useState('');
+  const [empcoFilter, setEmpcoFilter] = useState('');
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -355,7 +366,7 @@ export default function ProductsClient({
   // Reset page to 1 when filters or search query change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, supplierFilter, brandFilter, statusFilter, webshopReadyFilter, assignedUserFilter, aiScoreFilter, unreadFilter]);
+  }, [searchQuery, supplierFilter, brandFilter, statusFilter, webshopReadyFilter, assignedUserFilter, aiScoreFilter, unreadFilter, empcoFilter]);
 
   // Multi-select State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -373,6 +384,18 @@ export default function ProductsClient({
   const matchAssigned = useCallback((p: any) => assignedUserFilter === '' || (assignedUserFilter === 'UNASSIGNED' ? !p.assignedUserId : p.assignedUserId === assignedUserFilter), [assignedUserFilter]);
   const matchScore = useCallback((p: any) => aiScoreFilter === '' || (aiScoreFilter === 'WITH_SCORE' ? aiScoreMap[p.internalArticleNumber] != null : aiScoreMap[p.internalArticleNumber] == null), [aiScoreFilter, aiScoreMap]);
   const matchUnread = useCallback((p: any) => unreadFilter === '' || (unreadFilter === 'UNREAD' ? unreadProducts.has(p.internalArticleNumber) : !unreadProducts.has(p.internalArticleNumber)), [unreadFilter, unreadProducts]);
+  const empcoStateOf = useCallback((p: any): string => {
+    const e = empcoMap[p.internalArticleNumber];
+    if (!e) return 'NONE';
+    return e.stale ? 'STALE' : e.status;
+  }, [empcoMap]);
+  const matchEmpco = useCallback((p: any) => {
+    if (empcoFilter === '') return true;
+    const s = empcoStateOf(p);
+    if (empcoFilter === 'TODO') return s === 'NONE' || s === 'STALE'; // needs (re)check
+    if (empcoFilter === 'ISSUES') return s === 'FAIL' || s === 'WARNING';
+    return s === empcoFilter;
+  }, [empcoFilter, empcoStateOf]);
 
   // Unique Lists for Dropdowns based on "all other filters except itself" (faceted search)
   const uniqueSuppliers = useMemo(() => {
@@ -508,9 +531,22 @@ export default function ProductsClient({
       matchReady(p) && 
       matchAssigned(p) && 
       matchScore(p) && 
-      matchUnread(p)
+      matchUnread(p) &&
+      matchEmpco(p)
     );
-  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread]);
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread, matchEmpco]);
+
+  // EmpCo filter option counts (based on all other filters)
+  const empcoCounts = useMemo(() => {
+    const c: Record<string, number> = { NONE: 0, STALE: 0, PASS: 0, WARNING: 0, FAIL: 0 };
+    initialProducts.forEach(p => {
+      if (matchSearch(p) && matchSupplier(p) && matchBrand(p) && matchStatus(p) && matchReady(p) && matchAssigned(p) && matchScore(p) && matchUnread(p)) {
+        const s = empcoStateOf(p);
+        c[s] = (c[s] ?? 0) + 1;
+      }
+    });
+    return c;
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread, empcoStateOf]);
 
   const totalPages = useMemo(() => {
     if (pageSize === 'ALL') return 1;
@@ -586,6 +622,8 @@ export default function ProductsClient({
     if (selectedIds.size === 0) return;
     startTransition(async () => {
       const idsArray = Array.from(selectedIds);
+      // EmpCo policy (warn / block) before marking as webshop-ready
+      if (val === 'JA' && !(await confirmEmpcoReady(idsArray))) return;
       const res = await bulkUpdateReadyForImportAction(idsArray, val);
       if (res.success) {
         setSelectedIds(new Set());
@@ -613,7 +651,16 @@ export default function ProductsClient({
         <BatchAnalyzeModal
           products={filteredProducts.filter(p => selectedIds.has(p.internalArticleNumber))}
           layout={layout}
+          canUseAi={canUseAi}
+          initialMode={batchMode}
           onClose={() => { setShowBatchAnalyze(false); setSelectedIds(new Set()); }}
+          onComplete={() => router.refresh()}
+        />
+      )}
+      {bulkFixIds && (
+        <EmpcoBulkFixModal
+          articleNumbers={bulkFixIds}
+          onClose={() => { setBulkFixIds(null); setSelectedIds(new Set()); }}
           onComplete={() => router.refresh()}
         />
       )}
@@ -668,11 +715,34 @@ export default function ProductsClient({
           {selectedIds.size > 0 && canUseAi && (
             <button
               className="btn"
-              onClick={() => setShowBatchAnalyze(true)}
+              onClick={() => { setBatchMode(undefined); setShowBatchAnalyze(true); }}
               style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem', backgroundColor: '#7c3aed', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, borderRadius: 'var(--radius)' }}
               title={`Analyseer ${selectedIds.size} geselecteerde producten`}
             >
               🤖 Analyseer ({selectedIds.size})
+            </button>
+          )}
+          {/* Batch EmpCo check — available for all users */}
+          {selectedIds.size > 0 && (
+            <button
+              className="btn"
+              onClick={() => { setBatchMode('empco'); setShowBatchAnalyze(true); }}
+              style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem', background: 'linear-gradient(135deg,#0f766e,#065f46)', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, borderRadius: 'var(--radius)' }}
+              title={`EmpCo-check voor ${selectedIds.size} geselecteerde producten`}
+            >
+              ⚖️ EmpCo-check ({selectedIds.size})
+            </button>
+          )}
+          {/* Bulk apply EmpCo suggestions — available for all users */}
+          {selectedIds.size > 0 && (
+            <button
+              id="empco-bulk-fix-btn"
+              className="btn"
+              onClick={() => setBulkFixIds(Array.from(selectedIds))}
+              style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem', backgroundColor: 'white', border: '1.5px solid #0f766e', color: '#0f766e', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, borderRadius: 'var(--radius)' }}
+              title={`EmpCo-voorstellen bekijken en doorvoeren voor ${selectedIds.size} geselecteerde producten`}
+            >
+              ✍️ EmpCo-voorstellen doorvoeren ({selectedIds.size})
             </button>
           )}
           {isAdmin && (
@@ -765,6 +835,22 @@ export default function ProductsClient({
           {(availableUnreadFilters.includes('UNREAD') || unreadFilter === 'UNREAD') && <option value="UNREAD">Ongelezen (💬)</option>}
           {(availableUnreadFilters.includes('READ') || unreadFilter === 'READ') && <option value="READ">Geen ongelezen</option>}
         </select>
+        <select
+          id="empco-filter"
+          className="input"
+          style={{ flex: '1 1 160px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
+          value={empcoFilter}
+          onChange={(e) => setEmpcoFilter(e.target.value)}
+        >
+          <option value="">-- EmpCo --</option>
+          <option value="TODO">⚖️ Te checken ({empcoCounts.NONE + empcoCounts.STALE})</option>
+          <option value="NONE"> Niet gecheckt ({empcoCounts.NONE})</option>
+          <option value="STALE"> 🕓 Verouderd ({empcoCounts.STALE})</option>
+          <option value="ISSUES">🚩 Met bevindingen ({empcoCounts.FAIL + empcoCounts.WARNING})</option>
+          <option value="FAIL"> ⛔ Overtreding ({empcoCounts.FAIL})</option>
+          <option value="WARNING"> ⚠️ Aandachtspunten ({empcoCounts.WARNING})</option>
+          <option value="PASS">✅ EmpCo OK ({empcoCounts.PASS})</option>
+        </select>
         {(isAdmin || canAssignProducts) && (
           <select 
             className="input" 
@@ -811,6 +897,7 @@ export default function ProductsClient({
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:status', 'Status')}</th>
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Compleet</th>
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Score</th>
+              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>EmpCo</th>
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Webshop Ready</th>
             </tr>
           </thead>
@@ -913,6 +1000,15 @@ export default function ProductsClient({
                     canUseAi={canUseAi}
                   />
                 </td>
+                <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
+                  <EmpcoViewer
+                    articleNumber={product.internalArticleNumber}
+                    productTitle={product.title}
+                    status={empcoMap[product.internalArticleNumber]?.status ?? null}
+                    stale={empcoMap[product.internalArticleNumber]?.stale ?? false}
+                    issueCount={empcoMap[product.internalArticleNumber]?.issueCount ?? 0}
+                  />
+                </td>
                 <td style={{ padding: '1.25rem' }}>
                   <InlineReadyToggle product={product} isAdmin={isAdmin} />
                 </td>
@@ -920,7 +1016,7 @@ export default function ProductsClient({
             ))}
             {filteredProducts.length === 0 && (
               <tr>
-                <td colSpan={10} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>Geen producten gevonden die voldoen aan je filters.</td>
+                <td colSpan={11} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>Geen producten gevonden die voldoen aan je filters.</td>
               </tr>
             )}
           </tbody>

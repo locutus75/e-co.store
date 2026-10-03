@@ -20,6 +20,17 @@ async function logAuditAction(userId: string, action: string, entity: string, en
   }
 }
 
+/** Throws when the configured EmpCo policy blocks marking these products as webshop-ready. */
+async function assertEmpcoReadyAllowed(internalIds: string[], status: string) {
+  if ((status || '').toUpperCase() !== 'JA') return;
+  const { evaluateEmpcoReadyGateAction } = await import('@/app/actions/empco');
+  const gate = await evaluateEmpcoReadyGateAction(internalIds);
+  if (gate.blocked.length > 0) {
+    const list = gate.blocked.slice(0, 5).map(b => `#${b.articleNumber}: ${b.reason}`).join('; ');
+    throw new Error(`EmpCo: ${gate.blocked.length} product(en) mogen niet op Webshop Ready gezet worden — ${list}${gate.blocked.length > 5 ? ' …' : ''}`);
+  }
+}
+
 async function assertProductLock(internalId: string) {
   const session = await getServerSession(authOptions);
   const roles = (session?.user as any)?.roles || [];
@@ -133,8 +144,71 @@ export async function deleteProductsAction(internalIds: string[]) {
   }
 }
 
+export async function updateProductUitlopendAction(internalId: string, uitlopend: boolean) {
+  try {
+    await assertProductLock(internalId);
+    await prisma.product.update({
+      where: { internalArticleNumber: internalId },
+      data: { uitlopend }
+    });
+    const session = await getServerSession(authOptions);
+    const actorId = (session?.user as any)?.id;
+    if (actorId) {
+      await logAuditAction(actorId, 'UITLOPEND_CHANGE', 'Product', internalId, `Uitlopend set to ${uitlopend}`);
+    }
+
+    revalidatePath('/products');
+    revalidatePath('/assignments');
+    revalidatePath('/', 'layout');
+    return { success: true };
+  } catch (e: any) {
+    console.error("Update uitlopend failed:", e);
+    return { success: false, error: e.message };
+  }
+}
+
+export async function bulkUpdateUitlopendAction(internalIds: string[], uitlopend: boolean) {
+  if (!internalIds || internalIds.length === 0) return { success: false, error: "Geen ID's meegegeven" };
+
+  try {
+    const session = await getServerSession(authOptions);
+    const roles = (session?.user as any)?.roles || [];
+    const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
+    if (!isAdmin) {
+      return { success: false, error: 'Unauthorized: Admin role required.' };
+    }
+
+    const res = await prisma.product.updateMany({
+      where: {
+        internalArticleNumber: {
+          in: internalIds
+        }
+      },
+      data: {
+        uitlopend
+      }
+    });
+
+    const actorId = (session?.user as any)?.id;
+    if (actorId) {
+      for (const id of internalIds) {
+        await logAuditAction(actorId, 'BULK_UITLOPEND_CHANGE', 'Product', id, `Bulk uitlopend set to ${uitlopend}`);
+      }
+    }
+
+    revalidatePath('/products');
+    revalidatePath('/assignments');
+    revalidatePath('/', 'layout');
+    return { success: true, count: res.count };
+  } catch (e: any) {
+    console.error("Bulk update uitlopend failed:", e);
+    return { success: false, error: e.message };
+  }
+}
+
 export async function updateReadyForImportAction(internalId: string, status: string) {
   try {
+    await assertEmpcoReadyAllowed([internalId], status);
     await prisma.product.update({
       where: { internalArticleNumber: internalId },
       data: { readyForImport: status }
@@ -165,6 +239,8 @@ export async function bulkUpdateReadyForImportAction(internalIds: string[], stat
     if (!isAdmin) {
       return { success: false, error: 'Unauthorized: Admin role required.' };
     }
+
+    await assertEmpcoReadyAllowed(internalIds, status);
 
     const res = await prisma.product.updateMany({
       where: {
@@ -255,7 +331,7 @@ export async function updateProductAction(internalId: string, formData: FormData
     }
     
     // Some keys are strictly natively boolean in Prisma schema
-    const isNativeBoolean = key === 'webshopActive' || key === 'systemActive' || key === 'publicationReady';
+    const isNativeBoolean = key === 'webshopActive' || key === 'systemActive' || key === 'publicationReady' || key === 'uitlopend';
     
     // How the data comes in from the DOM
     const val = formData.get(key);
@@ -304,7 +380,7 @@ export async function updateProductAction(internalId: string, formData: FormData
       'internalArticleNumber', 'ean', 'title', 'status', 'brandId', 'supplierId', 'categoryId', 'subcategoryId', 'assignedUserId',
       'shortDescription', 'longDescription', 'color', 'size', 'material', 'tags', 'webshopSlug', 'weightGr', 'lengthCm', 'widthCm',
       'heightCm', 'volumeMl', 'volumeGr', 'ingredients', 'allergens', 'mainMaterial', 'readyForImport', 'webshopActive', 'systemActive',
-      'supplierContacted', 'internalRemarks', 'customData', 'critMensSafeWork', 'critMensFairWage', 'critMensSocial', 'critDierCrueltyFree',
+      'uitlopend', 'supplierContacted', 'internalRemarks', 'customData', 'critMensSafeWork', 'critMensFairWage', 'critMensSocial', 'critDierCrueltyFree',
       'critDierFriendly', 'critMilieuPackagingFree', 'critMilieuPlasticFree', 'critMilieuRecyclable', 'critMilieuBiodegradable',
       'critMilieuCompostable', 'critMilieuCarbonCompensated', 'critTransportDistance', 'critTransportVehicle', 'critHandmade', 'critNatural',
       'critCircular', 'critOther', 'seoTitle', 'seoMetaDescription', 'basePrice', 'qualityControlStatus', 'exportStatus', 'publicationReady', 'internalNotes'
@@ -363,10 +439,97 @@ export async function updateProductAction(internalId: string, formData: FormData
       await logAuditAction(editorId, 'UPDATE', 'Product', internalId, JSON.stringify(data));
     }
 
+    // ── Field history: remember previous values of changed text fields ──────
+    const empcoFields = new Set(formData.getAll('_empco_fields').map(v => v.toString()));
+    const restoreFields = new Set(formData.getAll('_restore_fields').map(v => v.toString()));
+    let historyRows: any[] = [];
+    let existing: any = null;
+    try {
+      existing = await prisma.product.findUnique({ where: { internalArticleNumber: internalId } });
+      if (existing) {
+        const labelOf = (k: string) => {
+          const f = allFields.find((x: any) => {
+            let fk = x.id.replace('FIELD:', '');
+            if (fk === 'description') fk = 'longDescription';
+            return fk === k;
+          });
+          return f?.label ?? k;
+        };
+        const norm = (v: any) => (v == null || v === '' ? null : v);
+        const isTextish = (v: any) => v == null || typeof v === 'string';
+        const pushIfChanged = (formKey: string, oldV: any, newV: any) => {
+          if (!isTextish(oldV) || !isTextish(newV)) return;
+          if (norm(oldV) === norm(newV)) return;
+          historyRows.push({
+            articleNumber: internalId,
+            fieldKey: formKey,
+            fieldLabel: labelOf(formKey),
+            oldValue: norm(oldV),
+            newValue: norm(newV),
+            source: empcoFields.has(formKey) ? 'EMPCO' : restoreFields.has(formKey) ? 'RESTORE' : 'MANUAL',
+            userId: editorId ?? null,
+            userEmail: (session?.user as any)?.email ?? null,
+          });
+        };
+        const skip = new Set(['lastEditedByUserId', 'customData', 'status', 'readyForImport']);
+        for (const [k, v] of Object.entries(data)) {
+          if (skip.has(k) || /Id$/.test(k)) continue;
+          pushIfChanged(k, existing[k], v);
+        }
+        if (data.customData) {
+          for (const [k, v] of Object.entries(data.customData as Record<string, any>)) {
+            pushIfChanged(`custom_${k}`, existing.customData?.[k], v);
+          }
+        }
+      }
+    } catch (histErr) {
+      console.error('Field history diff failed:', histErr);
+      historyRows = [];
+    }
+
     await prisma.product.update({
       where: { internalArticleNumber: internalId },
       data
     });
+
+    if (historyRows.length > 0) {
+      try { await prisma.productFieldHistory.createMany({ data: historyRows }); }
+      catch (histErr) { console.error('Field history write failed:', histErr); }
+    }
+
+    // ── EmpCo: update status / alerting for resolved findings ────────────────
+    if (existing) {
+      try {
+        const { syncEmpcoCheckAfterEdit } = await import('@/lib/empcoSync');
+        await syncEmpcoCheckAfterEdit(internalId, existing, layout, empcoFields);
+      } catch (syncErr) { console.error('EmpCo sync failed:', syncErr); }
+
+      // Automatically remember applied fixes for this brand
+      if (existing.brandId && empcoFields.size > 0) {
+        try {
+          const check = await prisma.productEmpcoCheck.findUnique({ where: { articleNumber: internalId } });
+          if (check?.structuredData) {
+            const parsed = JSON.parse(check.structuredData);
+            const { saveBrandRuleAction } = await import('@/app/actions/brandEmpco');
+            for (const issue of (parsed.issues ?? [])) {
+              if (empcoFields.has(issue.field) && issue.original) {
+                await saveBrandRuleAction({
+                  brandId: existing.brandId,
+                  original: issue.original,
+                  replacement: issue.replacement,
+                  rule: issue.rule,
+                  fieldKey: issue.field,
+                  explanation: issue.explanation,
+                  sourceArticle: internalId,
+                });
+              }
+            }
+          }
+        } catch (brandErr) {
+          console.error('Failed to learn brand rule after product save:', brandErr);
+        }
+      }
+    }
 
     revalidatePath('/products');
     revalidatePath('/assignments');

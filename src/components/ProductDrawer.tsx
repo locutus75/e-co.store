@@ -9,6 +9,10 @@ import AiFieldSuggestion from './AiFieldSuggestion';
 import AiSectionSuggestion from './AiSectionSuggestion';
 import AiAnalysisViewer from './AiAnalysisViewer';
 import ProductWebEnrichModal from './ProductWebEnrichModal';
+import ProductEmpcoPanel, { ApplyFixResult } from './ProductEmpcoPanel';
+import ProductFieldHistoryModal from './ProductFieldHistoryModal';
+import { confirmEmpcoReady } from '@/lib/empcoGateClient';
+import { replaceEmpcoFragment } from '@/lib/empco';
 
 /**
  * Builds a Google search URL using fields marked `useForSearch` in the layout.
@@ -157,9 +161,16 @@ function DrawerReadyToggle({ readyMode, internalArticleNumber, isAdmin, onChange
 
   const handleUpdate = (val: string) => {
     if (!isAdmin || readyMode === val) return;
-    onChange(val);
+    const previous = readyMode;
     startTransition(async () => {
-      await updateReadyForImportAction(internalArticleNumber, val);
+      // EmpCo policy (warn / block) before marking as webshop-ready
+      if (val === 'JA' && !(await confirmEmpcoReady([internalArticleNumber]))) return;
+      onChange(val);
+      const res = await updateReadyForImportAction(internalArticleNumber, val);
+      if (!res.success) {
+        alert(res.error ?? 'Bijwerken mislukt');
+        onChange(previous);
+      }
     });
   };
 
@@ -203,6 +214,12 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   // AI field suggestions — narrative loaded from DB when drawer opens
   const [analysisNarrative, setAnalysisNarrative] = useState<string | null>(null);
 
+  // EmpCo + field history
+  const [empcoFields, setEmpcoFields] = useState<Set<string>>(new Set());     // fields changed via EmpCo suggestion
+  const [restoreFields, setRestoreFields] = useState<Set<string>>(new Set()); // fields restored from history
+  const [empcoRefreshKey, setEmpcoRefreshKey] = useState(0);                  // bump after save → reload EmpCo status
+  const [showHistory, setShowHistory] = useState(false);
+
   useEffect(() => {
     if (isOpen && product?.internalArticleNumber !== initializedProductId.current) {
       initializedProductId.current = product?.internalArticleNumber || null;
@@ -212,6 +229,9 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
       setFormKey(k => k + 1);
       setIsDirty(false);
       setShowUnsavedWarning(false);
+      setEmpcoFields(new Set());
+      setRestoreFields(new Set());
+      setShowHistory(false);
       
       const initialCollapsed: Record<string, boolean> = {};
       layout.forEach(s => {
@@ -352,6 +372,9 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
       if(product?.internalArticleNumber) {
         await updateProductAction(product.internalArticleNumber, formData);
         setIsDirty(false);
+        setEmpcoFields(new Set());
+        setRestoreFields(new Set());
+        setEmpcoRefreshKey(k => k + 1);
         
         if (pendingNavigation === 'prev' && onPrev) { onPrev(); setPendingNavigation(null); }
         else if (pendingNavigation === 'next' && onNext) { onNext(); setPendingNavigation(null); }
@@ -378,6 +401,58 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     Object.entries(suggestions).forEach(([key, value]) => {
       applyAiSuggestion(key, value);
     });
+  };
+
+  // ── EmpCo helpers ───────────────────────────────────────────────────────────
+  const findFormField = (fieldKey: string) => {
+    const form = formRef.current;
+    if (!form) return null;
+    const q = (n: string) => form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${n}"]:not([type="hidden"])`);
+    let el = q(fieldKey);
+    if (!el && fieldKey === 'longDescription') el = q('description');
+    if (!el && fieldKey === 'description') el = q('longDescription');
+    return el;
+  };
+
+  /** Current (possibly unsaved) values of all form inputs, keyed by form key */
+  const getLiveFormValues = useCallback((): Record<string, string> => {
+    const out: Record<string, string> = {};
+    const form = formRef.current;
+    if (!form) return out;
+    for (const [k, v] of new FormData(form).entries()) {
+      if (typeof v !== 'string' || k.startsWith('_')) continue;
+      if (out[k] === undefined) out[k] = v; // first occurrence wins (header vs. body duplicates)
+    }
+    if (out.description !== undefined && out.longDescription === undefined) out.longDescription = out.description;
+    return out;
+  }, []);
+
+  /** Replace an offending fragment in a form field with the EmpCo-compliant suggestion */
+  const applyEmpcoFix = (fieldKey: string, original: string, replacement: string): ApplyFixResult => {
+    if (isGloballyLocked) return { ok: false, message: 'Product is vergrendeld' };
+    const el = findFormField(fieldKey);
+    if (!el || el.readOnly || el.disabled) return { ok: false, message: 'Veld niet bewerkbaar' };
+    const current = el.value ?? '';
+
+    const next = replaceEmpcoFragment(current, original, replacement);
+    if (next === null) return { ok: false, message: 'Tekst niet (meer) gevonden — pas handmatig aan' };
+
+    el.value = next;
+    setIsDirty(true);
+    setEmpcoFields(prev => new Set(prev).add(fieldKey === 'description' ? 'longDescription' : fieldKey));
+    return { ok: true };
+  };
+
+  /** Put a previous value (from history) back into the form */
+  const restoreFieldValue = (fieldKey: string, value: string): boolean => {
+    if (isGloballyLocked) return false;
+    const el = findFormField(fieldKey);
+    if (!el || el.readOnly || el.disabled) return false;
+    el.value = value;
+    setIsDirty(true);
+    setRestoreFields(prev => new Set(prev).add(fieldKey));
+    setEmpcoFields(prev => { const n = new Set(prev); n.delete(fieldKey); return n; });
+    return true;
   };
 
   // Extract current product specifications and form values to provide rich context to AI suggestions
@@ -688,6 +763,9 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
       }}>
         {localProductData && (
           <>
+            {/* Marks fields changed via EmpCo / history-restore so the save action can label the history entries */}
+            {Array.from(empcoFields).map(k => <input key={`empco_${k}`} type="hidden" name="_empco_fields" value={k} />)}
+            {Array.from(restoreFields).map(k => <input key={`restore_${k}`} type="hidden" name="_restore_fields" value={k} />)}
             <div style={{ padding: '2rem 3rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, backgroundColor: 'rgba(255,255,255,0.95)', zIndex: 10, backdropFilter: 'blur(8px)' }}>
               <div>
                 <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text)' }}>Edit Product #{localProductData.internalArticleNumber}</h2>
@@ -774,6 +852,28 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                         🖨 Kopieer Data
                       </button>
                     )}
+                    {/* EmpCo check + field history — available for all users */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderLeft: '1px solid var(--border)', paddingLeft: '0.75rem' }}>
+                      <ProductEmpcoPanel
+                        articleNumber={localProductData.internalArticleNumber}
+                        productTitle={localProductData.title}
+                        getLiveValues={getLiveFormValues}
+                        applyFix={applyEmpcoFix}
+                        canEdit={!isGloballyLocked}
+                        onOpenHistory={() => setShowHistory(true)}
+                        refreshKey={empcoRefreshKey}
+                        brandId={localProductData?.brandId ?? localProductData?.brand?.id}
+                        brandName={localProductData?.brand?.name}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowHistory(true)}
+                        title="Wijzigingshistorie: eerdere teksten bekijken en terugzetten"
+                        style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, backgroundColor: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                      >
+                        🕘 Historie
+                      </button>
+                    </div>
                     {canUseAi && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderLeft: '1px solid var(--border)', paddingLeft: '0.75rem' }}>
                         <AiAnalysisViewer 
@@ -914,6 +1014,15 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
           onApplyFields={(fields) => {
             applyAiSectionSuggestions(fields);
           }}
+        />
+      )}
+
+      {showHistory && localProductData && (
+        <ProductFieldHistoryModal
+          articleNumber={localProductData.internalArticleNumber}
+          productTitle={localProductData.title}
+          onClose={() => setShowHistory(false)}
+          onRestore={isGloballyLocked ? undefined : restoreFieldValue}
         />
       )}
       

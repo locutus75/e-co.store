@@ -4,9 +4,15 @@ import { prisma } from "@/lib/prisma";
 import ProductsClient from "./ProductsClient";
 import fs from 'fs';
 import path from 'path';
+import { extractEmpcoFields, hashEmpcoFields } from '@/lib/empco';
+
+import { redirect } from "next/navigation";
 
 export default async function ProductsPage() {
   const session = await getServerSession(authOptions);
+  if (!session) {
+    redirect('/login');
+  }
   const roles = (session?.user as any)?.roles || [];
   const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
   const userId = (session?.user as any)?.id;
@@ -15,7 +21,7 @@ export default async function ProductsPage() {
     orderBy: { email: 'asc' }
   });
 
-  const userRecord = await prisma.user.findUnique({
+  const userRecord = userId ? await prisma.user.findUnique({
     where: { id: userId },
     include: {
       userRoles: {
@@ -28,7 +34,7 @@ export default async function ProductsPage() {
         }
       }
     }
-  });
+  }) : null;
 
   const hasAssignmentsRight = userRecord?.userRoles.some((ur: any) =>
     ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:assignments' && rp.action === 'ALLOW')
@@ -42,7 +48,7 @@ export default async function ProductsPage() {
   const canAssignProducts = isAdmin || hasAssignmentsRight;
   const canUseAi = isAdmin || hasAiRight;
   
-  const [products, aiAnalyses] = await Promise.all([
+  const [products, aiAnalyses, empcoChecks] = await Promise.all([
     prisma.product.findMany({
       where: canSeeAllProducts ? undefined : { assignedUserId: userId },
       orderBy: { createdAt: 'desc' },
@@ -50,6 +56,7 @@ export default async function ProductsPage() {
 
     }),
     prisma.productAiAnalysis.findMany({ select: { articleNumber: true, score: true } }),
+    prisma.productEmpcoCheck.findMany({ select: { articleNumber: true, status: true, issueCount: true, contentHash: true } }),
   ]);
 
   // Build a quick lookup: articleNumber → score
@@ -66,7 +73,21 @@ export default async function ProductsPage() {
   }
 
   const { getFormLayoutAction } = await import('@/app/actions/formLayouts');
-  const layout = await getFormLayoutAction();
+  const { getEmpcoSettingsAction } = await import('@/app/actions/empco');
+  const [layout, empcoSettings] = await Promise.all([getFormLayoutAction(), getEmpcoSettingsAction()]);
+
+  // EmpCo lookup: articleNumber → { status, stale, issueCount }
+  // A check is "stale" when the customer-facing texts changed after the check.
+  const empcoMap: Record<string, { status: string; stale: boolean; issueCount: number }> = {};
+  if (empcoChecks.length > 0) {
+    const productByArticle = new Map(products.map(p => [p.internalArticleNumber, p]));
+    for (const c of empcoChecks) {
+      const p = productByArticle.get(c.articleNumber);
+      if (!p) continue;
+      const stale = !!c.contentHash && hashEmpcoFields(extractEmpcoFields(p, layout, undefined, empcoSettings.includedFieldKeys)) !== c.contentHash;
+      empcoMap[c.articleNumber] = { status: c.status, stale, issueCount: c.issueCount };
+    }
+  }
 
   // Build image count map by scanning the uploads directory
   const ROOT_DIR = process.env.APP_ROOT || process.cwd();
@@ -83,6 +104,6 @@ export default async function ProductsPage() {
     }
   } catch { /* ignore FS errors */ }
 
-  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} canAssignProducts={canAssignProducts} canUseAi={canUseAi} fieldPermissions={fieldPermissions} layout={layout} currentUserId={userId || ''} currentUserChatColor={(userRecord as any)?.chatColor || null} aiScoreMap={aiScoreMap} imageCountMap={imageCountMap} />;
+  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} canAssignProducts={canAssignProducts} canUseAi={canUseAi} fieldPermissions={fieldPermissions} layout={layout} currentUserId={userId || ''} currentUserChatColor={(userRecord as any)?.chatColor || null} aiScoreMap={aiScoreMap} imageCountMap={imageCountMap} empcoMap={empcoMap} />;
 }
 
