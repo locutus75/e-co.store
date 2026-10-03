@@ -455,6 +455,37 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     return true;
   };
 
+  /** Save the current form directly from within the EmpCo panel */
+  const handleSaveFromEmpco = useCallback(async () => {
+    const artNum = product?.internalArticleNumber || localProductData?.internalArticleNumber;
+    if (!formRef.current || !artNum) return;
+    saveModeRef.current = 'save';
+    const formData = new FormData(formRef.current);
+
+    if (!statusOverridden && currentStatus !== 'DONE' && formData.get('status') !== 'EDIT') {
+      formData.set('status', 'EDIT');
+    }
+    const readyVal = formData.getAll('readyForImport')[0];
+    if (readyVal) {
+      formData.set('readyForImport', readyVal);
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      startTransition(async () => {
+        try {
+          await updateProductAction(artNum, formData);
+          setIsDirty(false);
+          setEmpcoFields(new Set());
+          setRestoreFields(new Set());
+          setEmpcoRefreshKey(k => k + 1);
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+  }, [product, localProductData, statusOverridden, currentStatus]);
+
   // Extract current product specifications and form values to provide rich context to AI suggestions
   const getLiveProductContext = useCallback(() => {
     const data: Record<string, any> = { ...(localProductData || {}) };
@@ -864,6 +895,8 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                         refreshKey={empcoRefreshKey}
                         brandId={localProductData?.brandId ?? localProductData?.brand?.id}
                         brandName={localProductData?.brand?.name}
+                        onSave={handleSaveFromEmpco}
+                        isSaving={isPending}
                       />
                       <button
                         type="button"

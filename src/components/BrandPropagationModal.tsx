@@ -108,6 +108,7 @@ export default function BrandPropagationModal({
       subtitle={`Fragment: "${original}" → "${replacement || '(verwijderen)'}"`}
       onClose={applying ? () => {} : onClose}
       width={840}
+      zIndex={9150}
     >
       <div style={{ padding: '1.25rem 1.6rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {loading ? (

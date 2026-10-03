@@ -161,6 +161,7 @@ export function EmpcoGuidelinesModal({
       subtitle="Directe controle met officiële wetgeving (EUR-Lex & ACM Leidraad)"
       onClose={onClose}
       width={900}
+      zIndex={9200}
       headerRight={
         <a
           href="/admin/system"
@@ -518,8 +519,8 @@ export function EmpcoResultView({
 }
 
 // ── Modal shell ───────────────────────────────────────────────────────────────
-export function EmpcoModalShell({ title, subtitle, onClose, headerRight, children, width = 980 }: {
-  title: string; subtitle?: string; onClose: () => void; headerRight?: React.ReactNode; children: React.ReactNode; width?: number;
+export function EmpcoModalShell({ title, subtitle, onClose, headerRight, children, width = 980, zIndex = 9000 }: {
+  title: string; subtitle?: string; onClose: () => void; headerRight?: React.ReactNode; children: React.ReactNode; width?: number; zIndex?: number;
 }) {
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
@@ -529,11 +530,11 @@ export function EmpcoModalShell({ title, subtitle, onClose, headerRight, childre
 
   return createPortal(
     <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(2,20,18,0.55)', zIndex: 9000, backdropFilter: 'blur(3px)', animation: 'empco-fade 0.2s ease' }} />
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(2,20,18,0.55)', zIndex, backdropFilter: 'blur(3px)', animation: 'empco-fade 0.2s ease' }} />
       <div style={{
         position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
         width: `min(94vw, ${width}px)`, maxHeight: '92vh', backgroundColor: '#f8fafc', borderRadius: '16px', overflow: 'hidden',
-        boxShadow: '0 25px 60px rgba(0,0,0,0.35)', zIndex: 9001, display: 'flex', flexDirection: 'column', animation: 'empco-pop 0.25s cubic-bezier(0.16,1,0.3,1)',
+        boxShadow: '0 25px 60px rgba(0,0,0,0.35)', zIndex: zIndex + 1, display: 'flex', flexDirection: 'column', animation: 'empco-pop 0.25s cubic-bezier(0.16,1,0.3,1)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.95rem 1.3rem', background: EMPCO_GRADIENT, color: 'white', flexShrink: 0 }}>
           <span style={{ fontSize: '1.25rem' }}>⚖️</span>

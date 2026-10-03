@@ -23,6 +23,8 @@ interface Props {
   refreshKey?: number;
   brandId?: string;
   brandName?: string;
+  onSave?: () => Promise<void> | void;
+  isSaving?: boolean;
 }
 
 export default function ProductEmpcoPanel({
@@ -36,6 +38,8 @@ export default function ProductEmpcoPanel({
   refreshKey,
   brandId,
   brandName,
+  onSave,
+  isSaving,
 }: Props) {
   const { rate: usdToEur } = useExchangeRate();
   const [open, setOpen] = useState(false);
@@ -45,6 +49,8 @@ export default function ProductEmpcoPanel({
   const [stale, setStale] = useState(false);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const [error, setError] = useState('');
   const [applied, setApplied] = useState<Record<number, 'ok' | string>>({});
   const [liveValues, setLiveValues] = useState<Record<string, string>>({});
@@ -62,12 +68,14 @@ export default function ProductEmpcoPanel({
   }, [articleNumber]);
 
   // Load status whenever the product changes (for the badge on the trigger button)
-  useEffect(() => { setCheck(null); setStale(false); setApplied({}); setError(''); load(); }, [load]);
+  useEffect(() => { setCheck(null); setStale(false); setApplied({}); setError(''); setJustSaved(false); load(); }, [load]);
 
   // Reload after save so the badge reflects resolved findings
   useEffect(() => {
     if (!refreshKey) return;
     setApplied({});
+    setSaving(false);
+    setJustSaved(true);
     load().then(() => setLiveValues(getLiveValues()));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
@@ -75,7 +83,7 @@ export default function ProductEmpcoPanel({
   const openPanel = () => { setLiveValues(getLiveValues()); setOpen(true); };
 
   const runCheck = async () => {
-    setRunning(true); setError(''); setApplied({});
+    setRunning(true); setError(''); setApplied({}); setJustSaved(false);
     const overrides = getLiveValues();
     try {
       const res = await fetch('/api/ai/empco', {
@@ -95,15 +103,32 @@ export default function ProductEmpcoPanel({
   const isFixable = (issue: EmpcoIssue) => canEdit && !issue.field.startsWith('crit') && !!issue.original;
 
   const doApply = (issue: EmpcoIssue, idx: number) => {
+    setJustSaved(false);
     const r = applyFix(issue.field, issue.original, issue.replacement);
     setApplied(p => ({ ...p, [idx]: r.ok ? 'ok' : (r.message ?? 'Niet gelukt') }));
     setLiveValues(getLiveValues());
   };
 
   const applyAll = () => {
+    setJustSaved(false);
     (check?.result?.issues ?? []).forEach((issue: EmpcoIssue, idx: number) => {
       if (isFixable(issue) && applied[idx] !== 'ok') doApply(issue, idx);
     });
+  };
+
+  const handleSaveClick = async () => {
+    if (!onSave || saving || isSaving) return;
+    setSaving(true);
+    setError('');
+    try {
+      await onSave();
+      setJustSaved(true);
+      setApplied({});
+    } catch (e: any) {
+      setError(e.message || 'Opslaan mislukt');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const result = check?.result;
@@ -138,6 +163,25 @@ export default function ProductEmpcoPanel({
                 style={{ padding: '0.3rem 0.75rem', borderRadius: '999px', fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.45)', backgroundColor: 'rgba(255,255,255,0.12)', color: 'white' }}>
                 🕘 Historie
               </button>
+              {appliedCount > 0 && canEdit && onSave && (
+                <button type="button" onClick={handleSaveClick} disabled={isSaving || saving}
+                  style={{
+                    padding: '0.3rem 0.9rem',
+                    borderRadius: '999px',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    cursor: (isSaving || saving) ? 'wait' : 'pointer',
+                    border: 'none',
+                    backgroundColor: '#16a34a',
+                    color: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    boxShadow: '0 2px 6px rgba(22,163,74,0.3)',
+                  }}>
+                  {(isSaving || saving) ? <><EmpcoSpinner size={12} /> Opslaan…</> : '💾 Opslaan'}
+                </button>
+              )}
               <button type="button" onClick={runCheck} disabled={running}
                 style={{ padding: '0.3rem 0.9rem', borderRadius: '999px', fontSize: '0.76rem', fontWeight: 700, cursor: running ? 'wait' : 'pointer', border: 'none', backgroundColor: 'white', color: EMPCO_ACCENT, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                 {running ? <><EmpcoSpinner size={12} /> Controleren…</> : check ? '↻ Opnieuw checken' : '▶ Check uitvoeren'}
@@ -183,14 +227,112 @@ export default function ProductEmpcoPanel({
                 )}
               </div>
 
+              {/* Success notification banner after saving */}
+              {justSaved && appliedCount === 0 && (
+                <div style={{ margin: '0.9rem 1.4rem 0', padding: '0.75rem 1rem', borderRadius: '10px', backgroundColor: '#ecfdf5', border: '1px solid #6ee7b7', color: '#065f46', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <span style={{ fontSize: '1.25rem' }}>✅</span>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#065f46' }}>Wijzigingen succesvol opgeslagen!</div>
+                      <div style={{ fontSize: '0.75rem', color: '#047857' }}>
+                        De vorige tekst staat veilig bewaard in de historie.
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={onOpenHistory}
+                      style={{
+                        padding: '0.4rem 0.95rem',
+                        borderRadius: '7px',
+                        border: 'none',
+                        backgroundColor: '#059669',
+                        color: 'white',
+                        fontWeight: 700,
+                        fontSize: '0.78rem',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        boxShadow: '0 2px 6px rgba(5,150,105,0.25)',
+                      }}
+                    >
+                      <span>🕘</span>
+                      <span>Bekijk direct in Historie</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={runCheck}
+                      disabled={running}
+                      style={{
+                        padding: '0.4rem 0.85rem',
+                        borderRadius: '7px',
+                        border: '1px solid #a7f3d0',
+                        backgroundColor: 'white',
+                        color: '#065f46',
+                        fontWeight: 600,
+                        fontSize: '0.78rem',
+                        cursor: running ? 'wait' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                      }}
+                    >
+                      {running ? <EmpcoSpinner size={12} /> : <span>↻ Opnieuw checken</span>}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {appliedCount > 0 && (
-                <div style={{ margin: '0.9rem 1.4rem 0', padding: '0.65rem 0.9rem', borderRadius: '9px', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a', fontSize: '0.8rem', lineHeight: 1.5 }}>
-                  <div>
-                    ✏️ <strong>{appliedCount} voorstel{appliedCount === 1 ? '' : 'len'} overgenomen</strong> in het formulier. Controleer de tekst en klik op <strong>Opslaan</strong>.
-                    De vorige tekst blijft altijd terug te zien via <button type="button" onClick={onOpenHistory} style={{ background: 'none', border: 'none', color: '#1d4ed8', textDecoration: 'underline', cursor: 'pointer', padding: 0, fontSize: 'inherit' }}>🕘 Historie</button>.
+                <div style={{ margin: '0.9rem 1.4rem 0', padding: '0.75rem 1rem', borderRadius: '10px', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a', fontSize: '0.82rem', lineHeight: 1.5 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: '240px' }}>
+                      <div style={{ fontWeight: 700, color: '#1e40af' }}>
+                        ✏️ {appliedCount} voorstel{appliedCount === 1 ? '' : 'len'} overgenomen in het formulier
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: '#3b82f6', marginTop: '0.15rem' }}>
+                        Controleer de tekst en sla direct op. De vorige tekst blijft altijd terug te zien via <button type="button" onClick={onOpenHistory} style={{ background: 'none', border: 'none', color: '#1d4ed8', textDecoration: 'underline', cursor: 'pointer', padding: 0, fontSize: 'inherit', fontWeight: 600 }}>🕘 Historie</button>.
+                      </div>
+                    </div>
+                    {canEdit && onSave && (
+                      <button
+                        type="button"
+                        onClick={handleSaveClick}
+                        disabled={isSaving || saving}
+                        style={{
+                          padding: '0.45rem 1.15rem',
+                          borderRadius: '8px',
+                          border: 'none',
+                          backgroundColor: '#2563eb',
+                          color: 'white',
+                          fontWeight: 700,
+                          fontSize: '0.82rem',
+                          cursor: (isSaving || saving) ? 'wait' : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          boxShadow: '0 2px 8px rgba(37,99,235,0.3)',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {(isSaving || saving) ? (
+                          <>
+                            <EmpcoSpinner size={13} />
+                            <span>Opslaan…</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>💾</span>
+                            <span>Nu Opslaan</span>
+                          </>
+                        )}
+                      </button>
+                    )}
                   </div>
                   {brandId && (
-                    <div style={{ marginTop: '0.45rem', paddingTop: '0.45rem', borderTop: '1px dashed #bfdbfe', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <div style={{ marginTop: '0.55rem', paddingTop: '0.5rem', borderTop: '1px dashed #bfdbfe', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '0.75rem', color: '#0f766e', fontWeight: 600 }}>
                         🏷️ Merk &quot;{brandName || 'dit merk'}&quot;:
                       </span>

@@ -89,7 +89,7 @@ export default function ProductFieldHistoryModal({ articleNumber, productTitle, 
   };
 
   return (
-    <EmpcoModalShell title="Wijzigingshistorie" subtitle={productTitle ? `${productTitle} — #${articleNumber}` : `#${articleNumber}`} onClose={onClose} width={1020}
+    <EmpcoModalShell title="Wijzigingshistorie" subtitle={productTitle ? `${productTitle} — #${articleNumber}` : `#${articleNumber}`} onClose={onClose} width={1020} zIndex={9100}
       headerRight={fields.length > 0 && (
         <select value={field} onChange={e => setField(e.target.value)}
           style={{ fontSize: '0.78rem', padding: '0.3rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.15)', color: 'white' }}>
