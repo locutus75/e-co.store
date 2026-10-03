@@ -876,18 +876,26 @@ export default function ProductsClient({
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
           <thead>
             <tr style={{ backgroundColor: 'rgba(0,0,0,0.02)', borderBottom: '1px solid var(--border)' }}>
-              <th style={{ padding: '1.25rem', width: '40px' }}>
-                <input 
-                  type="checkbox" 
-                  checked={selectedIds.size > 0 && selectedIds.size === filteredProducts.length}
-                  ref={input => {
-                    if (input) {
-                      input.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredProducts.length;
-                    }
-                  }}
-                  onChange={toggleSelectAll}
-                  style={{ cursor: 'pointer' }}
-                />
+              <th style={{ padding: '1.25rem 0.75rem 1.25rem 1.25rem', width: '48px', textAlign: 'center' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={selectedIds.size > 0 && selectedIds.size === filteredProducts.length}
+                    ref={input => {
+                      if (input) {
+                        input.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredProducts.length;
+                      }
+                    }}
+                    onChange={toggleSelectAll}
+                    style={{ 
+                      width: '20px', 
+                      height: '20px', 
+                      cursor: 'pointer',
+                      accentColor: 'var(--primary)',
+                      borderRadius: '4px'
+                    }}
+                  />
+                </div>
               </th>
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:internalArticleNumber', 'Article ID')}</th>
               {(isAdmin || canAssignProducts) && <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Toewijzing</th>}
@@ -910,13 +918,32 @@ export default function ProductsClient({
                 onMouseOver={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'var(--surface-hover)'}
                 onMouseOut={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'transparent'}
               >
-                <td style={{ padding: '1.25rem', width: '40px' }} onClick={e => e.stopPropagation()}>
-                  <input 
-                    type="checkbox" 
-                    checked={selectedIds.has(product.internalArticleNumber)}
-                    onChange={() => toggleSelect(product.internalArticleNumber)}
-                    style={{ cursor: 'pointer' }}
-                  />
+                <td 
+                  style={{ padding: '1rem 0.75rem 1rem 1.25rem', width: '48px', textAlign: 'center', verticalAlign: 'middle', cursor: 'pointer' }} 
+                  onClick={e => {
+                    e.stopPropagation();
+                    toggleSelect(product.internalArticleNumber);
+                  }}
+                  title="Selecteer product"
+                >
+                  <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedIds.has(product.internalArticleNumber)}
+                      onChange={e => {
+                        e.stopPropagation();
+                        toggleSelect(product.internalArticleNumber);
+                      }}
+                      onClick={e => e.stopPropagation()}
+                      style={{ 
+                        width: '20px', 
+                        height: '20px', 
+                        cursor: 'pointer',
+                        accentColor: 'var(--primary)',
+                        borderRadius: '4px'
+                      }}
+                    />
+                  </div>
                 </td>
                 <td style={{ padding: '1.25rem', fontWeight: 600, color: 'var(--text)' }}>
                   {(() => {
