@@ -432,10 +432,14 @@ export default function ProductEmpcoPanel({
           original={propagationTarget.original}
           replacement={propagationTarget.replacement}
           rule={propagationTarget.rule}
+          onSaveCurrentProduct={appliedCount > 0 && onSave ? handleSaveClick : undefined}
           onClose={() => setPropagationTarget(null)}
-          onApplied={() => {
+          onApplied={(count) => {
             setPropagationTarget(null);
-            load();
+            if (count > 0 || appliedCount > 0) {
+              setJustSaved(true);
+            }
+            load().then(() => setLiveValues(getLiveValues()));
           }}
         />
       )}

@@ -18,6 +18,7 @@ interface Props {
   rule?: string;
   onClose: () => void;
   onApplied?: (count: number) => void;
+  onSaveCurrentProduct?: () => Promise<void> | void;
 }
 
 export default function BrandPropagationModal({
@@ -29,12 +30,14 @@ export default function BrandPropagationModal({
   rule,
   onClose,
   onApplied,
+  onSaveCurrentProduct,
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
   const [matches, setMatches] = useState<BrandProductMatch[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [results, setResults] = useState<ApplyBrandFixResult[] | null>(null);
+  const [savedCurrent, setSavedCurrent] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -84,6 +87,15 @@ export default function BrandPropagationModal({
     setApplying(true);
     setError('');
     try {
+      if (onSaveCurrentProduct) {
+        try {
+          await onSaveCurrentProduct();
+          setSavedCurrent(true);
+        } catch (saveErr) {
+          console.warn('Could not auto-save current product:', saveErr);
+        }
+      }
+
       const res = await applyBrandEmpcoFixAction({
         brandId,
         original,
@@ -93,8 +105,6 @@ export default function BrandPropagationModal({
         sourceArticle: sourceArticleNumber,
       });
       setResults(res);
-      const successCount = res.filter(r => r.applied).length;
-      onApplied?.(successCount);
     } catch (e: any) {
       setError(e?.message ?? 'Fout bij toepassen van merkaanpassingen');
     } finally {
@@ -102,11 +112,17 @@ export default function BrandPropagationModal({
     }
   };
 
+  const handleCloseResults = () => {
+    const successCount = results?.filter(r => r.applied).length ?? 0;
+    onApplied?.(successCount);
+    onClose();
+  };
+
   return (
     <EmpcoModalShell
       title={`🏷️ Merkaanpassing: ${brandName || 'Hetzelfde merk'}`}
       subtitle={`Fragment: "${original}" → "${replacement || '(verwijderen)'}"`}
-      onClose={applying ? () => {} : onClose}
+      onClose={applying ? () => {} : (results ? handleCloseResults : onClose)}
       width={840}
       zIndex={9150}
     >
@@ -122,14 +138,19 @@ export default function BrandPropagationModal({
         ) : results ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div style={{ padding: '1rem', backgroundColor: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', color: '#166534', fontSize: '0.9rem', fontWeight: 600 }}>
-              ✓ Merkaanpassing succesvol doorgevoerd op {results.filter(r => r.applied).length} product(en) van {brandName || 'dit merk'}!
+              <div>✓ Merkaanpassing succesvol doorgevoerd op {results.filter(r => r.applied).length} van de {results.length} product(en) van {brandName || 'dit merk'}!</div>
+              {savedCurrent && sourceArticleNumber && (
+                <div style={{ fontSize: '0.8rem', fontWeight: 500, color: '#15803d', marginTop: '0.35rem' }}>
+                  ✓ Ook het huidige geopende product (#{sourceArticleNumber}) is direct opgeslagen in de database en historie!
+                </div>
+              )}
             </div>
             <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               {results.map(r => (
                 <div key={r.articleNumber} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.8rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.82rem' }}>
                   <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>#{r.articleNumber}</span>
                   {r.applied ? (
-                    <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Aangepast & EmpCo-status bijgewerkt</span>
+                    <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Aangepast &amp; Historie vastgelegd</span>
                   ) : (
                     <span style={{ color: '#dc2626' }}>✕ {r.error || 'Niet gelukt'}</span>
                   )}
@@ -139,10 +160,10 @@ export default function BrandPropagationModal({
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
               <button
                 type="button"
-                onClick={onClose}
-                style={{ padding: '0.5rem 1.4rem', borderRadius: '8px', border: 'none', backgroundColor: EMPCO_ACCENT, color: 'white', fontWeight: 700, cursor: 'pointer' }}
+                onClick={handleCloseResults}
+                style={{ padding: '0.55rem 1.6rem', borderRadius: '8px', border: 'none', backgroundColor: EMPCO_ACCENT, color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: '0.88rem' }}
               >
-                Sluiten
+                ✓ Sluiten &amp; Terug naar product
               </button>
             </div>
           </div>

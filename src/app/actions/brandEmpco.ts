@@ -193,10 +193,13 @@ export async function applyBrandEmpcoFixAction(data: {
       const isLocked = !isAdmin && LOCKED_READY.has(String(product.readyForImport ?? '').toUpperCase());
       if (isLocked) throw new Error('Product is vergrendeld (Webshop Ready)');
 
-      const isCustom = target.fieldKey.startsWith('custom_');
+      let fieldKey = target.fieldKey;
+      if (fieldKey === 'description') fieldKey = 'longDescription';
+
+      const isCustom = fieldKey.startsWith('custom_');
       const curValue = isCustom
-        ? product.customData?.[target.fieldKey.replace('custom_', '')] ?? ''
-        : product[target.fieldKey] ?? '';
+        ? product.customData?.[fieldKey.replace('custom_', '')] ?? ''
+        : product[fieldKey] ?? '';
 
       const next = replaceEmpcoFragment(String(curValue), data.original, data.replacement);
       if (next === null || next === curValue) {
@@ -207,10 +210,10 @@ export async function applyBrandEmpcoFixAction(data: {
       const updatePayload: any = { lastEditedByUserId: userId };
       if (isCustom) {
         const customData = { ...(product.customData ?? {}) };
-        customData[target.fieldKey.replace('custom_', '')] = next || null;
+        customData[fieldKey.replace('custom_', '')] = next || null;
         updatePayload.customData = customData;
       } else {
-        updatePayload[target.fieldKey] = next || null;
+        updatePayload[fieldKey] = next || null;
       }
 
       await prisma.product.update({
@@ -222,8 +225,8 @@ export async function applyBrandEmpcoFixAction(data: {
       await prisma.productFieldHistory.create({
         data: {
           articleNumber: target.articleNumber,
-          fieldKey: target.fieldKey,
-          fieldLabel: labelOf(target.fieldKey),
+          fieldKey,
+          fieldLabel: labelOf(fieldKey),
           oldValue: curValue || null,
           newValue: next || null,
           source: 'EMPCO',
@@ -243,7 +246,7 @@ export async function applyBrandEmpcoFixAction(data: {
             changes: JSON.stringify({
               source: 'BRAND_PROPAGATION',
               brandId: data.brandId,
-              field: target.fieldKey,
+              field: fieldKey,
               original: data.original,
               replacement: data.replacement,
             }),
@@ -254,19 +257,27 @@ export async function applyBrandEmpcoFixAction(data: {
       }
 
       // Update EmpCo check & alerting for this product
-      const sync = await syncEmpcoCheckAfterEdit(
-        target.articleNumber,
-        product,
-        layout,
-        new Set([target.fieldKey])
-      );
+      let newStatus = 'OK';
+      let openIssues = 0;
+      try {
+        const sync = await syncEmpcoCheckAfterEdit(
+          target.articleNumber,
+          product,
+          layout,
+          new Set([fieldKey])
+        );
+        newStatus = sync.status ?? 'OK';
+        openIssues = sync.issueCount ?? 0;
+      } catch (syncErr) {
+        console.warn('Sync EmpCo check error:', syncErr);
+      }
 
       successfulCount++;
       results.push({
         articleNumber: target.articleNumber,
         applied: true,
-        newStatus: sync.status,
-        openIssues: sync.issueCount,
+        newStatus,
+        openIssues,
       });
     } catch (err: any) {
       results.push({

@@ -367,8 +367,25 @@ Richtlijnen:
 - Een productnaam of merknaam is geen claim, tenzij er een milieuclaim in verwerkt is die als zodanig gepresenteerd wordt.
 - Velden met type "KENMERK" zijn aan/uit-kenmerken die op de webshop als badge/icoon getoond kunnen worden. Beoordeel of zo'n kenmerk als claim problematisch is (bijv. "CO₂ gecompenseerd" = OFFSET_CLAIM). Voor KENMERK-velden laat je "replacement" leeg en leg je in "explanation" uit wat er moet gebeuren.
 - severity "FAIL" = duidelijke overtreding (zwarte lijst). severity "WARNING" = twijfelgeval of onvoldoende onderbouwd.
-- "original" MOET een LETTERLIJK, exact gekopieerd fragment uit het betreffende veld zijn (zo kort mogelijk, maar uniek; minimaal het hele woord/zinsdeel), zodat het automatisch vervangen kan worden.
-- "replacement" is de herschreven, EmpCo-conforme versie van precies dat fragment, in dezelfde taal en toon, passend in de zin. Verzin geen feiten of certificeringen die niet in de productgegevens staan. Als er geen onderbouwing is, maak de claim feitelijk/neutraal of laat hem weg (lege string als het fragment geheel weg moet).
+- "original" MOET een LETTERLIJK, exact gekopieerd fragment uit het betreffende veld zijn, zodat het automatisch vervangen kan worden.
+- "replacement" is de herschreven, EmpCo-conforme versie van precies dat fragment, in dezelfde taal en toon. Verzin geen feiten of certificeringen die niet in de productgegevens staan.
+- VERPLICHTE ZINSOPBOUW- EN GRAMMATICACHECK:
+  De voorgestelde aanpassing MOET altijd leiden tot een natuurlijke, lopende en grammaticaal vlekkeloze Nederlandse zin.
+  * Knip NOOIT zomaar losse bijvoeglijke naamwoorden weg als er daardoor een kreupele, onvolledige of grammaticale fout ontstaat in de zin!
+    Voorbeeld van wat FOUT is:
+      Tekst: "Het papier is gecertificeerd met het FSC-keurmerk en de Blauer Engel, voor een bewuste en duurzame papierkeuze."
+      FOUT: original = "bewuste en duurzame", replacement = ""
+      Waarom fout? De overgebleven zin wordt: "...Blauer Engel, voor een papierkeuze." Dat is grammaticaal kreupel en lelijk Nederlands!
+    Hoe het WEL moet:
+      GOED (Optie A - hele overtollige bepaling weghalen):
+        original = ", voor een bewuste en duurzame papierkeuze."
+        replacement = "."
+        Resultaat: "Het papier is gecertificeerd met het FSC-keurmerk en de Blauer Engel." (vloeiend en grammaticaal perfect!)
+      GOED (Optie B - zinsdeel natuurlijk herschrijven):
+        original = "voor een bewuste en duurzame papierkeuze"
+        replacement = "als betrouwbare papierkeuze" (of "voor dagelijks gebruik")
+  * Neem de VOLLEDIGE zinsnede mee in "original" als het weglaten van alleen de overtreding een wees-voorzetsel ("voor een", "met", "van", "om") of onzinnige zinsconstructie achterlaat, inclusief eventuele komma's en leestekens.
+  * Zinsbouw-verificatiestap vóór output: Lees de volledige zin zoals die luidt NA vervanging van "original" door "replacement". Klinkt de zin natuurlijk, vloeiend en grammaticaal 100% correct? Zo niet, verbreed "original" of pas "replacement" aan tot de zin perfect loopt.
 - "field" is de exacte veldsleutel tussen [vierkante haken] uit de input.
 - status: "FAIL" als er minstens één FAIL-issue is, anders "WARNING" als er minstens één WARNING is, anders "PASS".
 ${guidelineNotes?.trim() ? `\n--- Algemene toelichting & richtlijnen van de webshop ---\n${guidelineNotes.trim()}\n` : ''}
@@ -385,7 +402,7 @@ Antwoord UITSLUITEND met één JSON-object (geen uitleg, geen markdown eromheen)
       "rule": "<regelcode>",
       "severity": "FAIL" | "WARNING",
       "explanation": "<korte uitleg waarom dit niet mag>",
-      "replacement": "<voorgestelde conforme tekst of lege string>"
+      "replacement": "<voorgestelde conforme tekst of leesteken of lege string>"
     }
   ],
   "compliant_claims": ["<toegestane claim 1>"]
@@ -406,7 +423,7 @@ export function buildEmpcoUserPrompt(product: any, fields: EmpcoField[]): string
       : `[${f.key}] (TEKST) ${f.label}:\n${f.value}`
   );
 
-  return `Toets de volgende productteksten aan de EmpCo-richtlijn.
+  return `Toets de volgende productteksten aan de EmpCo-richtlijn. Let scherp op zinsopbouw en grammatica bij eventuele voorstellen.
 
 --- Context (alleen ter info, niet toetsen) ---
 ${ctx.join('\n') || '-'}
@@ -416,6 +433,54 @@ ${lines.join('\n\n')}`;
 }
 
 // ── Parsing ───────────────────────────────────────────────────────────────────
+
+/**
+ * Inspects parsed EmpCo issues and ensures the proposed replacement doesn't break
+ * the Dutch sentence structure. If an issue only removes an adjective and leaves
+ * an awkward dangling preposition/article + noun (e.g. ", voor een papierkeuze."),
+ * it expands the issue's original fragment to capture the whole phrase cleanly.
+ */
+export function sanitizeEmpcoIssues(issues: EmpcoIssue[], fields: EmpcoField[]): EmpcoIssue[] {
+  const fieldMap = new Map(fields.map(f => [f.key, f.value]));
+
+  return issues.map(issue => {
+    if (!issue.original || issue.field.startsWith('crit')) return issue;
+    const fullText = fieldMap.get(issue.field) ?? '';
+    if (!fullText) return issue;
+
+    const loc = locateFragment(fullText, issue.original);
+    if (!loc) return issue;
+
+    const before = fullText.slice(0, loc.idx);
+    const after = fullText.slice(loc.idx + loc.len);
+
+    // Check if the deletion or replacement would leave a dangling phrase like ", voor een papierkeuze."
+    const danglingPrepositionMatch = before.match(/,\s*(voor|met|als|van|door|in|om)\s+(een|de|het)\s+$/i);
+    const trailingNounMatch = after.match(/^\s+([a-zA-Z]+)(\s*[.!?])/);
+
+    if (danglingPrepositionMatch && trailingNounMatch) {
+      const remainingNoun = trailingNounMatch[1].toLowerCase();
+      // Generic nouns that frequently get left behind awkwardly
+      const isAwkwardRemainingNoun = ['papierkeuze', 'keuze', 'optie', 'product', 'geheel', 'toepassing', 'aankoop'].includes(remainingNoun);
+
+      if (!issue.replacement || issue.replacement.trim() === '' || isAwkwardRemainingNoun) {
+        // Expand original to include the entire preposition clause: ", voor een <original> <noun>."
+        const prepStartIdx = before.lastIndexOf(danglingPrepositionMatch[0]);
+        const endPunct = trailingNounMatch[2].trim() || '.';
+        const expandedOriginal = fullText.slice(prepStartIdx, loc.idx + loc.len + trailingNounMatch[0].length);
+
+        return {
+          ...issue,
+          original: expandedOriginal,
+          replacement: endPunct,
+          explanation: issue.explanation + ' (Zinsnede verbreed voor een grammaticaal vloeiende zin)',
+        };
+      }
+    }
+
+    return issue;
+  });
+}
 
 export function parseEmpcoResponse(raw: string, fields: EmpcoField[]): EmpcoResult | null {
   if (!raw) return null;
@@ -430,7 +495,7 @@ export function parseEmpcoResponse(raw: string, fields: EmpcoField[]): EmpcoResu
   try { parsed = JSON.parse(text.slice(start, end + 1)); } catch { return null; }
 
   const labelMap = new Map(fields.map(f => [f.key, f.label]));
-  const issues: EmpcoIssue[] = Array.isArray(parsed.issues) ? parsed.issues
+  const rawIssues: EmpcoIssue[] = Array.isArray(parsed.issues) ? parsed.issues
     .filter((i: any) => i && typeof i === 'object')
     .map((i: any) => ({
       field: String(i.field ?? '').replace(/^\[|\]$/g, ''),
@@ -441,6 +506,8 @@ export function parseEmpcoResponse(raw: string, fields: EmpcoField[]): EmpcoResu
       explanation: String(i.explanation ?? ''),
       replacement: String(i.replacement ?? ''),
     })) : [];
+
+  const issues = sanitizeEmpcoIssues(rawIssues, fields);
 
   // Derive status from issues to guarantee consistency
   const status: EmpcoStatus = issues.some(i => i.severity === 'FAIL') ? 'FAIL' : issues.length > 0 ? 'WARNING' : 'PASS';
@@ -460,7 +527,7 @@ export function isEmpcoIssueFixable(issue: Pick<EmpcoIssue, 'field' | 'original'
   return !!issue.original && !issue.field.startsWith('crit');
 }
 
-function locateFragment(current: string, original: string): { idx: number; len: number } | null {
+export function locateFragment(current: string, original: string): { idx: number; len: number } | null {
   if (!original) return null;
   const idx = current.indexOf(original);
   if (idx >= 0) return { idx, len: original.length };
@@ -471,6 +538,30 @@ function locateFragment(current: string, original: string): { idx: number; len: 
 }
 
 /**
+ * Cleans up sentence structure artifacts that can occur after deletions,
+ * like duplicate punctuation, spaces, or dangling preposition fragments.
+ */
+export function cleanDutchSentenceStructure(text: string): string {
+  if (!text) return '';
+  return text
+    // Normalize spaces
+    .replace(/[ \t]+/g, ' ')
+    // Remove space before punctuation: "woord ." -> "woord."
+    .replace(/[ \t]+([,.;:!?])/g, '$1')
+    // Remove comma directly before period/exclamation/question mark: ",." -> "."
+    .replace(/,\s*([.!?])/g, '$1')
+    // Remove duplicate periods or commas: ".." -> ".", ",," -> ","
+    .replace(/\.{2,}/g, '.')
+    .replace(/,{2,}/g, ',')
+    // Clean up dangling preposition phrases at the end of a clause or sentence:
+    // e.g. ", voor een ." -> "." or ", voor ." -> "."
+    .replace(/,?\s*\b(voor|met|op|van|door|in|uit|tot|om|als|zonder)\s+(een|de|het)?\s*([.!?])/gi, '$3')
+    // Clean up dangling phrase ", voor een <noun>." if <noun> is a generic leftover like "papierkeuze" without adjective
+    .replace(/,\s*(voor|met|als)\s+(een|de|het)\s+(papierkeuze|keuze|optie|product|geheel)\s*([.!?])/gi, '$4')
+    .trim();
+}
+
+/**
  * Replaces `original` in `current` by `replacement`.
  * Returns null when the fragment can't be found (anymore).
  */
@@ -478,8 +569,7 @@ export function replaceEmpcoFragment(current: string, original: string, replacem
   const loc = locateFragment(current ?? '', original);
   if (!loc) return null;
   let next = current.slice(0, loc.idx) + replacement + current.slice(loc.idx + loc.len);
-  if (!replacement) next = next.replace(/[ \t]{2,}/g, ' ').replace(/\s+([,.;:!?])/g, '$1').trim();
-  return next;
+  return cleanDutchSentenceStructure(next);
 }
 
 /** Status derived from a list of issues */

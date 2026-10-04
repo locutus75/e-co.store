@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   EmpcoIssue, EmpcoResult, EmpcoStatus, EMPCO_STATUS_META, ruleLabel, EMPCO_RULES,
   EmpcoGuidelineLink, DEFAULT_EMPCO_GUIDELINE_LINKS, DEFAULT_EMPCO_GUIDELINE_NOTES,
-  isEmpcoIssueFixable,
+  isEmpcoIssueFixable, replaceEmpcoFragment, locateFragment,
 } from '@/lib/empco';
 import { applyEmpcoBulkFixesAction } from '@/app/actions/empco';
 
@@ -86,6 +86,40 @@ function ContextSnippet({ text, fragment }: { text: string; fragment: string }) 
 // ── Single issue card ─────────────────────────────────────────────────────────
 function IssueCard({ issue, fieldValue, actions }: { issue: EmpcoIssue; fieldValue?: string; actions?: React.ReactNode }) {
   const isFail = issue.severity === 'FAIL';
+
+  // Compute resulting sentence preview if fieldValue contains the fragment
+  const sentencePreview = React.useMemo(() => {
+    if (!fieldValue || !issue.original || issue.field.startsWith('crit')) return null;
+    const replaced = replaceEmpcoFragment(fieldValue, issue.original, issue.replacement);
+    if (!replaced) return null;
+
+    const loc = locateFragment(fieldValue, issue.original);
+    if (!loc) return null;
+
+    // Find sentence boundaries around loc.idx in replaced text
+    const changeStart = Math.min(loc.idx, replaced.length);
+    let sStart = replaced.lastIndexOf('.', changeStart - 1);
+    const qStart = replaced.lastIndexOf('?', changeStart - 1);
+    const eStart = replaced.lastIndexOf('!', changeStart - 1);
+    const nStart = replaced.lastIndexOf('\n', changeStart - 1);
+    sStart = Math.max(sStart, qStart, eStart, nStart);
+    sStart = sStart === -1 ? 0 : sStart + 1;
+
+    let sEnd = replaced.indexOf('.', changeStart);
+    if (sEnd === -1) {
+      const qEnd = replaced.indexOf('?', changeStart);
+      const eEnd = replaced.indexOf('!', changeStart);
+      const candidates = [qEnd, eEnd].filter(n => n !== -1);
+      sEnd = candidates.length > 0 ? Math.min(...candidates) + 1 : replaced.length;
+    } else {
+      sEnd = sEnd + 1;
+    }
+
+    const snippet = replaced.slice(sStart, sEnd).trim();
+    if (!snippet || snippet === fieldValue.trim()) return null;
+    return snippet;
+  }, [fieldValue, issue.original, issue.replacement, issue.field]);
+
   return (
     <div className="empco-issue" style={{
       borderTop: `1px solid ${isFail ? '#fecaca' : '#fde68a'}`,
@@ -119,6 +153,25 @@ function IssueCard({ issue, fieldValue, actions }: { issue: EmpcoIssue; fieldVal
           </div>
         </div>
       </div>
+      {sentencePreview && (
+        <div style={{
+          marginTop: '0.55rem',
+          padding: '0.45rem 0.65rem',
+          borderRadius: '7px',
+          backgroundColor: '#f0fdf4',
+          border: '1px solid #bbf7d0',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.2rem',
+        }}>
+          <div style={{ fontSize: '0.63rem', fontWeight: 800, color: '#15803d', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <span>✓</span> RESULTAAT IN DE ZIN (VLOEIENDE ZINSOPBOUW):
+          </div>
+          <div style={{ fontSize: '0.78rem', color: '#14532d', fontStyle: 'italic', lineHeight: 1.45 }}>
+            &ldquo;{sentencePreview}&rdquo;
+          </div>
+        </div>
+      )}
     </div>
   );
 }
