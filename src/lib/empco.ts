@@ -385,6 +385,11 @@ Richtlijnen:
       GOED (Optie B - zinsdeel natuurlijk herschrijven):
         original = "voor een bewuste en duurzame papierkeuze"
         replacement = "als betrouwbare papierkeuze" (of "voor dagelijks gebruik")
+  * Let extra scherp op de AFSLUITENDE PUNT van een zin:
+    Als een overtreding of claim aan het EINDE van een zin staat en wordt verwijderd of vervangen, zorg dan dat de zin ALTIJD netjes wordt afgesloten met een punt!
+    Verwijder NOOIT de punt van de zin zonder deze te behouden of terug te plaatsen.
+    - FOUT: original = "en dus niet zal verkleuren.", replacement = "" (hierdoor ontbreekt de punt en plakt de volgende zin er direct achteraan!)
+    - GOED: original = "en dus niet zal verkleuren", replacement = "" (de bestaande punt blijft dan netjes in de tekst behouden) OF original = "en dus niet zal verkleuren.", replacement = "."
   * Neem de VOLLEDIGE zinsnede mee in "original" als het weglaten van alleen de overtreding een wees-voorzetsel ("voor een", "met", "van", "om") of onzinnige zinsconstructie achterlaat, inclusief eventuele komma's en leestekens.
   * Zinsbouw-verificatiestap vóór output: Lees de volledige zin zoals die luidt NA vervanging van "original" door "replacement". Klinkt de zin natuurlijk, vloeiend en grammaticaal 100% correct? Zo niet, verbreed "original" of pas "replacement" aan tot de zin perfect loopt.
 - CONSTRUCTIEVE EN INHOUDELIJK RIJKE VOORSTELLEN (VERRIJKEN I.P.V. KAALSLAG):
@@ -489,6 +494,55 @@ export function sanitizeEmpcoIssues(issues: EmpcoIssue[], fields: EmpcoField[]):
       }
     }
 
+    // Check if issue.original ends with sentence-terminating punctuation (. ! ?) while preceding words exist
+    const origTrim = issue.original.trim();
+    const origPunctMatch = origTrim.match(/([.!?])$/);
+    if (origPunctMatch) {
+      const punct = origPunctMatch[1];
+      const replTrim = (issue.replacement ?? '').trim();
+      const replHasPunct = /[.!?]$/.test(replTrim);
+
+      if (!replHasPunct) {
+        const lastPunctIdx = Math.max(
+          before.lastIndexOf('.'),
+          before.lastIndexOf('?'),
+          before.lastIndexOf('!'),
+          before.lastIndexOf('\n')
+        );
+        const textBeforeInSentence = lastPunctIdx === -1 ? before : before.slice(lastPunctIdx + 1);
+        const hasWordsBefore = /[a-zA-Z0-9]/.test(textBeforeInSentence);
+        const afterTrim = after.trim();
+        const isEndOrNewSentence = afterTrim === '' || /^[A-Z0-9\n"“'‘(<]/.test(afterTrim);
+        const afterAlreadyHasPunct = /^[.!?]/.test(afterTrim);
+
+        if (hasWordsBefore && isEndOrNewSentence && !afterAlreadyHasPunct) {
+          if (!replTrim) {
+            // Fragment deletion: strip the terminal punctuation from issue.original if the fragment without punctuation still matches,
+            // so the original period remains in the field text without being removed.
+            const trimmedOriginal = issue.original.replace(/\s*[.!?]\s*$/, '');
+            if (trimmedOriginal && locateFragment(fullText, trimmedOriginal)) {
+              issue = {
+                ...issue,
+                original: trimmedOriginal,
+              };
+            } else {
+              // Otherwise ensure replacement preserves the punctuation
+              issue = {
+                ...issue,
+                replacement: punct,
+              };
+            }
+          } else {
+            // Replacement text provided but missing punctuation: append it
+            issue = {
+              ...issue,
+              replacement: issue.replacement.trimEnd() + punct,
+            };
+          }
+        }
+      }
+    }
+
     return issue;
   });
 }
@@ -559,6 +613,8 @@ export function cleanDutchSentenceStructure(text: string): string {
     .replace(/[ \t]+/g, ' ')
     // Remove space before punctuation: "woord ." -> "woord."
     .replace(/[ \t]+([,.;:!?])/g, '$1')
+    // Ensure single space between sentence-ending punctuation and a following uppercase word
+    .replace(/([.!?])([A-ZА-Я])/g, '$1 $2')
     // Remove comma directly before period/exclamation/question mark: ",." -> "."
     .replace(/,\s*([.!?])/g, '$1')
     // Remove duplicate periods or commas: ".." -> ".", ",," -> ","
@@ -579,7 +635,47 @@ export function cleanDutchSentenceStructure(text: string): string {
 export function replaceEmpcoFragment(current: string, original: string, replacement: string): string | null {
   const loc = locateFragment(current ?? '', original);
   if (!loc) return null;
-  let next = current.slice(0, loc.idx) + replacement + current.slice(loc.idx + loc.len);
+
+  const before = current.slice(0, loc.idx);
+  const after = current.slice(loc.idx + loc.len);
+
+  let effectiveReplacement = replacement ?? '';
+
+  // Check if original ends with sentence-terminating punctuation (. ! ?)
+  const origTrimmed = original.trim();
+  const origPunctMatch = origTrimmed.match(/([.!?])$/);
+
+  if (origPunctMatch) {
+    const punct = origPunctMatch[1];
+    const replHasPunct = /[.!?]\s*$/.test(effectiveReplacement);
+
+    if (!replHasPunct) {
+      // Find whether there is content belonging to the same sentence before the fragment
+      const lastPunctIdx = Math.max(
+        before.lastIndexOf('.'),
+        before.lastIndexOf('?'),
+        before.lastIndexOf('!'),
+        before.lastIndexOf('\n')
+      );
+      const textBeforeInSentence = lastPunctIdx === -1 ? before : before.slice(lastPunctIdx + 1);
+      const hasWordsBefore = /[a-zA-Z0-9]/.test(textBeforeInSentence);
+
+      // Check after: is it end-of-text, newline, or the start of a new sentence (uppercase letter, quote, etc.)?
+      const afterTrim = after.trim();
+      const isEndOrNewSentence = afterTrim === '' || /^[A-Z0-9\n"“'‘(<]/.test(afterTrim);
+      const afterAlreadyHasPunct = /^[.!?]/.test(afterTrim);
+
+      if (hasWordsBefore && isEndOrNewSentence && !afterAlreadyHasPunct) {
+        // The fragment deletion or replacement stripped the terminal punctuation of the preceding sentence.
+        // Restore the punctuation so the preceding sentence properly stops!
+        effectiveReplacement = effectiveReplacement && effectiveReplacement.trim() !== ''
+          ? (effectiveReplacement.trimEnd() + punct)
+          : punct;
+      }
+    }
+  }
+
+  let next = before + effectiveReplacement + after;
   return cleanDutchSentenceStructure(next);
 }
 

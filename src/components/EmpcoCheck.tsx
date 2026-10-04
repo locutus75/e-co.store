@@ -118,23 +118,21 @@ function IssueCard({ issue, fieldValue, actions }: { issue: EmpcoIssue; fieldVal
     if (isEntireSentenceDeleted) return null;
 
     // Find sentence boundaries around loc.idx in replaced text
-    const changeStart = Math.min(loc.idx, replaced.length);
-    let sStart = replaced.lastIndexOf('.', changeStart - 1);
-    const qStart = replaced.lastIndexOf('?', changeStart - 1);
-    const eStart = replaced.lastIndexOf('!', changeStart - 1);
-    const nStart = replaced.lastIndexOf('\n', changeStart - 1);
-    sStart = Math.max(sStart, qStart, eStart, nStart);
-    sStart = sStart === -1 ? 0 : sStart + 1;
-
-    let sEnd = replaced.indexOf('.', changeStart);
-    if (sEnd === -1) {
-      const qEnd = replaced.indexOf('?', changeStart);
-      const eEnd = replaced.indexOf('!', changeStart);
-      const candidates = [qEnd, eEnd].filter(n => n !== -1);
-      sEnd = candidates.length > 0 ? Math.min(...candidates) + 1 : replaced.length;
-    } else {
-      sEnd = sEnd + 1;
+    let sStart = sStartOrig;
+    if (sStart >= replaced.length) sStart = 0;
+    while (sStart < replaced.length && /[ \t\r\n]/.test(replaced[sStart])) {
+      sStart++;
     }
+
+    const minSearchFrom = Math.max(sStart, sStart + beforeInSentence.length - 2);
+    let sEnd = -1;
+    for (let i = minSearchFrom; i < replaced.length; i++) {
+      if ('.!?\n'.includes(replaced[i])) {
+        sEnd = i + 1;
+        break;
+      }
+    }
+    if (sEnd === -1) sEnd = replaced.length;
 
     const snippet = replaced.slice(sStart, sEnd).trim();
     if (!snippet || snippet === fieldValue.trim()) return null;
