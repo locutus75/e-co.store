@@ -3,6 +3,7 @@
 import React, { useState, useTransition, useRef, useEffect } from 'react';
 import { LlmProviderPublic, LlmStatsResult } from '@/app/actions/llm';
 import { useExchangeRate, formatCostEur } from '@/hooks/useExchangeRate';
+import AiUsageDashboard from '@/components/AiUsageDashboard';
 
 // ── Model lists per provider ──────────────────────────────────────────────────
 const MODELS: Record<string, { id: string; label: string }[]> = {
@@ -298,125 +299,7 @@ export default function AiClient({ providers, initialStats, isAdmin }: Props) {
 
       {/* Stats Tab */}
       {tab === 'stats' && isAdmin && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          {/* Period selector */}
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Periode:</span>
-            {(['7d', '30d', 'all'] as const).map(p => (
-              <button key={p} onClick={() => loadStats(p)} disabled={statsLoading} style={{
-                padding: '0.4rem 1rem', borderRadius: 'var(--radius)', fontSize: '0.85rem',
-                border: statsPeriod === p ? '1px solid var(--primary)' : '1px solid var(--border)',
-                backgroundColor: statsPeriod === p ? 'var(--primary)' : 'transparent',
-                color: statsPeriod === p ? 'white' : 'var(--text-muted)',
-                cursor: 'pointer', fontWeight: statsPeriod === p ? 600 : 400,
-              }}>
-                {p === '7d' ? '7 dagen' : p === '30d' ? '30 dagen' : 'Alles'}
-              </button>
-            ))}
-            {statsLoading && <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Laden...</span>}
-          </div>
-
-          {stats && (
-            <>
-              {/* KPI row */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-                {[
-                  { label: 'Verzoeken', value: fmt(stats.totalRequests), icon: '🔄' },
-                  { label: 'Input tokens', value: fmt(stats.totalInputTokens), icon: '📥' },
-                  { label: 'Output tokens', value: fmt(stats.totalOutputTokens), icon: '📤' },
-                  { label: 'Geschatte kosten', value: fmtCost(stats.totalCostUsd), icon: '💰' },
-                ].map(kpi => (
-                  <div key={kpi.label} className="glass" style={{ padding: '1.5rem', borderRadius: 'var(--radius-lg)' }}>
-                    <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{kpi.icon}</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text)' }}>{kpi.value}</div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500, marginTop: '0.2rem' }}>{kpi.label}</div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                {/* Per provider */}
-                <div className="glass" style={{ padding: '1.5rem', borderRadius: 'var(--radius-lg)' }}>
-                  <h3 style={{ fontWeight: 700, marginBottom: '1rem', color: 'var(--text)' }}>Per Provider</h3>
-                  {stats.byProvider.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Geen data</p> : (
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                          {['Provider', 'Verzoeken', 'Tokens', 'Kosten'].map(h => (
-                            <th key={h} style={{ textAlign: 'left', padding: '0.4rem 0.6rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.75rem' }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {stats.byProvider.map(row => (
-                          <tr key={row.provider} style={{ borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
-                            <td style={{ padding: '0.5rem 0.6rem', fontWeight: 600 }}>{PROVIDER_ICONS[row.provider]} {row.provider}</td>
-                            <td style={{ padding: '0.5rem 0.6rem' }}>{fmt(row.requests)}</td>
-                            <td style={{ padding: '0.5rem 0.6rem' }}>{fmt(row.inputTokens + row.outputTokens)}</td>
-                            <td style={{ padding: '0.5rem 0.6rem' }}>{fmtCost(row.costUsd)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-
-                {/* Per model */}
-                <div className="glass" style={{ padding: '1.5rem', borderRadius: 'var(--radius-lg)' }}>
-                  <h3 style={{ fontWeight: 700, marginBottom: '1rem', color: 'var(--text)' }}>Per Model</h3>
-                  {stats.byModel.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Geen data</p> : (
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                          {['Model', 'Verzoeken', 'Tokens', 'Kosten'].map(h => (
-                            <th key={h} style={{ textAlign: 'left', padding: '0.4rem 0.6rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.75rem' }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {stats.byModel.map(row => (
-                          <tr key={`${row.provider}-${row.model}`} style={{ borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
-                            <td style={{ padding: '0.5rem 0.6rem' }}><span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{row.model}</span></td>
-                            <td style={{ padding: '0.5rem 0.6rem' }}>{fmt(row.requests)}</td>
-                            <td style={{ padding: '0.5rem 0.6rem' }}>{fmt(row.inputTokens + row.outputTokens)}</td>
-                            <td style={{ padding: '0.5rem 0.6rem' }}>{fmtCost(row.costUsd)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-
-                {/* Per user */}
-                <div className="glass" style={{ padding: '1.5rem', borderRadius: 'var(--radius-lg)', gridColumn: '1 / -1' }}>
-                  <h3 style={{ fontWeight: 700, marginBottom: '1rem', color: 'var(--text)' }}>Per Gebruiker</h3>
-                  {stats.byUser.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Geen data</p> : (
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                          {['Gebruiker', 'Verzoeken', 'Input tokens', 'Output tokens', 'Geschatte kosten'].map(h => (
-                            <th key={h} style={{ textAlign: 'left', padding: '0.4rem 0.8rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.75rem' }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {stats.byUser.map(row => (
-                          <tr key={row.userId} style={{ borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
-                            <td style={{ padding: '0.6rem 0.8rem', fontWeight: 600 }}>{row.email}</td>
-                            <td style={{ padding: '0.6rem 0.8rem' }}>{fmt(row.requests)}</td>
-                            <td style={{ padding: '0.6rem 0.8rem' }}>{fmt(row.inputTokens)}</td>
-                            <td style={{ padding: '0.6rem 0.8rem' }}>{fmt(row.outputTokens)}</td>
-                            <td style={{ padding: '0.6rem 0.8rem', fontWeight: 600, color: '#059669' }}>{fmtCost(row.costUsd)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+        <AiUsageDashboard initialStats={stats} />
       )}
 
       <style>{`@keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }`}</style>

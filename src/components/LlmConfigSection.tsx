@@ -281,9 +281,26 @@ export default function LlmConfigSection() {
       
       {/* ── SECTIE: STANDAARD PROVIDERS ── */}
       <div className="glass" style={{ padding: '2rem', borderRadius: 'var(--radius-lg)' }}>
-        <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              🤖 AI &amp; LLM Configuratie
+            </h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '0.2rem 0 0' }}>
+              Beheer API-sleutels, modelselecties en standaardinstellingen per module.
+            </p>
+          </div>
+          <a
+            href="/stats?tab=ai"
+            className="btn btn-primary"
+            style={{ fontSize: '0.82rem', padding: '0.45rem 1rem', display: 'flex', alignItems: 'center', gap: '0.45rem', textDecoration: 'none' }}
+          >
+            📊 Bekijk AI Verbruik &amp; Kosten
+          </a>
+        </div>
+        <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           🌐 Standaard Provider per Onderdeel
-        </h3>
+        </h4>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
           {MODULES.map(m => (
             <div key={m.id} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '1.25rem', backgroundColor: 'rgba(255,255,255,0.4)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>

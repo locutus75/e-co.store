@@ -3,7 +3,7 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { estimateCost } from '@/lib/llmUtils';
+import { estimateCost, PRICING_TABLE, ModelPricing } from '@/lib/llmUtils';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -329,21 +329,88 @@ export async function getAnalysisConfigAction(): Promise<ProductAnalysisConfig> 
 
 // ── Usage stats ───────────────────────────────────────────────────────────────
 
+export type LlmStatsPeriod = 'today' | '7d' | '30d' | '90d' | '1y' | 'all';
+
+export interface LlmLogEntry {
+  id: string;
+  createdAt: string;
+  context: string;
+  contextLabel: string;
+  contextIcon: string;
+  contextColor: string;
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  durationMs: number;
+  success: boolean;
+  errorMsg?: string | null;
+  promptSnippet?: string | null;
+  userEmail: string;
+}
+
+export interface LlmContextStat {
+  context: string;
+  label: string;
+  icon: string;
+  color: string;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+
 export interface LlmStatsResult {
+  period: LlmStatsPeriod;
   totalRequests: number;
+  successfulRequests: number;
+  failedRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
   totalCostUsd: number;
+  avgDurationMs: number;
   byProvider: { provider: string; requests: number; inputTokens: number; outputTokens: number; costUsd: number }[];
   byModel: { model: string; provider: string; requests: number; inputTokens: number; outputTokens: number; costUsd: number }[];
+  byContext: LlmContextStat[];
   byUser: { userId: string; email: string; requests: number; inputTokens: number; outputTokens: number; costUsd: number }[];
-  byDay: { date: string; requests: number; inputTokens: number; outputTokens: number }[];
+  byDay: { date: string; requests: number; inputTokens: number; outputTokens: number; costUsd: number }[];
+  recentLogs: LlmLogEntry[];
+  knownPricing: { model: string; input: number; output: number; description?: string }[];
 }
 
-export async function getLlmUsageStatsAction(period: '7d' | '30d' | 'all' = '30d'): Promise<LlmStatsResult> {
+const CONTEXT_META: Record<string, { label: string; icon: string; color: string }> = {
+  'product-analysis':  { label: 'Product Analyse',     icon: '📋', color: '#7c3aed' },
+  'batch-analysis':    { label: 'Batch Analyse',       icon: '📦', color: '#8b5cf6' },
+  'empco-check':       { label: 'EmpCo Claims Check',  icon: '⚖️', color: '#0f766e' },
+  'web-enrich':        { label: 'Web Enrichment',      icon: '🌐', color: '#0284c7' },
+  'image-edit':        { label: 'Foto AI (Vision)',    icon: '🖼️', color: '#db2777' },
+  'section-suggestion':{ label: 'Sectie Suggestie',    icon: '📑', color: '#d97706' },
+  'field-suggestion':  { label: 'Veld Suggestie',      icon: '✏️', color: '#059669' },
+  'standalone':        { label: 'AI Assistent / Chat', icon: '💬', color: '#4f46e5' },
+  'chat-assistant':    { label: 'AI Assistent / Chat', icon: '💬', color: '#4f46e5' },
+};
+
+export async function getLlmUsageStatsAction(period: LlmStatsPeriod = '30d'): Promise<LlmStatsResult> {
   await assertAdmin();
 
-  const since = period === 'all' ? undefined : new Date(Date.now() - (period === '7d' ? 7 : 30) * 86_400_000);
+  let since: Date | undefined;
+  if (period === 'today') {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    since = d;
+  } else if (period === '7d') {
+    since = new Date(Date.now() - 7 * 86_400_000);
+  } else if (period === '30d') {
+    since = new Date(Date.now() - 30 * 86_400_000);
+  } else if (period === '90d') {
+    since = new Date(Date.now() - 90 * 86_400_000);
+  } else if (period === '1y') {
+    since = new Date(Date.now() - 365 * 86_400_000);
+  } else {
+    since = undefined;
+  }
+
   const where = since ? { createdAt: { gte: since } } : {};
 
   const logs = await prisma.llmUsageLog.findMany({
@@ -352,46 +419,111 @@ export async function getLlmUsageStatsAction(period: '7d' | '30d' | 'all' = '30d
     orderBy: { createdAt: 'desc' },
   });
 
-  // Aggregate
+  // Aggregation structures
   const provMap = new Map<string, any>();
   const modelMap = new Map<string, any>();
+  const contextMap = new Map<string, any>();
   const userMap = new Map<string, any>();
   const dayMap = new Map<string, any>();
 
+  let successfulRequests = 0;
+  let failedRequests = 0;
+  let totalDurationMs = 0;
+
   for (const log of logs) {
+    if (log.success) successfulRequests++;
+    else failedRequests++;
+    totalDurationMs += log.durationMs || 0;
+
+    // Determine accurate cost (use stored or fallback to estimateCost)
+    const effectiveCost = (log.costUsd > 0)
+      ? log.costUsd
+      : estimateCost(log.model, log.inputTokens, log.outputTokens);
+
     // By provider
     const pk = log.provider;
     if (!provMap.has(pk)) provMap.set(pk, { provider: pk, requests: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 });
     const pv = provMap.get(pk);
-    pv.requests++; pv.inputTokens += log.inputTokens; pv.outputTokens += log.outputTokens; pv.costUsd += log.costUsd;
+    pv.requests++; pv.inputTokens += log.inputTokens; pv.outputTokens += log.outputTokens; pv.costUsd += effectiveCost;
 
     // By model
     const mk = `${log.provider}::${log.model}`;
     if (!modelMap.has(mk)) modelMap.set(mk, { model: log.model, provider: log.provider, requests: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 });
     const mv = modelMap.get(mk);
-    mv.requests++; mv.inputTokens += log.inputTokens; mv.outputTokens += log.outputTokens; mv.costUsd += log.costUsd;
+    mv.requests++; mv.inputTokens += log.inputTokens; mv.outputTokens += log.outputTokens; mv.costUsd += effectiveCost;
+
+    // By context (feature / module)
+    const ck = log.context || 'standalone';
+    if (!contextMap.has(ck)) {
+      const meta = CONTEXT_META[ck] ?? { label: ck, icon: '⚙️', color: '#64748b' };
+      contextMap.set(ck, { context: ck, ...meta, requests: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 });
+    }
+    const cv = contextMap.get(ck);
+    cv.requests++; cv.inputTokens += log.inputTokens; cv.outputTokens += log.outputTokens; cv.costUsd += effectiveCost;
 
     // By user
     const uk = log.userId;
-    if (!userMap.has(uk)) userMap.set(uk, { userId: uk, email: log.user.email, requests: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 });
+    if (!userMap.has(uk)) userMap.set(uk, { userId: uk, email: log.user?.email || 'Onbekend', requests: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 });
     const uv = userMap.get(uk);
-    uv.requests++; uv.inputTokens += log.inputTokens; uv.outputTokens += log.outputTokens; uv.costUsd += log.costUsd;
+    uv.requests++; uv.inputTokens += log.inputTokens; uv.outputTokens += log.outputTokens; uv.costUsd += effectiveCost;
 
     // By day
     const dk = log.createdAt.toISOString().split('T')[0];
-    if (!dayMap.has(dk)) dayMap.set(dk, { date: dk, requests: 0, inputTokens: 0, outputTokens: 0 });
+    if (!dayMap.has(dk)) dayMap.set(dk, { date: dk, requests: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 });
     const dv = dayMap.get(dk);
-    dv.requests++; dv.inputTokens += log.inputTokens; dv.outputTokens += log.outputTokens;
+    dv.requests++; dv.inputTokens += log.inputTokens; dv.outputTokens += log.outputTokens; dv.costUsd += effectiveCost;
   }
 
+  // Format recent logs (first 100)
+  const recentLogs: LlmLogEntry[] = logs.slice(0, 100).map(l => {
+    const meta = CONTEXT_META[l.context || 'standalone'] ?? { label: l.context || 'Overig', icon: '⚙️', color: '#64748b' };
+    const cost = (l.costUsd > 0) ? l.costUsd : estimateCost(l.model, l.inputTokens, l.outputTokens);
+    return {
+      id: l.id,
+      createdAt: l.createdAt.toISOString(),
+      context: l.context || 'standalone',
+      contextLabel: meta.label,
+      contextIcon: meta.icon,
+      contextColor: meta.color,
+      provider: l.provider,
+      model: l.model,
+      inputTokens: l.inputTokens,
+      outputTokens: l.outputTokens,
+      costUsd: cost,
+      durationMs: l.durationMs,
+      success: l.success,
+      errorMsg: l.errorMsg,
+      promptSnippet: l.promptSnippet,
+      userEmail: l.user?.email || 'Onbekend',
+    };
+  });
+
+  const knownPricing = (Object.entries(PRICING_TABLE) as [string, ModelPricing][]).map(([model, p]) => ({
+    model,
+    input: p.input,
+    output: p.output,
+    description: p.description,
+  }));
+
+  const totalInputTokens = logs.reduce((s: number, l: any) => s + l.inputTokens, 0);
+  const totalOutputTokens = logs.reduce((s: number, l: any) => s + l.outputTokens, 0);
+  const totalCostUsd = Array.from(provMap.values()).reduce((s: number, p: any) => s + p.costUsd, 0);
+
   return {
+    period,
     totalRequests: logs.length,
-    totalInputTokens: logs.reduce((s: number, l: any) => s + l.inputTokens, 0),
-    totalOutputTokens: logs.reduce((s: number, l: any) => s + l.outputTokens, 0),
-    totalCostUsd: logs.reduce((s: number, l: any) => s + l.costUsd, 0),
+    successfulRequests,
+    failedRequests,
+    totalInputTokens,
+    totalOutputTokens,
+    totalCostUsd,
+    avgDurationMs: logs.length > 0 ? Math.round(totalDurationMs / logs.length) : 0,
     byProvider: Array.from(provMap.values()),
     byModel: Array.from(modelMap.values()).sort((a, b) => b.requests - a.requests),
+    byContext: Array.from(contextMap.values()).sort((a, b) => b.requests - a.requests),
     byUser: Array.from(userMap.values()).sort((a, b) => b.requests - a.requests),
     byDay: Array.from(dayMap.values()).sort((a, b) => a.date.localeCompare(b.date)),
+    recentLogs,
+    knownPricing,
   };
 }

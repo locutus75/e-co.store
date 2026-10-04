@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { useExchangeRate, formatCostEur } from '@/hooks/useExchangeRate';
+import { estimateCost } from '@/lib/llmUtils';
 import { EmpcoIssue } from '@/lib/empco';
 import { EmpcoBadge, EmpcoModalShell, EmpcoResultView, EmpcoSpinner, empcoBadgeState, EMPCO_ACCENT, EmpcoGuidelinesModal } from './EmpcoCheck';
 import BrandPropagationModal, { PropagationItem } from './BrandPropagationModal';
@@ -224,7 +225,12 @@ export default function ProductEmpcoPanel({
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', padding: '0.5rem 1.4rem', backgroundColor: '#ecfdf5', borderBottom: '1px solid #a7f3d0', fontSize: '0.72rem', color: '#065f46', flexWrap: 'wrap' }}>
                 <span>📅 {new Date(check.updatedAt).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                 {check.model && check.model !== '-' && <span>🤖 {check.model}</span>}
-                {check.costUsd > 0 && <span>💰 {formatCostEur(check.costUsd, usdToEur)}</span>}
+                {(() => {
+                  const c = check.costUsd > 0
+                    ? check.costUsd
+                    : estimateCost(check.model, check.inputTokens, check.outputTokens);
+                  return c > 0 ? <span>💰 {formatCostEur(c, usdToEur)}</span> : null;
+                })()}
                 <div style={{ flex: 1 }} />
                 {fixableCount > 0 && (
                   <button type="button" onClick={applyAll} disabled={appliedCount >= fixableCount}

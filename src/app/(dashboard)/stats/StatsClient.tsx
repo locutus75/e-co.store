@@ -1,5 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
+import AiUsageDashboard from '@/components/AiUsageDashboard';
+import { LlmStatsResult } from '@/app/actions/llm';
 
 const SEGMENTS = [
   { key: 'UPDATE', label: 'Bewerkingen', color: '#c084fc' },
@@ -9,14 +11,26 @@ const SEGMENTS = [
   { key: 'DONE', label: 'Gereed', color: '#10b981' },
 ];
 
-export default function StatsClient({ users }: { users: any[] }) {
+export default function StatsClient({ users, initialAiStats }: { users: any[]; initialAiStats: LlmStatsResult | null }) {
+  const [tab, setTab] = useState<'productivity' | 'ai'>('productivity');
   const [globalStats, setGlobalStats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedUserId, setSelectedUserId] = useState<string>('');
 
   useEffect(() => {
-    fetchGlobalStats();
-  }, [selectedUserId]);
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('tab') === 'ai') {
+        setTab('ai');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === 'productivity') {
+      fetchGlobalStats();
+    }
+  }, [selectedUserId, tab]);
 
   const fetchGlobalStats = async () => {
     setLoading(true);
@@ -39,25 +53,88 @@ export default function StatsClient({ users }: { users: any[] }) {
   const avgPerDay = (totalEdits / 30).toFixed(1);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem', width: '100%', maxWidth: '1400px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', width: '100%', maxWidth: '1400px' }}>
+      {/* Page Title & Main Tabs */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)' }}>Productiviteit & Statistieken</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '1rem', marginTop: '0.2rem' }}>Overzicht van team-activiteit over de afgelopen 30 dagen.</p>
+          <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)' }}>
+            {tab === 'productivity' ? '📊 Productiviteit & Statistieken' : '🤖 AI & Token Verbruik'}
+          </h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginTop: '0.2rem' }}>
+            {tab === 'productivity'
+              ? 'Overzicht van team-activiteit en bewerkingen over de afgelopen 30 dagen.'
+              : 'Gedetailleerd overzicht van alle AI verzoeken, tokengebruik en kosten in euro’s.'}
+          </p>
         </div>
-        
-        <select 
-          className="input" 
-          style={{ width: '250px' }}
-          value={selectedUserId}
-          onChange={(e) => setSelectedUserId(e.target.value)}
-        >
-          <option value="">Hele Team</option>
-          {users.map(u => (
-            <option key={u.id} value={u.id}>{u.email}</option>
-          ))}
-        </select>
+
+        {/* Tab switchers */}
+        <div style={{ display: 'flex', gap: '0.4rem', backgroundColor: 'var(--surface)', padding: '0.3rem', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)' }}>
+          <button
+            type="button"
+            onClick={() => setTab('productivity')}
+            style={{
+              padding: '0.5rem 1.1rem',
+              borderRadius: 'var(--radius)',
+              border: 'none',
+              backgroundColor: tab === 'productivity' ? 'var(--primary)' : 'transparent',
+              color: tab === 'productivity' ? 'white' : 'var(--text-muted)',
+              fontWeight: tab === 'productivity' ? 700 : 500,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <span>📈</span>
+            <span>Team Productiviteit</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('ai')}
+            style={{
+              padding: '0.5rem 1.1rem',
+              borderRadius: 'var(--radius)',
+              border: 'none',
+              backgroundColor: tab === 'ai' ? 'var(--primary)' : 'transparent',
+              color: tab === 'ai' ? 'white' : 'var(--text-muted)',
+              fontWeight: tab === 'ai' ? 700 : 500,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <span>🤖</span>
+            <span>AI &amp; Token Verbruik</span>
+          </button>
+        </div>
       </div>
+
+      {/* AI & Token Verbruik Tab Content */}
+      {tab === 'ai' && (
+        <AiUsageDashboard initialStats={initialAiStats} />
+      )}
+
+      {/* Team Productivity Tab Content */}
+      {tab === 'productivity' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+            <select 
+              className="input" 
+              style={{ width: '250px' }}
+              value={selectedUserId}
+              onChange={(e) => setSelectedUserId(e.target.value)}
+            >
+              <option value="">Hele Team</option>
+              {users.map(u => (
+                <option key={u.id} value={u.id}>{u.email}</option>
+              ))}
+            </select>
+          </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
         <div className="glass" style={{ padding: '2rem', borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>
@@ -162,6 +239,8 @@ export default function StatsClient({ users }: { users: any[] }) {
           </ul>
         </div>
       </div>
+        </div>
+      )}
     </div>
   );
 }

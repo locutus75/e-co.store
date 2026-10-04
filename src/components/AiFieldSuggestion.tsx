@@ -62,6 +62,7 @@ export default function AiFieldSuggestion({ fieldKey, fieldLabel, currentValue, 
           provider: getProvider(),
           systemPrompt: SYSTEM_PROMPT,
           prompt: promptParts,
+          context: 'field-suggestion',
         }),
       });
       const data = await res.json();

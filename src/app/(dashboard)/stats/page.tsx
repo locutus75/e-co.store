@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import StatsClient from "./StatsClient";
 import { redirect } from "next/navigation";
+import { getLlmUsageStatsAction } from "@/app/actions/llm";
 
 export default async function StatsPage() {
   const session = await getServerSession(authOptions);
@@ -13,12 +14,15 @@ export default async function StatsPage() {
     redirect('/');
   }
 
-  const users = await prisma.user.findMany({
-    select: {
-      id: true,
-      email: true
-    }
-  });
+  const [users, aiStats] = await Promise.all([
+    prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+      },
+    }),
+    getLlmUsageStatsAction('30d').catch(() => null),
+  ]);
 
-  return <StatsClient users={users} />;
+  return <StatsClient users={users} initialAiStats={aiStats} />;
 }

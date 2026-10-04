@@ -3,6 +3,7 @@
 import React, { useState, useTransition, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useExchangeRate, formatCostEur } from '@/hooks/useExchangeRate';
+import { estimateCost } from '@/lib/llmUtils';
 import { getEmpcoSettingsAction } from '@/app/actions/empco';
 import { EmpcoBadge, empcoBadgeState, EmpcoSpinner } from './EmpcoCheck';
 
@@ -511,7 +512,14 @@ export default function ProductAiPanel({ product, layout }: Props) {
                   <span>📥 {displayResult.inputTokens.toLocaleString()} in</span>
                   <span>📤 {displayResult.outputTokens.toLocaleString()} out</span>
                   {displayResult.durationMs && <span>⏱ {displayResult.durationMs<1000?`${displayResult.durationMs}ms`:`${(displayResult.durationMs/1000).toFixed(1)}s`}</span>}
-                  <span>💰 {formatCostEur(displayResult.costUsd, usdToEur)}</span>
+                  <span>
+                    💰 {formatCostEur(
+                      displayResult.costUsd > 0
+                        ? displayResult.costUsd
+                        : estimateCost(displayResult.model, displayResult.inputTokens, displayResult.outputTokens),
+                      usdToEur
+                    )}
+                  </span>
                   {displayResult.isFromDb && displayResult.savedAt && (
                     <span style={{ color:'#059669', fontWeight:600 }}>💾 {new Date(displayResult.savedAt).toLocaleDateString('nl-NL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
                   )}

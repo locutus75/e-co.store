@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useExchangeRate, formatCostEur } from '@/hooks/useExchangeRate';
+import { estimateCost } from '@/lib/llmUtils';
 
 const PROVIDER_ICONS: Record<string, string> = { openai: '🟢', anthropic: '🟠', gemini: '🔵' };
 
@@ -173,7 +174,14 @@ export default function AiAnalysisViewer({ articleNumber, productTitle, score, c
             <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.71rem', color: 'rgba(255,255,255,0.75)', alignItems: 'center' }}>
               <span>{PROVIDER_ICONS[analysis.provider]} {analysis.model}</span>
               <span>📥 {analysis.inputTokens.toLocaleString()} / 📤 {analysis.outputTokens.toLocaleString()}</span>
-              <span>💰 {formatCostEur(analysis.costUsd, usdToEur)}</span>
+              <span>
+                💰 {formatCostEur(
+                  analysis.costUsd > 0
+                    ? analysis.costUsd
+                    : estimateCost(analysis.model, analysis.inputTokens, analysis.outputTokens),
+                  usdToEur
+                )}
+              </span>
             </div>
           )}
           {analysis && (

@@ -68,7 +68,7 @@ export default function AiSectionSuggestion({ sectionTitle, fields, analysisNarr
           provider: getProvider(),
           systemPrompt: SYSTEM_PROMPT,
           prompt: promptParts,
-          // We can optionally force JSON mode if the provider supports it, but standard prompt usually works.
+          context: 'section-suggestion',
         }),
       });
       const data = await res.json();
