@@ -309,6 +309,198 @@ export async function applyBrandEmpcoFixAction(data: {
   return results;
 }
 
+export interface BrandFixBatchItem {
+  original: string;
+  replacement: string;
+  rule?: string;
+  fieldLabel?: string;
+  targets: { articleNumber: string; fieldKey: string }[];
+}
+
+export interface ApplyBrandBatchResult {
+  articleNumber: string;
+  original: string;
+  replacement: string;
+  fieldKey?: string;
+  applied: boolean;
+  error?: string;
+  newStatus?: string | null;
+  openIssues?: number;
+}
+
+/**
+ * Voert meerdere goedgekeurde aanpassingen (verschillende fragmenten) in batch door
+ * op de geselecteerde producten van ditzelfde merk.
+ */
+export async function applyBrandEmpcoBatchFixAction(data: {
+  brandId: string;
+  items: BrandFixBatchItem[];
+  sourceArticle?: string;
+}): Promise<ApplyBrandBatchResult[]> {
+  const { userId, email, isAdmin } = await getSessionInfo();
+  if (!userId) throw new Error('Niet ingelogd');
+  if (!data.items || data.items.length === 0) return [];
+
+  const { getFormLayoutAction } = await import('@/app/actions/formLayouts');
+  const layout = await getFormLayoutAction();
+  const allFields = layout.flatMap((s: any) => s.fields ?? []);
+  const labelOf = (k: string) => {
+    const f = allFields.find((x: any) => {
+      let fk = String(x.id ?? '').replace('FIELD:', '');
+      if (fk === 'description') fk = 'longDescription';
+      return fk === k;
+    });
+    return f?.label ?? k;
+  };
+
+  const { syncEmpcoCheckAfterEdit } = await import('@/lib/empcoSync');
+  const results: ApplyBrandBatchResult[] = [];
+  const affectedProducts = new Map<string, { beforeProduct: any; changedFields: Set<string> }>();
+
+  for (const item of data.items) {
+    if (!item.targets || item.targets.length === 0) continue;
+    let itemSuccessCount = 0;
+
+    for (const target of item.targets) {
+      try {
+        const product = await prisma.product.findUnique({
+          where: { internalArticleNumber: target.articleNumber },
+        }) as any;
+
+        if (!product) throw new Error('Product niet gevonden');
+        if (product.brandId !== data.brandId) throw new Error('Product behoort niet tot dit merk');
+
+        const isLocked = !isAdmin && LOCKED_READY.has(String(product.readyForImport ?? '').toUpperCase());
+        if (isLocked) throw new Error('Product is vergrendeld (Webshop Ready)');
+
+        let fieldKey = target.fieldKey;
+        if (fieldKey === 'description') fieldKey = 'longDescription';
+
+        const isCustom = fieldKey.startsWith('custom_');
+        const curValue = isCustom
+          ? product.customData?.[fieldKey.replace('custom_', '')] ?? ''
+          : product[fieldKey] ?? '';
+
+        const next = replaceEmpcoFragment(String(curValue), item.original, item.replacement);
+        if (next === null || next === curValue) {
+          throw new Error('Tekst niet meer gevonden in het veld');
+        }
+
+        // Store snapshot of before product if not already captured
+        if (!affectedProducts.has(target.articleNumber)) {
+          affectedProducts.set(target.articleNumber, {
+            beforeProduct: JSON.parse(JSON.stringify(product)),
+            changedFields: new Set([fieldKey]),
+          });
+        } else {
+          affectedProducts.get(target.articleNumber)!.changedFields.add(fieldKey);
+        }
+
+        // Update product in DB
+        const updatePayload: any = { lastEditedByUserId: userId };
+        if (isCustom) {
+          const customData = { ...(product.customData ?? {}) };
+          customData[fieldKey.replace('custom_', '')] = next || null;
+          updatePayload.customData = customData;
+        } else {
+          updatePayload[fieldKey] = next || null;
+        }
+
+        await prisma.product.update({
+          where: { internalArticleNumber: target.articleNumber },
+          data: updatePayload,
+        });
+
+        // Write ProductFieldHistory
+        await prisma.productFieldHistory.create({
+          data: {
+            articleNumber: target.articleNumber,
+            fieldKey,
+            fieldLabel: labelOf(fieldKey),
+            oldValue: curValue || null,
+            newValue: next || null,
+            source: 'EMPCO',
+            userId,
+            userEmail: email ?? null,
+          },
+        });
+
+        // Audit log
+        try {
+          await prisma.auditLog.create({
+            data: {
+              userId,
+              action: 'UPDATE',
+              entity: 'Product',
+              entityId: target.articleNumber,
+              changes: JSON.stringify({
+                source: 'BRAND_PROPAGATION_BATCH',
+                brandId: data.brandId,
+                field: fieldKey,
+                original: item.original,
+                replacement: item.replacement,
+              }),
+            },
+          });
+        } catch (e) {
+          console.error('Audit logging failed:', e);
+        }
+
+        itemSuccessCount++;
+        results.push({
+          articleNumber: target.articleNumber,
+          original: item.original,
+          replacement: item.replacement,
+          fieldKey,
+          applied: true,
+        });
+      } catch (err: any) {
+        results.push({
+          articleNumber: target.articleNumber,
+          original: item.original,
+          replacement: item.replacement,
+          fieldKey: target.fieldKey,
+          applied: false,
+          error: err?.message ?? 'Fout bij bijwerken',
+        });
+      }
+    }
+
+    // Save/increment brand rule if any product was updated for this fragment
+    if (itemSuccessCount > 0) {
+      try {
+        await saveBrandRuleAction({
+          brandId: data.brandId,
+          original: item.original,
+          replacement: item.replacement,
+          rule: item.rule,
+          sourceArticle: data.sourceArticle,
+        });
+      } catch (ruleErr) {
+        console.error('Failed to save brand rule:', ruleErr);
+      }
+    }
+  }
+
+  // Sync EmpCo check for all affected products
+  for (const [artNum, info] of affectedProducts.entries()) {
+    try {
+      await syncEmpcoCheckAfterEdit(
+        artNum,
+        info.beforeProduct,
+        layout,
+        info.changedFields
+      );
+    } catch (syncErr) {
+      console.warn(`Sync EmpCo check error for #${artNum}:`, syncErr);
+    }
+  }
+
+  revalidatePath('/products');
+  revalidatePath('/assignments');
+  return results;
+}
+
 /** Verwijdert een geleerde regel van een merk. */
 export async function deleteBrandRuleAction(ruleId: string) {
   const { isAdmin } = await getSessionInfo();

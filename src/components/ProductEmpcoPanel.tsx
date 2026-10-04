@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useExchangeRate, formatCostEur } from '@/hooks/useExchangeRate';
 import { EmpcoIssue } from '@/lib/empco';
 import { EmpcoBadge, EmpcoModalShell, EmpcoResultView, EmpcoSpinner, empcoBadgeState, EMPCO_ACCENT, EmpcoGuidelinesModal } from './EmpcoCheck';
-import BrandPropagationModal from './BrandPropagationModal';
+import BrandPropagationModal, { PropagationItem } from './BrandPropagationModal';
 
 export interface ApplyFixResult { ok: boolean; message?: string }
 
@@ -57,7 +57,7 @@ export default function ProductEmpcoPanel({
   const [error, setError] = useState('');
   const [applied, setApplied] = useState<Record<number, 'ok' | string>>({});
   const [liveValues, setLiveValues] = useState<Record<string, string>>({});
-  const [propagationTarget, setPropagationTarget] = useState<{ original: string; replacement: string; rule?: string } | null>(null);
+  const [propagationItems, setPropagationItems] = useState<PropagationItem[] | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -391,32 +391,46 @@ export default function ProductEmpcoPanel({
                       </button>
                     )}
                   </div>
-                  {brandId && (
-                    <div style={{ marginTop: '0.55rem', paddingTop: '0.5rem', borderTop: '1px dashed #bfdbfe', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.75rem', color: '#0f766e', fontWeight: 600 }}>
-                        🏷️ Merk &quot;{brandName || 'dit merk'}&quot;:
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const firstApplied = (result.issues ?? []).find((_: EmpcoIssue, idx: number) => applied[idx] === 'ok');
-                          if (firstApplied) setPropagationTarget({ original: firstApplied.original, replacement: firstApplied.replacement, rule: firstApplied.rule });
-                        }}
-                        style={{
-                          padding: '0.2rem 0.6rem',
-                          borderRadius: '5px',
-                          border: '1px solid #0f766e',
-                          backgroundColor: 'white',
-                          color: '#0f766e',
-                          fontWeight: 700,
-                          fontSize: '0.73rem',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Zoek andere {brandName ? `${brandName}-` : ''}producten met dit fragment
-                      </button>
-                    </div>
-                  )}
+                  {brandId && appliedCount > 0 && (() => {
+                    const appliedItems: PropagationItem[] = (result.issues ?? [])
+                      .map((issue: EmpcoIssue, idx: number) => ({ issue, idx }))
+                      .filter((pair: { issue: EmpcoIssue; idx: number }) => applied[pair.idx] === 'ok')
+                      .map((pair: { issue: EmpcoIssue; idx: number }) => ({
+                        original: pair.issue.original,
+                        replacement: pair.issue.replacement,
+                        rule: pair.issue.rule,
+                        fieldLabel: pair.issue.fieldLabel || pair.issue.field,
+                        fieldKey: pair.issue.field,
+                      }));
+
+                    if (appliedItems.length === 0) return null;
+
+                    return (
+                      <div style={{ marginTop: '0.55rem', paddingTop: '0.5rem', borderTop: '1px dashed #bfdbfe', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.75rem', color: '#0f766e', fontWeight: 600 }}>
+                          🏷️ Merk &quot;{brandName || 'dit merk'}&quot;:
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPropagationItems(appliedItems)}
+                          style={{
+                            padding: '0.22rem 0.65rem',
+                            borderRadius: '5px',
+                            border: '1px solid #0f766e',
+                            backgroundColor: '#f0fdfa',
+                            color: '#0f766e',
+                            fontWeight: 700,
+                            fontSize: '0.73rem',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {appliedItems.length > 1
+                            ? `Zoek andere ${brandName ? `${brandName}-` : ''}producten met alle ${appliedItems.length} aangepaste fragmenten`
+                            : `Zoek andere ${brandName ? `${brandName}-` : ''}producten met dit fragment`}
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -441,7 +455,13 @@ export default function ProductEmpcoPanel({
                         {brandId && (
                           <button
                             type="button"
-                            onClick={() => setPropagationTarget({ original: issue.original, replacement: issue.replacement, rule: issue.rule })}
+                            onClick={() => setPropagationItems([{
+                              original: issue.original,
+                              replacement: issue.replacement,
+                              rule: issue.rule,
+                              fieldLabel: issue.fieldLabel || issue.field,
+                              fieldKey: issue.field,
+                            }])}
                             title={`Controleer of andere producten van ${brandName || 'dit merk'} dit fragment ook bevatten`}
                             style={{
                               padding: '0.18rem 0.55rem',
@@ -484,18 +504,16 @@ export default function ProductEmpcoPanel({
         />
       )}
 
-      {propagationTarget && brandId && (
+      {propagationItems && propagationItems.length > 0 && brandId && (
         <BrandPropagationModal
           brandId={brandId}
           brandName={brandName}
           sourceArticleNumber={articleNumber}
-          original={propagationTarget.original}
-          replacement={propagationTarget.replacement}
-          rule={propagationTarget.rule}
+          items={propagationItems}
           onSaveCurrentProduct={appliedCount > 0 && onSave ? handleSaveClick : undefined}
-          onClose={() => setPropagationTarget(null)}
+          onClose={() => setPropagationItems(null)}
           onApplied={(count) => {
-            setPropagationTarget(null);
+            setPropagationItems(null);
             if (count > 0 || appliedCount > 0) {
               setJustSaved(true);
             }
