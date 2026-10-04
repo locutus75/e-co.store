@@ -187,7 +187,7 @@ function DrawerReadyToggle({ readyMode, internalArticleNumber, isAdmin, onChange
 }
 
 
-export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, canUseAi = false, layout = [], currentUserId = '', currentUserChatColor = null, userChatColors = {}, onPrev, onNext, aiScore = null }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, canUseAi?: boolean, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, userChatColors?: Record<string, string>, onPrev?: () => void, onNext?: () => void, aiScore?: number | null }) {
+export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, canUseAi = false, layout = [], currentUserId = '', currentUserChatColor = null, userChatColors = {}, onPrev, onNext, aiScore = null, onEmpcoCheck }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, canUseAi?: boolean, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, userChatColors?: Record<string, string>, onPrev?: () => void, onNext?: () => void, aiScore?: number | null, onEmpcoCheck?: (articleNumber: string, status: string, stale: boolean, issueCount: number) => void }) {
   const [isPending, startTransition] = useTransition();
   const [pendingNavigation, setPendingNavigation] = useState<'prev' | 'next' | null>(null);
   const [statusOverridden, setStatusOverridden] = useState(false);
@@ -897,6 +897,10 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                         brandName={localProductData?.brand?.name}
                         onSave={handleSaveFromEmpco}
                         isSaving={isPending}
+                        isDirty={isDirty}
+                        onChecked={(status, stale, issueCount) => {
+                          onEmpcoCheck?.(localProductData.internalArticleNumber, status, stale, issueCount);
+                        }}
                       />
                       <button
                         type="button"

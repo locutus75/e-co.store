@@ -25,6 +25,7 @@ interface Props {
   brandName?: string;
   onSave?: () => Promise<void> | void;
   isSaving?: boolean;
+  isDirty?: boolean;
 }
 
 export default function ProductEmpcoPanel({
@@ -40,6 +41,7 @@ export default function ProductEmpcoPanel({
   brandName,
   onSave,
   isSaving,
+  isDirty,
 }: Props) {
   const { rate: usdToEur } = useExchangeRate();
   const [open, setOpen] = useState(false);
@@ -47,6 +49,7 @@ export default function ProductEmpcoPanel({
   const [guidelines, setGuidelines] = useState<any>(null);
   const [check, setCheck] = useState<any>(null);
   const [stale, setStale] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -68,7 +71,7 @@ export default function ProductEmpcoPanel({
   }, [articleNumber]);
 
   // Load status whenever the product changes (for the badge on the trigger button)
-  useEffect(() => { setCheck(null); setStale(false); setApplied({}); setError(''); setJustSaved(false); load(); }, [load]);
+  useEffect(() => { setCheck(null); setStale(false); setHasUnsavedChanges(false); setApplied({}); setError(''); setJustSaved(false); load(); }, [load]);
 
   // Reload after save so the badge reflects resolved findings
   useEffect(() => {
@@ -76,6 +79,7 @@ export default function ProductEmpcoPanel({
     setApplied({});
     setSaving(false);
     setJustSaved(true);
+    setHasUnsavedChanges(false);
     load().then(() => setLiveValues(getLiveValues()));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
@@ -93,8 +97,11 @@ export default function ProductEmpcoPanel({
       const d = await res.json();
       if (!res.ok) setError(d.error ?? 'EmpCo-check mislukt');
       else {
-        setCheck(d.check); setStale(!!d.stale); setLiveValues(overrides);
-        onChecked?.(d.check.status, !!d.stale, d.check.issueCount);
+        setCheck(d.check);
+        setStale(false); // freshly run check on live values
+        setHasUnsavedChanges(!!d.hasUnsavedChanges);
+        setLiveValues(overrides);
+        onChecked?.(d.check.status, false, d.check.issueCount);
       }
     } catch (e: any) { setError(e.message ?? 'Netwerkfout'); }
     setRunning(false);
@@ -163,7 +170,7 @@ export default function ProductEmpcoPanel({
                 style={{ padding: '0.3rem 0.75rem', borderRadius: '999px', fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.45)', backgroundColor: 'rgba(255,255,255,0.12)', color: 'white' }}>
                 🕘 Historie
               </button>
-              {appliedCount > 0 && canEdit && onSave && (
+              {(appliedCount > 0 || hasUnsavedChanges || isDirty) && canEdit && onSave && (
                 <button type="button" onClick={handleSaveClick} disabled={isSaving || saving}
                   style={{
                     padding: '0.3rem 0.9rem',
@@ -282,6 +289,59 @@ export default function ProductEmpcoPanel({
                       {running ? <EmpcoSpinner size={12} /> : <span>↻ Opnieuw checken</span>}
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* Unsaved changes notification banner */}
+              {(hasUnsavedChanges || isDirty) && !justSaved && appliedCount === 0 && (
+                <div style={{
+                  margin: '0.9rem 1.4rem 0',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '10px',
+                  backgroundColor: '#fffbeb',
+                  border: '1px solid #fde68a',
+                  color: '#92400e',
+                  fontSize: '0.82rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.75rem',
+                  flexWrap: 'wrap',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <span style={{ fontSize: '1.25rem' }}>💾</span>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#92400e' }}>
+                        Getoetste teksten bevatten niet-opgeslagen wijzigingen
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#b45309' }}>
+                        Sla het product op om deze EmpCo-beoordeling definitief in het product vast te leggen.
+                      </div>
+                    </div>
+                  </div>
+                  {canEdit && onSave && (
+                    <button
+                      type="button"
+                      onClick={handleSaveClick}
+                      disabled={isSaving || saving}
+                      style={{
+                        padding: '0.4rem 0.95rem',
+                        borderRadius: '7px',
+                        border: 'none',
+                        backgroundColor: '#d97706',
+                        color: 'white',
+                        fontWeight: 700,
+                        fontSize: '0.78rem',
+                        cursor: (isSaving || saving) ? 'wait' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        boxShadow: '0 2px 6px rgba(217,119,6,0.25)',
+                      }}
+                    >
+                      {(isSaving || saving) ? <><EmpcoSpinner size={12} color="white" /> Opslaan…</> : '💾 Nu Opslaan'}
+                    </button>
+                  )}
                 </div>
               )}
 

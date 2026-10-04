@@ -157,8 +157,16 @@ export async function POST(request: NextRequest) {
     create: { articleNumber: body.articleNumber, ...data },
   });
 
-  // If live overrides differ from DB, the saved check is "stale" until the product is saved
+  // Check whether current live form values differ from the database
   const dbHash = body.overrides ? hashEmpcoFields(extractEmpcoFields(product, layout, undefined, settings.includedFieldKeys)) : contentHash;
+  const hasUnsavedChanges = dbHash !== contentHash;
 
-  return NextResponse.json({ check: withParsed(check), skipped: false, stale: dbHash !== contentHash });
+  // The check was just executed for the current texts, so it is fresh (stale: false).
+  // hasUnsavedChanges signals if the user still needs to click Save to persist the product.
+  return NextResponse.json({
+    check: withParsed(check),
+    skipped: false,
+    stale: false,
+    hasUnsavedChanges,
+  });
 }

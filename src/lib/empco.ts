@@ -298,7 +298,8 @@ export function extractEmpcoFields(
     if (!isIncluded(key) || out.has(key) || EXCLUDED_KEYS.has(key)) return;
     const raw = readValue(product, key, overrides);
     if (raw == null || typeof raw === 'object') return;
-    const value = String(raw).trim();
+    // Normalize CRLF to LF and trim so browser textareas match database values
+    const value = String(raw).replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
     if (!value) return;
     out.set(key, { key, label, value, kind: 'text' });
   };

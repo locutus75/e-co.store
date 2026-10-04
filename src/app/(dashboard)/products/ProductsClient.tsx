@@ -358,6 +358,8 @@ export default function ProductsClient({
   const [aiScoreFilter, setAiScoreFilter] = useState('');
   const [unreadFilter, setUnreadFilter] = useState('');
   const [empcoFilter, setEmpcoFilter] = useState('');
+  const [liveEmpcoMap, setLiveEmpcoMap] = useState<Record<string, EmpcoMapEntry>>(empcoMap);
+  useEffect(() => { setLiveEmpcoMap(empcoMap); }, [empcoMap]);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -385,10 +387,10 @@ export default function ProductsClient({
   const matchScore = useCallback((p: any) => aiScoreFilter === '' || (aiScoreFilter === 'WITH_SCORE' ? aiScoreMap[p.internalArticleNumber] != null : aiScoreMap[p.internalArticleNumber] == null), [aiScoreFilter, aiScoreMap]);
   const matchUnread = useCallback((p: any) => unreadFilter === '' || (unreadFilter === 'UNREAD' ? unreadProducts.has(p.internalArticleNumber) : !unreadProducts.has(p.internalArticleNumber)), [unreadFilter, unreadProducts]);
   const empcoStateOf = useCallback((p: any): string => {
-    const e = empcoMap[p.internalArticleNumber];
+    const e = liveEmpcoMap[p.internalArticleNumber];
     if (!e) return 'NONE';
     return e.stale ? 'STALE' : e.status;
-  }, [empcoMap]);
+  }, [liveEmpcoMap]);
   const matchEmpco = useCallback((p: any) => {
     if (empcoFilter === '') return true;
     const s = empcoStateOf(p);
@@ -1031,9 +1033,9 @@ export default function ProductsClient({
                   <EmpcoViewer
                     articleNumber={product.internalArticleNumber}
                     productTitle={product.title}
-                    status={empcoMap[product.internalArticleNumber]?.status ?? null}
-                    stale={empcoMap[product.internalArticleNumber]?.stale ?? false}
-                    issueCount={empcoMap[product.internalArticleNumber]?.issueCount ?? 0}
+                    status={liveEmpcoMap[product.internalArticleNumber]?.status ?? null}
+                    stale={liveEmpcoMap[product.internalArticleNumber]?.stale ?? false}
+                    issueCount={liveEmpcoMap[product.internalArticleNumber]?.issueCount ?? 0}
                     onOpenProduct={() => setSelectedProduct(product)}
                   />
                 </td>
@@ -1181,6 +1183,9 @@ export default function ProductsClient({
         onPrev={handlePrev}
         onNext={handleNext}
         aiScore={selectedProduct ? (aiScoreMap[selectedProduct.internalArticleNumber] ?? null) : null}
+        onEmpcoCheck={(artNum, status, stale, issueCount) => {
+          setLiveEmpcoMap(prev => ({ ...prev, [artNum]: { status, stale, issueCount } }));
+        }}
       />
 
       <ConfirmationModal
