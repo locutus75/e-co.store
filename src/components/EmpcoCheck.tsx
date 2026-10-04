@@ -96,31 +96,26 @@ function IssueCard({ issue, fieldValue, actions }: { issue: EmpcoIssue; fieldVal
     const loc = locateFragment(fieldValue, issue.original);
     if (!loc) return null;
 
-    // Determine sentence boundaries in the original text
-    let origSentenceStart = fieldValue.lastIndexOf('.', loc.idx - 1);
-    const qS = fieldValue.lastIndexOf('?', loc.idx - 1);
-    const eS = fieldValue.lastIndexOf('!', loc.idx - 1);
-    const nS = fieldValue.lastIndexOf('\n', loc.idx - 1);
-    origSentenceStart = Math.max(origSentenceStart, qS, eS, nS);
-    origSentenceStart = origSentenceStart === -1 ? 0 : origSentenceStart + 1;
-
-    let origSentenceEnd = fieldValue.indexOf('.', loc.idx + loc.len);
-    if (origSentenceEnd === -1) {
-      const qE = fieldValue.indexOf('?', loc.idx + loc.len);
-      const eE = fieldValue.indexOf('!', loc.idx + loc.len);
-      const cands = [qE, eE].filter(n => n !== -1);
-      origSentenceEnd = cands.length > 0 ? Math.min(...cands) + 1 : fieldValue.length;
-    } else {
-      origSentenceEnd = origSentenceEnd + 1;
+    // Find sentence boundaries in original fieldValue
+    let sStartOrig = -1;
+    for (let i = loc.idx - 1; i >= 0; i--) {
+      if ('.!?\n'.includes(fieldValue[i])) { sStartOrig = i + 1; break; }
     }
+    if (sStartOrig === -1) sStartOrig = 0;
 
-    const fullOrigSentence = fieldValue.slice(origSentenceStart, origSentenceEnd).trim();
-    const cleanOrigFragment = issue.original.trim().replace(/^[.,;:!?\s]+/, '').replace(/[.,;:!?\s]+$/, '');
-    const cleanFullSentence = fullOrigSentence.replace(/^[.,;:!?\s]+/, '').replace(/[.,;:!?\s]+$/, '');
+    let sEndOrig = -1;
+    for (let i = loc.idx; i < fieldValue.length; i++) {
+      if ('.!?\n'.includes(fieldValue[i])) { sEndOrig = i + 1; break; }
+    }
+    if (sEndOrig === -1) sEndOrig = fieldValue.length;
 
-    // If an entire standalone sentence was deleted, do not show the adjacent neighboring sentence as preview!
-    const isWholeSentenceDeleted = !issue.replacement.trim() && cleanOrigFragment === cleanFullSentence;
-    if (isWholeSentenceDeleted) return null;
+    const beforeInSentence = fieldValue.slice(sStartOrig, loc.idx).trim();
+    const afterInSentence = fieldValue.slice(loc.idx + loc.len, sEndOrig).replace(/^[.!?\s]+/, '').trim();
+
+    // If an entire standalone sentence is removed (no words remain before or after in that sentence,
+    // and replacement is empty), do NOT show an adjacent neighboring sentence as preview!
+    const isEntireSentenceDeleted = !issue.replacement.trim() && !beforeInSentence && !afterInSentence;
+    if (isEntireSentenceDeleted) return null;
 
     // Find sentence boundaries around loc.idx in replaced text
     const changeStart = Math.min(loc.idx, replaced.length);
