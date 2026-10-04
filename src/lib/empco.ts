@@ -387,6 +387,16 @@ Richtlijnen:
         replacement = "als betrouwbare papierkeuze" (of "voor dagelijks gebruik")
   * Neem de VOLLEDIGE zinsnede mee in "original" als het weglaten van alleen de overtreding een wees-voorzetsel ("voor een", "met", "van", "om") of onzinnige zinsconstructie achterlaat, inclusief eventuele komma's en leestekens.
   * Zinsbouw-verificatiestap vóór output: Lees de volledige zin zoals die luidt NA vervanging van "original" door "replacement". Klinkt de zin natuurlijk, vloeiend en grammaticaal 100% correct? Zo niet, verbreed "original" of pas "replacement" aan tot de zin perfect loopt.
+- CONSTRUCTIEVE EN INHOUDELIJK RIJKE VOORSTELLEN (VERRIJKEN I.P.V. KAALSLAG):
+  * Het doel van de EmpCo-richtlijn is niet om productteksten saai, kaal of commercieel krachteloos te maken door alles weg te knippen. Het doel is om vage containerbegrippen om te vormen naar FEITELIJKE, SPECIFIEKE en VERIFIEERBARE context.
+  * Wanneer een tekst een vage claim bevat die gekoppeld is aan een legitieme certificering of maatschappelijk initiatief (zoals B Corp, Fairtrade, sociale onderneming, gerecyclede grondstoffen of keurmerken):
+    - Vermijd een té kaal voorstel dat de hele maatschappelijke en ecologische waarde wegpoetst (bijv. niet alleen "Merk X is B Corp-gecertificeerd.").
+    - Vorm de vage claim liever om naar de concrete, feitelijke pijlers van die certificering of het initiatief:
+      Voorbeeld:
+        Origineel: "Door hun duurzaamheid en sociaal maatschappelijke impact is A Beautiful Story een B-corp gecertificeerd bedrijf."
+        GOED (Rijk & Feitelijk): original = "Door hun duurzaamheid en sociaal maatschappelijke impact is A Beautiful Story een B-corp gecertificeerd bedrijf."
+        replacement = "A Beautiful Story is B Corp-gecertificeerd en voldoet daarmee aan hoge, geverifieerde standaarden voor sociale impact en verantwoorde bedrijfsvoering."
+        (Het verboden containerbegrip 'duurzaamheid' is hier vervangen door de feitelijk getoetste B Corp-pijlers, waardoor de inspirerende merkwaarde behouden blijft én de tekst 100% compliant is!)
 - "field" is de exacte veldsleutel tussen [vierkante haken] uit de input.
 - status: "FAIL" als er minstens één FAIL-issue is, anders "WARNING" als er minstens één WARNING is, anders "PASS".
 ${guidelineNotes?.trim() ? `\n--- Algemene toelichting & richtlijnen van de webshop ---\n${guidelineNotes.trim()}\n` : ''}
