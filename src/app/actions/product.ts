@@ -67,6 +67,148 @@ export async function getSupplierProductsAction(supplierId: string, currentArtic
   }
 }
 
+export async function getSuppliersAction() {
+  try {
+    return await prisma.supplier.findMany({
+      orderBy: { name: 'asc' }
+    });
+  } catch (e: any) {
+    console.error("Failed to get suppliers", e);
+    return [];
+  }
+}
+
+export async function createSupplierAction(name: string) {
+  try {
+    const session = await getServerSession(authOptions);
+    const roles = (session?.user as any)?.roles || [];
+    const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
+    if (!isAdmin) {
+      return { success: false, error: 'Toegang geweigerd: Alleen beheerders (ADMIN) mogen leveranciers aanmaken.' };
+    }
+
+    const trimmed = (name || '').trim();
+    if (!trimmed) {
+      return { success: false, error: 'Leveranciersnaam mag niet leeg zijn.' };
+    }
+
+    const existing = await prisma.supplier.findFirst({
+      where: { name: { equals: trimmed, mode: 'insensitive' } }
+    });
+
+    if (existing) {
+      return { success: true, supplier: existing };
+    }
+
+    const newSupplier = await prisma.supplier.create({
+      data: { name: trimmed }
+    });
+
+    const actorId = (session?.user as any)?.id;
+    if (actorId) {
+      await logAuditAction(actorId, 'CREATE_SUPPLIER', 'Supplier', newSupplier.id, `Created supplier "${trimmed}"`);
+    }
+
+    revalidatePath('/products');
+    revalidatePath('/admin/export');
+
+    return { success: true, supplier: newSupplier };
+  } catch (e: any) {
+    console.error("Failed to create supplier:", e);
+    return { success: false, error: e.message };
+  }
+}
+
+export async function bulkTransferSupplierAction(
+  internalIds: string[],
+  targetSupplierId?: string,
+  newSupplierName?: string
+) {
+  if (!internalIds || internalIds.length === 0) {
+    return { success: false, error: "Geen product ID's meegegeven." };
+  }
+
+  try {
+    const session = await getServerSession(authOptions);
+    const roles = (session?.user as any)?.roles || [];
+    const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
+    if (!isAdmin) {
+      return {
+        success: false,
+        error: 'Toegang geweigerd: Alleen beheerders (ADMIN) mogen producten naar een andere leverancier omzetten.'
+      };
+    }
+
+    let targetSupplier: { id: string; name: string } | null = null;
+
+    if (targetSupplierId && targetSupplierId !== '__NEW__') {
+      targetSupplier = await prisma.supplier.findUnique({
+        where: { id: targetSupplierId },
+        select: { id: true, name: true }
+      });
+      if (!targetSupplier) {
+        return { success: false, error: 'De geselecteerde leverancier bestaat niet.' };
+      }
+    } else if (newSupplierName && newSupplierName.trim()) {
+      const trimmed = newSupplierName.trim();
+      const existing = await prisma.supplier.findFirst({
+        where: { name: { equals: trimmed, mode: 'insensitive' } },
+        select: { id: true, name: true }
+      });
+      if (existing) {
+        targetSupplier = existing;
+      } else {
+        targetSupplier = await prisma.supplier.create({
+          data: { name: trimmed },
+          select: { id: true, name: true }
+        });
+      }
+    } else {
+      return { success: false, error: 'Geen geldige leverancier opgegeven.' };
+    }
+
+    // Update products
+    const res = await prisma.product.updateMany({
+      where: {
+        internalArticleNumber: {
+          in: internalIds
+        }
+      },
+      data: {
+        supplierId: targetSupplier.id
+      }
+    });
+
+    const actorId = (session?.user as any)?.id;
+    if (actorId) {
+      for (const id of internalIds) {
+        await logAuditAction(
+          actorId,
+          'SUPPLIER_TRANSFER',
+          'Product',
+          id,
+          `Leverancier omgezet naar ${targetSupplier.name} (${targetSupplier.id})`
+        );
+      }
+    }
+
+    revalidatePath('/products');
+    revalidatePath('/assignments');
+    revalidatePath('/admin/export');
+    revalidatePath('/', 'layout');
+
+    return {
+      success: true,
+      count: res.count,
+      supplier: targetSupplier
+    };
+  } catch (e: any) {
+    console.error("Bulk transfer supplier error:", e);
+    return { success: false, error: e.message };
+  }
+}
+
+
 export async function getProductDataAction(internalId: string) {
   try {
     return await prisma.product.findUnique({
@@ -408,6 +550,11 @@ export async function updateProductAction(internalId: string, formData: FormData
     }
   }
 
+  if (formData.has('supplierId')) {
+    const sVal = formData.get('supplierId')?.toString();
+    data.supplierId = (sVal === '' || sVal === 'NONE' || sVal === null) ? null : sVal;
+  }
+
   if (Object.keys(customData).length > 0) {
     data.customData = customData;
   }
@@ -433,6 +580,14 @@ export async function updateProductAction(internalId: string, formData: FormData
 
   try {
     const session = await getServerSession(authOptions);
+    const roles = (session?.user as any)?.roles || [];
+    const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
+
+    // Only administrators are allowed to change the supplier
+    if (data.supplierId !== undefined && !isAdmin) {
+      delete data.supplierId;
+    }
+
     const editorId = (session?.user as any)?.id;
     if (editorId) {
       data.lastEditedByUserId = editorId;

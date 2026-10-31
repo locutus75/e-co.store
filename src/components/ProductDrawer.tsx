@@ -11,6 +11,7 @@ import AiAnalysisViewer from './AiAnalysisViewer';
 import ProductWebEnrichModal from './ProductWebEnrichModal';
 import ProductEmpcoPanel, { ApplyFixResult } from './ProductEmpcoPanel';
 import ProductFieldHistoryModal from './ProductFieldHistoryModal';
+import TransferSupplierModal from './TransferSupplierModal';
 import { confirmEmpcoReady } from '@/lib/empcoGateClient';
 import { replaceEmpcoFragment } from '@/lib/empco';
 
@@ -187,7 +188,7 @@ function DrawerReadyToggle({ readyMode, internalArticleNumber, isAdmin, onChange
 }
 
 
-export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, canUseAi = false, layout = [], currentUserId = '', currentUserChatColor = null, userChatColors = {}, onPrev, onNext, aiScore = null, onEmpcoCheck }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, canUseAi?: boolean, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, userChatColors?: Record<string, string>, onPrev?: () => void, onNext?: () => void, aiScore?: number | null, onEmpcoCheck?: (articleNumber: string, status: string, stale: boolean, issueCount: number) => void }) {
+export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, canUseAi = false, layout = [], currentUserId = '', currentUserChatColor = null, userChatColors = {}, onPrev, onNext, aiScore = null, onEmpcoCheck, allSuppliers = [] }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, canUseAi?: boolean, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, userChatColors?: Record<string, string>, onPrev?: () => void, onNext?: () => void, aiScore?: number | null, onEmpcoCheck?: (articleNumber: string, status: string, stale: boolean, issueCount: number) => void, allSuppliers?: { id: string; name: string }[] }) {
   const [isPending, startTransition] = useTransition();
   const [pendingNavigation, setPendingNavigation] = useState<'prev' | 'next' | null>(null);
   const [statusOverridden, setStatusOverridden] = useState(false);
@@ -205,6 +206,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   const [formKey, setFormKey] = useState(0);
   const [showCopyModal, setShowCopyModal] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [showTransferSupplierModal, setShowTransferSupplierModal] = useState(false);
 
   const [isDirty, setIsDirty] = useState(false);
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
@@ -632,6 +634,60 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
       let span = f.width ? Number(f.width) : 8;
       if (isNaN(span)) span = 8;
 
+      const isSupplierField = f.relationPath === 'supplier.name' || f.id === 'FIELD:supplierId' || f.id === 'FIELD:supplier.name';
+
+      if (isSupplierField && isAdmin && !isGloballyLocked) {
+        return (
+          <div key={f.id} style={{ gridColumn: `span ${span}`, backgroundColor: f.backgroundColor || 'transparent', padding: f.backgroundColor ? '0.75rem' : '0', borderRadius: 'var(--radius)', color: effectiveTextColor }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'inherit', opacity: 0.7 }}>
+                {f.label} <span style={{ fontSize: '0.72rem', color: 'var(--color-teal)', fontWeight: 700 }}>(Admin)</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowTransferSupplierModal(true)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--color-teal)',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  textDecoration: 'underline',
+                  padding: 0,
+                }}
+              >
+                🏢 Omzetten via wizard
+              </button>
+            </div>
+            <input type="hidden" name="_present_fields" value="supplierId" />
+            <select
+              name="supplierId"
+              value={localProductData?.supplierId || ''}
+              onChange={(e) => {
+                const newSuppId = e.target.value;
+                const newSuppObj = allSuppliers.find(s => s.id === newSuppId) || null;
+                setLocalProductData((prev: any) => ({
+                  ...prev,
+                  supplierId: newSuppId || null,
+                  supplier: newSuppObj,
+                }));
+                setIsDirty(true);
+              }}
+              className="input"
+              style={{ fontWeight: 600 }}
+            >
+              <option value="">-- Geen leverancier gekoppeld --</option>
+              {allSuppliers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        );
+      }
+
       return (
         <div key={f.id} style={{ gridColumn: `span ${span}`, backgroundColor: f.backgroundColor || 'transparent', padding: f.backgroundColor ? '0.75rem' : '0', borderRadius: 'var(--radius)', color: effectiveTextColor }}>
           <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'inherit', opacity: 0.7, marginBottom: '0.4rem' }}>{f.label}</label>
@@ -815,9 +871,33 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                     </span>
                   </div>
                 )}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.25rem' }}>
-
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.25rem', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '1rem', color: 'var(--color-mustard)', fontWeight: 600 }}>{localProductData.title}</span>
+                  {/* Supplier info pill */}
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', backgroundColor: 'var(--surface-hover)', padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid var(--border)', fontSize: '0.78rem' }}>
+                    <span style={{ opacity: 0.6 }}>🏢 Leverancier:</span>
+                    <strong style={{ color: 'var(--text)' }}>{localProductData.supplier?.name || 'Geen'}</strong>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => setShowTransferSupplierModal(true)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--color-teal)',
+                          cursor: 'pointer',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          textDecoration: 'underline',
+                          marginLeft: '0.35rem',
+                          padding: 0,
+                        }}
+                        title="Zet dit product om naar een andere leverancier"
+                      >
+                        Omzetten
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
               
@@ -1060,6 +1140,29 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
           productTitle={localProductData.title}
           onClose={() => setShowHistory(false)}
           onRestore={isGloballyLocked ? undefined : restoreFieldValue}
+        />
+      )}
+
+      {showTransferSupplierModal && localProductData && (
+        <TransferSupplierModal
+          isOpen={showTransferSupplierModal}
+          onClose={() => setShowTransferSupplierModal(false)}
+          products={[{
+            internalArticleNumber: localProductData.internalArticleNumber,
+            title: localProductData.title,
+            supplier: localProductData.supplier
+          }]}
+          allSuppliers={allSuppliers}
+          preselectedSupplierId={localProductData?.supplierId || ''}
+          onSuccess={(targetSupplier) => {
+            setLocalProductData((prev: any) => ({
+              ...prev,
+              supplierId: targetSupplier.id,
+              supplier: targetSupplier,
+            }));
+            setShowTransferSupplierModal(false);
+            setEmpcoRefreshKey(k => k + 1);
+          }}
         />
       )}
       

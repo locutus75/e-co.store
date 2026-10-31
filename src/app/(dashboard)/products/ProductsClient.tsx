@@ -8,6 +8,7 @@ import BatchAnalyzeModal, { BatchMode } from '@/components/BatchAnalyzeModal';
 import ConfirmationModal from '@/components/ConfirmationModal';
 import EmpcoViewer from '@/components/EmpcoCheck';
 import EmpcoBulkFixModal from '@/components/EmpcoBulkFixModal';
+import TransferSupplierModal from '@/components/TransferSupplierModal';
 import { confirmEmpcoReady } from '@/lib/empcoGateClient';
 import { deleteProductsAction, updateReadyForImportAction, updateProductStatusAction, bulkAssignAction, bulkUpdateReadyForImportAction } from '@/app/actions/product';
 
@@ -289,7 +290,7 @@ function getPageNumbers(currentPage: number, totalPages: number) {
 }
 
 export default function ProductsClient({
- initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canUseAi = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null, aiScoreMap = {}, imageCountMap = {}, empcoMap = {} }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, canAssignProducts?: boolean, canUseAi?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, aiScoreMap?: Record<string, number | null>, imageCountMap?: Record<string, number>, empcoMap?: Record<string, EmpcoMapEntry> }) {
+  initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canUseAi = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null, aiScoreMap = {}, imageCountMap = {}, empcoMap = {}, allSuppliers = [] }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, canAssignProducts?: boolean, canUseAi?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, aiScoreMap?: Record<string, number | null>, imageCountMap?: Record<string, number>, empcoMap?: Record<string, EmpcoMapEntry>, allSuppliers?: { id: string; name: string }[] }) {
   const router = useRouter();
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
@@ -298,6 +299,27 @@ export default function ProductsClient({
   const [bulkFixIds, setBulkFixIds] = useState<string[] | null>(null); // EmpCo bulk-fix modal (stable id list)
   const [isDeleting, startTransition] = useTransition();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // ── Suppliers state & transfer modal (Admin only) ────────────────────────
+  const [suppliersList, setSuppliersList] = useState<{ id: string; name: string }[]>(allSuppliers);
+  const [showTransferSupplierModal, setShowTransferSupplierModal] = useState(false);
+  const [preselectedTransferSupplierId, setPreselectedTransferSupplierId] = useState<string>('');
+  const [transferSuccessMessage, setTransferSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (allSuppliers) setSuppliersList(allSuppliers);
+  }, [allSuppliers]);
+
+  const handleSupplierTransferSuccess = (targetSupplier: { id: string; name: string }, count: number) => {
+    setSuppliersList(prev => {
+      if (prev.some(s => s.id === targetSupplier.id)) return prev;
+      return [...prev, targetSupplier].sort((a, b) => a.name.localeCompare(b.name));
+    });
+    setSelectedIds(new Set());
+    setTransferSuccessMessage(`${count} product(en) succesvol omgezet naar leverancier "${targetSupplier.name}".`);
+    setTimeout(() => setTransferSuccessMessage(null), 6000);
+    router.refresh();
+  };
 
   // ── Unread messages indicator ──────────────────────────────────────────
   const [unreadProducts, setUnreadProducts] = useState<Set<string>>(new Set());
@@ -666,6 +688,52 @@ export default function ProductsClient({
           onComplete={() => router.refresh()}
         />
       )}
+      {showTransferSupplierModal && (
+        <TransferSupplierModal
+          isOpen={showTransferSupplierModal}
+          onClose={() => setShowTransferSupplierModal(false)}
+          products={filteredProducts.filter(p => selectedIds.has(p.internalArticleNumber))}
+          allSuppliers={suppliersList}
+          preselectedSupplierId={preselectedTransferSupplierId}
+          onSuccess={handleSupplierTransferSuccess}
+        />
+      )}
+      {transferSuccessMessage && (
+        <div
+          style={{
+            padding: '0.85rem 1.25rem',
+            backgroundColor: 'rgba(51, 133, 140, 0.12)',
+            border: '1.5px solid var(--color-teal)',
+            borderRadius: 'var(--radius)',
+            color: 'var(--text)',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: '0 4px 12px rgba(51, 133, 140, 0.15)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span>✅</span>
+            <span>{transferSuccessMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setTransferSuccessMessage(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--text-muted)',
+              fontSize: '1rem',
+              fontWeight: 700,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
       
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)' }}>Products Database</h1>
@@ -699,6 +767,67 @@ export default function ProductsClient({
                   <option value="REVIEW">Review (R)</option>
                   <option value="JA">Ja (Y)</option>
                 </select>
+              )}
+
+              {isAdmin && (
+                <select
+                  className="input"
+                  style={{
+                    cursor: isDeleting ? 'wait' : 'pointer',
+                    border: 'none',
+                    backgroundColor: 'transparent',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    borderLeft: '1px solid var(--border)',
+                    borderRadius: 0,
+                    paddingLeft: '1rem',
+                    marginLeft: '0.5rem',
+                  }}
+                  disabled={isDeleting}
+                  value=""
+                  onChange={(e) => {
+                    setPreselectedTransferSupplierId(e.target.value);
+                    setShowTransferSupplierModal(true);
+                  }}
+                >
+                  <option value="" disabled>
+                    Leverancier omzetten...
+                  </option>
+                  {suppliersList.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                  <option value="__NEW__">➕ Nieuwe leverancier...</option>
+                </select>
+              )}
+
+              {isAdmin && (
+                <button
+                  type="button"
+                  className="btn"
+                  style={{
+                    padding: '0.4rem 0.8rem',
+                    fontSize: '0.85rem',
+                    backgroundColor: 'var(--color-teal)',
+                    border: 'none',
+                    cursor: isDeleting ? 'wait' : 'pointer',
+                    color: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    fontWeight: 600,
+                    borderRadius: 'var(--radius)',
+                  }}
+                  onClick={() => {
+                    setPreselectedTransferSupplierId('');
+                    setShowTransferSupplierModal(true);
+                  }}
+                  disabled={isDeleting}
+                  title={`Zet ${selectedIds.size} geselecteerde product(en) om naar een andere leverancier`}
+                >
+                  🏢 Omzetten
+                </button>
               )}
               
               {isAdmin && (
@@ -1186,6 +1315,7 @@ export default function ProductsClient({
         onEmpcoCheck={(artNum, status, stale, issueCount) => {
           setLiveEmpcoMap(prev => ({ ...prev, [artNum]: { status, stale, issueCount } }));
         }}
+        allSuppliers={suppliersList}
       />
 
       <ConfirmationModal

@@ -48,7 +48,7 @@ export default async function ProductsPage() {
   const canAssignProducts = isAdmin || hasAssignmentsRight;
   const canUseAi = isAdmin || hasAiRight;
   
-  const [products, aiAnalyses, empcoChecks] = await Promise.all([
+  const [products, aiAnalyses, empcoChecks, suppliers] = await Promise.all([
     prisma.product.findMany({
       where: canSeeAllProducts ? undefined : { assignedUserId: userId },
       orderBy: { createdAt: 'desc' },
@@ -57,6 +57,7 @@ export default async function ProductsPage() {
     }),
     prisma.productAiAnalysis.findMany({ select: { articleNumber: true, score: true } }),
     prisma.productEmpcoCheck.findMany({ select: { articleNumber: true, status: true, issueCount: true, contentHash: true } }),
+    prisma.supplier.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
   ]);
 
   // Build a quick lookup: articleNumber → score
@@ -104,6 +105,6 @@ export default async function ProductsPage() {
     }
   } catch { /* ignore FS errors */ }
 
-  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} canAssignProducts={canAssignProducts} canUseAi={canUseAi} fieldPermissions={fieldPermissions} layout={layout} currentUserId={userId || ''} currentUserChatColor={(userRecord as any)?.chatColor || null} aiScoreMap={aiScoreMap} imageCountMap={imageCountMap} empcoMap={empcoMap} />;
+  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} canAssignProducts={canAssignProducts} canUseAi={canUseAi} fieldPermissions={fieldPermissions} layout={layout} currentUserId={userId || ''} currentUserChatColor={(userRecord as any)?.chatColor || null} aiScoreMap={aiScoreMap} imageCountMap={imageCountMap} empcoMap={empcoMap} allSuppliers={suppliers} />;
 }
 
