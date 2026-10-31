@@ -124,17 +124,11 @@ export async function getFormattingRulesAction(): Promise<FormattingRule[]> {
     });
 
     if (!record?.value) {
-      // Initialize with defaults if empty
-      await prisma.systemSetting.upsert({
-        where: { key: SETTING_KEY },
-        create: { key: SETTING_KEY, value: JSON.stringify(DEFAULT_FORMATTING_RULES) },
-        update: {},
-      });
       return DEFAULT_FORMATTING_RULES;
     }
 
     const rules = JSON.parse(record.value) as FormattingRule[];
-    return Array.isArray(rules) ? rules : DEFAULT_FORMATTING_RULES;
+    return Array.isArray(rules) && rules.length > 0 ? rules : DEFAULT_FORMATTING_RULES;
   } catch (e: any) {
     console.error('Failed to load formatting rules:', e);
     return DEFAULT_FORMATTING_RULES;

@@ -52,15 +52,23 @@ export default function FormattingRulesManager() {
 
   const loadData = async () => {
     setLoading(true);
+    setErrorMsg('');
     try {
       const [loadedRules, loadedLayout] = await Promise.all([
-        getFormattingRulesAction(),
-        getFormLayoutAction(),
+        getFormattingRulesAction().catch(err => {
+          console.error('getFormattingRulesAction error:', err);
+          return [];
+        }),
+        getFormLayoutAction().catch(err => {
+          console.error('getFormLayoutAction error:', err);
+          return [];
+        }),
       ]);
-      setRules(loadedRules);
-      setSections(loadedLayout);
+      setRules(Array.isArray(loadedRules) && loadedRules.length > 0 ? loadedRules : []);
+      setSections(Array.isArray(loadedLayout) ? loadedLayout : []);
     } catch (e: any) {
-      setErrorMsg('Fout bij laden van formateringsregels.');
+      console.error('Failed to load rules in FormattingRulesManager:', e);
+      setErrorMsg(e?.message || 'Fout bij laden van formateringsregels.');
     } finally {
       setLoading(false);
     }
