@@ -12,6 +12,7 @@ import ProductWebEnrichModal from './ProductWebEnrichModal';
 import ProductEmpcoPanel, { ApplyFixResult } from './ProductEmpcoPanel';
 import ProductFieldHistoryModal from './ProductFieldHistoryModal';
 import TransferSupplierModal from './TransferSupplierModal';
+import FormattingRulePreviewModal, { AppliedFormattingChange } from './FormattingRulePreviewModal';
 import { confirmEmpcoReady } from '@/lib/empcoGateClient';
 import { replaceEmpcoFragment } from '@/lib/empco';
 
@@ -221,6 +222,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   const [restoreFields, setRestoreFields] = useState<Set<string>>(new Set()); // fields restored from history
   const [empcoRefreshKey, setEmpcoRefreshKey] = useState(0);                  // bump after save → reload EmpCo status
   const [showHistory, setShowHistory] = useState(false);
+  const [formattingModalSection, setFormattingModalSection] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen && product?.internalArticleNumber !== initializedProductId.current) {
@@ -403,6 +405,23 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     Object.entries(suggestions).forEach(([key, value]) => {
       applyAiSuggestion(key, value);
     });
+  };
+
+  const handleFormattingComplete = (appliedItems?: AppliedFormattingChange[]) => {
+    setFormattingModalSection(null);
+    if (appliedItems && appliedItems.length > 0 && localProductData) {
+      const thisProduct = appliedItems.find(i => i.articleNumber === localProductData.internalArticleNumber);
+      if (thisProduct) {
+        const patch: Record<string, any> = {};
+        thisProduct.changes.forEach(c => {
+          patch[c.fieldKey] = c.newValue;
+          applyAiSuggestion(c.fieldKey, c.newValue);
+        });
+        setLocalProductData((prev: any) => ({ ...prev, ...patch }));
+        setIsDirty(false);
+        setEmpcoRefreshKey(k => k + 1);
+      }
+    }
   };
 
   // ── EmpCo helpers ───────────────────────────────────────────────────────────
@@ -990,6 +1009,14 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                       >
                         🕘 Historie
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormattingModalSection('ALL')}
+                        title="Formatteer productteksten volgens vaste regels"
+                        style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                      >
+                        ✨ Regels
+                      </button>
                     </div>
                     {canUseAi && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderLeft: '1px solid var(--border)', paddingLeft: '0.75rem' }}>
@@ -1089,6 +1116,39 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                       <span style={{ fontSize: '0.85rem', transform: isCollapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.2s', display: 'inline-block', opacity: 0.8 }}>▼</span>
                       {section.title}
                     </h3>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFormattingModalSection(section.id);
+                      }}
+                      title={`Formatteer velden in "${section.title}" volgens een standaardregel`}
+                      style={{
+                        marginLeft: '0.75rem',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '0.2rem 0.6rem',
+                        borderRadius: 'var(--radius)',
+                        border: '1px solid var(--border)',
+                        backgroundColor: 'var(--surface)',
+                        color: 'var(--text-muted)',
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--primary)';
+                        e.currentTarget.style.color = 'var(--text)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--border)';
+                        e.currentTarget.style.color = 'var(--text-muted)';
+                      }}
+                    >
+                      ✨ Regels
+                    </button>
                     {canUseAi && analysisNarrative && sectionAiFields.length > 0 && (
                       <AiSectionSuggestion
                         sectionTitle={section.title}
@@ -1163,6 +1223,16 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
             setShowTransferSupplierModal(false);
             setEmpcoRefreshKey(k => k + 1);
           }}
+        />
+      )}
+
+      {formattingModalSection && localProductData && (
+        <FormattingRulePreviewModal
+          isOpen={Boolean(formattingModalSection)}
+          onClose={() => setFormattingModalSection(null)}
+          articleNumbers={[localProductData.internalArticleNumber]}
+          initialSectionId={formattingModalSection === 'ALL' ? undefined : formattingModalSection}
+          onComplete={handleFormattingComplete}
         />
       )}
       

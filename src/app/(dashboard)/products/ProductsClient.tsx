@@ -9,6 +9,7 @@ import ConfirmationModal from '@/components/ConfirmationModal';
 import EmpcoViewer from '@/components/EmpcoCheck';
 import EmpcoBulkFixModal from '@/components/EmpcoBulkFixModal';
 import TransferSupplierModal from '@/components/TransferSupplierModal';
+import FormattingRulePreviewModal from '@/components/FormattingRulePreviewModal';
 import { confirmEmpcoReady } from '@/lib/empcoGateClient';
 import { deleteProductsAction, updateReadyForImportAction, updateProductStatusAction, bulkAssignAction, bulkUpdateReadyForImportAction } from '@/app/actions/product';
 
@@ -299,6 +300,7 @@ export default function ProductsClient({
   const [bulkFixIds, setBulkFixIds] = useState<string[] | null>(null); // EmpCo bulk-fix modal (stable id list)
   const [isDeleting, startTransition] = useTransition();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showFormattingModal, setShowFormattingModal] = useState(false);
 
   // ── Suppliers state & transfer modal (Admin only) ────────────────────────
   const [suppliersList, setSuppliersList] = useState<{ id: string; name: string }[]>(allSuppliers);
@@ -698,6 +700,17 @@ export default function ProductsClient({
           onSuccess={handleSupplierTransferSuccess}
         />
       )}
+      {showFormattingModal && (
+        <FormattingRulePreviewModal
+          isOpen={showFormattingModal}
+          onClose={() => setShowFormattingModal(false)}
+          articleNumbers={Array.from(selectedIds)}
+          onComplete={() => {
+            setSelectedIds(new Set());
+            router.refresh();
+          }}
+        />
+      )}
       {transferSuccessMessage && (
         <div
           style={{
@@ -874,6 +887,31 @@ export default function ProductsClient({
               title={`EmpCo-voorstellen bekijken en doorvoeren voor ${selectedIds.size} geselecteerde producten`}
             >
               ✍️ EmpCo-voorstellen doorvoeren ({selectedIds.size})
+            </button>
+          )}
+          {/* Batch Formatteren met regels */}
+          {selectedIds.size > 0 && (
+            <button
+              id="formatting-bulk-btn"
+              type="button"
+              className="btn"
+              onClick={() => setShowFormattingModal(true)}
+              style={{
+                padding: '0.4rem 0.9rem',
+                fontSize: '0.85rem',
+                background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                border: 'none',
+                color: 'white',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                fontWeight: 600,
+                borderRadius: 'var(--radius)',
+              }}
+              title={`Formatteer ${selectedIds.size} geselecteerde producten met standaard regels`}
+            >
+              ✨ Formateren ({selectedIds.size})
             </button>
           )}
           {isAdmin && (

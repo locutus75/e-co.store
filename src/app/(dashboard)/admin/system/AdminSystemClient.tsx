@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import LlmConfigSection from '@/components/LlmConfigSection';
 import ConfettiSettingsForm from '@/components/ConfettiSettingsForm';
 import EmpcoSettingsForm from '@/components/EmpcoSettingsForm';
+import FormattingRulesManager from '@/components/FormattingRulesManager';
 
 export default function AdminSystemClient() {
   const [checking, setChecking] = useState(true);
@@ -617,6 +618,9 @@ export default function AdminSystemClient() {
 
       {/* EmpCo (green claims) check settings */}
       <EmpcoSettingsForm />
+
+      {/* Tekst Formatering & Standaardisatie Regels */}
+      <FormattingRulesManager />
 
       {/* AI / LLM Configuration */}
       <LlmConfigSection />
