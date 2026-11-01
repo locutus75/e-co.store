@@ -11,6 +11,7 @@ import {
 import { getFormLayoutAction, FormSection } from '@/app/actions/formLayouts';
 import ConfirmationModal from './ConfirmationModal';
 import FormattingRulePreviewModal from './FormattingRulePreviewModal';
+import { useBackdropClose } from '@/hooks/useBackdropClose';
 
 const AVAILABLE_TEXT_FIELDS = [
   { key: 'title', label: 'Titel / Omschrijving', section: 'sect-basis' },
@@ -49,6 +50,7 @@ export default function FormattingRulesManager() {
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
 
   const [isPending, startTransition] = useTransition();
+  const editModalBackdrop = useBackdropClose(() => setIsModalOpen(false), isPending);
 
   const loadData = async () => {
     setLoading(true);
@@ -472,9 +474,8 @@ export default function FormattingRulesManager() {
             backdropFilter: 'blur(5px)',
             padding: '1rem',
           }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !isPending) setIsModalOpen(false);
-          }}
+          onMouseDown={editModalBackdrop.onMouseDown}
+          onClick={editModalBackdrop.onClick}
         >
           <div
             className="glass"

@@ -9,6 +9,7 @@ import {
   getFormattingRulesAction,
 } from '@/app/actions/formattingRules';
 import { LlmProvider } from '@/app/actions/llm';
+import { useBackdropClose } from '@/hooks/useBackdropClose';
 
 export interface AppliedFormattingChange {
   articleNumber: string;
@@ -52,6 +53,7 @@ export default function FormattingRulePreviewModal({
   const [loadingMsg, setLoadingMsg] = useState('Bezig met genereren van previews...');
   const [previews, setPreviews] = useState<ProductRulePreview[]>([]);
   const [error, setError] = useState<string>('');
+  const backdropProps = useBackdropClose(onClose, phase === 'loading' || phase === 'applying');
 
   // Selected changes: set of `${articleNumber}::${fieldKey}`
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
@@ -268,9 +270,8 @@ export default function FormattingRulePreviewModal({
         backdropFilter: 'blur(5px)',
         padding: '1rem',
       }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget && phase !== 'loading' && phase !== 'applying') onClose();
-      }}
+      onMouseDown={backdropProps.onMouseDown}
+      onClick={backdropProps.onClick}
     >
       <div
         className="glass"

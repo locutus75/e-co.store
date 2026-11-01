@@ -2,6 +2,7 @@
 
 import React, { useState, useTransition, useMemo } from 'react';
 import { bulkTransferSupplierAction } from '@/app/actions/product';
+import { useBackdropClose } from '@/hooks/useBackdropClose';
 
 export interface TransferProductItem {
   internalArticleNumber: string;
@@ -32,6 +33,7 @@ export default function TransferSupplierModal({
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [isPending, startTransition] = useTransition();
+  const backdropProps = useBackdropClose(onClose, isPending);
 
   // Reset or prefill when modal opens
   React.useEffect(() => {
@@ -107,9 +109,8 @@ export default function TransferSupplierModal({
         backdropFilter: 'blur(5px)',
         padding: '1rem',
       }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !isPending) onClose();
-      }}
+      onMouseDown={backdropProps.onMouseDown}
+      onClick={backdropProps.onClick}
     >
       <div
         className="glass"
