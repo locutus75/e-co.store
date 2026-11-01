@@ -131,27 +131,37 @@ export default function FormattingRulesManager() {
     }
 
     startTransition(async () => {
-      const res = await saveFormattingRuleAction(editingRule);
-      if (res.success) {
-        setIsModalOpen(false);
-        setEditingRule(null);
-        setSuccessMsg('Formateringsregel succesvol opgeslagen.');
-        loadData();
-        setTimeout(() => setSuccessMsg(''), 4000);
-      } else {
-        alert(res.error || 'Fout bij opslaan.');
+      try {
+        const res = await saveFormattingRuleAction(editingRule);
+        if (res.success) {
+          setIsModalOpen(false);
+          setEditingRule(null);
+          setSuccessMsg('Formateringsregel succesvol opgeslagen.');
+          loadData();
+          setTimeout(() => setSuccessMsg(''), 4000);
+        } else {
+          alert(res.error || 'Fout bij opslaan.');
+        }
+      } catch (err: any) {
+        console.error('Error saving formatting rule:', err);
+        alert(err?.message || 'Onverwachte fout bij opslaan van de formateringsregel.');
       }
     });
   };
 
   const handleToggle = (rule: FormattingRule) => {
     startTransition(async () => {
-      const nextState = !rule.enabled;
-      const res = await toggleFormattingRuleAction(rule.id, nextState);
-      if (res.success) {
-        setRules(prev => prev.map(r => r.id === rule.id ? { ...r, enabled: nextState } : r));
-      } else {
-        alert(res.error || 'Fout bij wijzigen status.');
+      try {
+        const nextState = !rule.enabled;
+        const res = await toggleFormattingRuleAction(rule.id, nextState);
+        if (res.success) {
+          setRules(prev => prev.map(r => r.id === rule.id ? { ...r, enabled: nextState } : r));
+        } else {
+          alert(res.error || 'Fout bij wijzigen status.');
+        }
+      } catch (err: any) {
+        console.error('Error toggling formatting rule:', err);
+        alert(err?.message || 'Onverwachte fout bij wijzigen status.');
       }
     });
   };
@@ -159,14 +169,19 @@ export default function FormattingRulesManager() {
   const confirmDelete = () => {
     if (!ruleToDelete) return;
     startTransition(async () => {
-      const res = await deleteFormattingRuleAction(ruleToDelete.id);
-      if (res.success) {
-        setRuleToDelete(null);
-        setSuccessMsg('Formateringsregel verwijderd.');
-        loadData();
-        setTimeout(() => setSuccessMsg(''), 4000);
-      } else {
-        alert(res.error || 'Fout bij verwijderen.');
+      try {
+        const res = await deleteFormattingRuleAction(ruleToDelete.id);
+        if (res.success) {
+          setRuleToDelete(null);
+          setSuccessMsg('Formateringsregel verwijderd.');
+          loadData();
+          setTimeout(() => setSuccessMsg(''), 4000);
+        } else {
+          alert(res.error || 'Fout bij verwijderen.');
+        }
+      } catch (err: any) {
+        console.error('Error deleting formatting rule:', err);
+        alert(err?.message || 'Onverwachte fout bij verwijderen.');
       }
     });
   };

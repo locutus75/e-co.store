@@ -23,7 +23,7 @@ export interface FormattingRule {
 
 const SETTING_KEY = 'formatting_rules';
 
-export const DEFAULT_FORMATTING_RULES: FormattingRule[] = [
+const DEFAULT_FORMATTING_RULES: FormattingRule[] = [
   {
     id: 'rule-webshop-basis',
     name: 'Uniforme Titel & Korte Samenvatting',
@@ -117,6 +117,14 @@ async function assertAdmin() {
   return session;
 }
 
+function getDefaultFormattingRules(): FormattingRule[] {
+  return JSON.parse(JSON.stringify(DEFAULT_FORMATTING_RULES));
+}
+
+export async function getDefaultFormattingRulesAction(): Promise<FormattingRule[]> {
+  return getDefaultFormattingRules();
+}
+
 export async function getFormattingRulesAction(): Promise<FormattingRule[]> {
   try {
     const record = await prisma.systemSetting.findUnique({
@@ -124,14 +132,14 @@ export async function getFormattingRulesAction(): Promise<FormattingRule[]> {
     });
 
     if (!record?.value) {
-      return DEFAULT_FORMATTING_RULES;
+      return getDefaultFormattingRules();
     }
 
     const rules = JSON.parse(record.value) as FormattingRule[];
-    return Array.isArray(rules) && rules.length > 0 ? rules : DEFAULT_FORMATTING_RULES;
+    return Array.isArray(rules) && rules.length > 0 ? rules : getDefaultFormattingRules();
   } catch (e: any) {
     console.error('Failed to load formatting rules:', e);
-    return DEFAULT_FORMATTING_RULES;
+    return getDefaultFormattingRules();
   }
 }
 
