@@ -11,6 +11,7 @@ model User {
   email         String    @unique
   passwordHash  String
   chatColor     String?   // personalised chat avatar/bubble colour
+  autoMarkRemarksAsRead Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

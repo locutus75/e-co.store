@@ -11,6 +11,7 @@ const PRESET_COLORS = [
 export default function ProfileClient({ user }: { user: any }) {
   const [isPending, startTransition] = useTransition();
   const [previewColor, setPreviewColor] = useState(user.chatColor || '#6366f1');
+  const [autoMarkRemarksAsRead, setAutoMarkRemarksAsRead] = useState<boolean>(user.autoMarkRemarksAsRead ?? true);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -21,6 +22,10 @@ export default function ProfileClient({ user }: { user: any }) {
     startTransition(async () => {
       const res = await updateUserAction(user.id, formData);
       if (res.success) {
+        try {
+          localStorage.setItem('user_auto_mark_read_' + user.id, autoMarkRemarksAsRead ? 'true' : 'false');
+          window.dispatchEvent(new Event('chat_settings_updated'));
+        } catch { /* storage unavailable */ }
         setMessage({ type: 'success', text: 'Profiel succesvol bijgewerkt!' });
       } else {
         setMessage({ type: 'error', text: res.error || 'Er ging iets fout.' });
@@ -112,6 +117,22 @@ export default function ProfileClient({ user }: { user: any }) {
               placeholder="Nieuw wachtwoord (leeglaten om te behouden)" 
               minLength={8}
             />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', padding: '1.25rem', backgroundColor: 'var(--surface-hover)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', fontWeight: 600, color: 'var(--text)', fontSize: '0.95rem' }}>
+              <input 
+                type="checkbox" 
+                checked={autoMarkRemarksAsRead} 
+                onChange={e => setAutoMarkRemarksAsRead(e.target.checked)}
+                style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary)' }}
+              />
+              <span>Berichten automatisch als gelezen markeren bij openen Interne Communicatie</span>
+            </label>
+            <input type="hidden" name="autoMarkRemarksAsRead" value={autoMarkRemarksAsRead ? 'true' : 'false'} />
+            <p style={{ margin: 0, paddingLeft: '2.1rem', fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+              Wanneer ingeschakeld, worden nieuwe opmerkingen als gelezen gemarkeerd zodra je de Interne Communicatie sectie in het product opent. Wanneer uitgeschakeld blijven ze op ongelezen staan totdat je ze handmatig op gelezen zet.
+            </p>
           </div>
 
           <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-start', padding: '0.75rem 2rem' }} disabled={isPending}>

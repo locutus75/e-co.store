@@ -189,13 +189,14 @@ function DrawerReadyToggle({ readyMode, internalArticleNumber, isAdmin, onChange
 }
 
 
-export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, canUseAi = false, layout = [], currentUserId = '', currentUserChatColor = null, userChatColors = {}, onPrev, onNext, aiScore = null, onEmpcoCheck, allSuppliers = [] }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, canUseAi?: boolean, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, userChatColors?: Record<string, string>, onPrev?: () => void, onNext?: () => void, aiScore?: number | null, onEmpcoCheck?: (articleNumber: string, status: string, stale: boolean, issueCount: number) => void, allSuppliers?: { id: string; name: string }[] }) {
+export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, canUseAi = false, layout = [], currentUserId = '', currentUserChatColor = null, currentUserAutoMarkRemarksAsRead = true, userChatColors = {}, onPrev, onNext, aiScore = null, onEmpcoCheck, allSuppliers = [] }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, canUseAi?: boolean, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, currentUserAutoMarkRemarksAsRead?: boolean, userChatColors?: Record<string, string>, onPrev?: () => void, onNext?: () => void, aiScore?: number | null, onEmpcoCheck?: (articleNumber: string, status: string, stale: boolean, issueCount: number) => void, allSuppliers?: { id: string; name: string }[] }) {
   const [isPending, startTransition] = useTransition();
   const [pendingNavigation, setPendingNavigation] = useState<'prev' | 'next' | null>(null);
   const [statusOverridden, setStatusOverridden] = useState(false);
   const currentStatus = (product?.status || 'NEW').toUpperCase();
   const [activeStatus, setActiveStatus] = useState(currentStatus);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [chatUnreadCount, setChatUnreadCount] = useState<number>(0);
   const initializedProductId = useRef<string | null>(null);
   const saveModeRef = useRef<'save' | 'save_close'>('save_close');
 
@@ -236,6 +237,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
       setEmpcoFields(new Set());
       setRestoreFields(new Set());
       setShowHistory(false);
+      setChatUnreadCount(0);
       
       const initialCollapsed: Record<string, boolean> = {};
       layout.forEach(s => {
@@ -772,17 +774,21 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
       // Stop change-event propagation so the form's onChange does NOT flag isDirty
       // just because the user typed a chat message (those save independently).
       const chatHeight = Math.max(280, (f.height || 10) * 40);
+      const isSectionCollapsed = section?.id ? (collapsedSections[section.id] ?? false) : false;
       return (
         <div key={f.id} style={{ gridColumn: `span 24` }} onChange={(e) => e.stopPropagation()}>
           <ProductRemarksChat
             articleNumber={localProductData.internalArticleNumber}
             currentUserId={currentUserId}
             currentUserChatColor={currentUserChatColor}
+            currentUserAutoMarkRemarksAsRead={currentUserAutoMarkRemarksAsRead}
             userChatColors={userChatColors}
             isAdmin={isAdmin}
             isOpen={isOpen}
+            isSectionOpen={isOpen && !isSectionCollapsed}
             height={chatHeight}
             title={f.label}
+            onUnreadCountChange={setChatUnreadCount}
           />
         </div>
       );
@@ -1108,6 +1114,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                     };
                   });
                 const isCollapsed = collapsedSections[section.id] || false;
+                const hasChat = section.fields?.some((f: any) => f.type === 'chat');
                 
                 return (
                 <section key={section.id}>
@@ -1116,6 +1123,24 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                       <span style={{ fontSize: '0.85rem', transform: isCollapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.2s', display: 'inline-block', opacity: 0.8 }}>▼</span>
                       {section.title}
                     </h3>
+                    {hasChat && isCollapsed && chatUnreadCount > 0 && (
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        backgroundColor: '#ef4444',
+                        color: 'white',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        padding: '0.2rem 0.65rem',
+                        borderRadius: '1rem',
+                        marginLeft: '0.75rem',
+                        boxShadow: '0 2px 6px rgba(239, 68, 68, 0.35)',
+                        animation: 'chat-pulse 1.2s ease-in-out infinite',
+                      }}>
+                        🔔 {chatUnreadCount} nieuw{chatUnreadCount === 1 ? '' : 'e'} {chatUnreadCount === 1 ? 'bericht' : 'berichten'}
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={(e) => {

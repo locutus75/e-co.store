@@ -105,6 +105,6 @@ export default async function ProductsPage() {
     }
   } catch { /* ignore FS errors */ }
 
-  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} canAssignProducts={canAssignProducts} canUseAi={canUseAi} fieldPermissions={fieldPermissions} layout={layout} currentUserId={userId || ''} currentUserChatColor={(userRecord as any)?.chatColor || null} aiScoreMap={aiScoreMap} imageCountMap={imageCountMap} empcoMap={empcoMap} allSuppliers={suppliers} />;
+  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} canAssignProducts={canAssignProducts} canUseAi={canUseAi} fieldPermissions={fieldPermissions} layout={layout} currentUserId={userId || ''} currentUserChatColor={(userRecord as any)?.chatColor || null} currentUserAutoMarkRemarksAsRead={userRecord?.autoMarkRemarksAsRead ?? true} aiScoreMap={aiScoreMap} imageCountMap={imageCountMap} empcoMap={empcoMap} allSuppliers={suppliers} />;
 }
 

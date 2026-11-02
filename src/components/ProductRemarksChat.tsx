@@ -84,23 +84,58 @@ interface Props {
   articleNumber: string;
   currentUserId: string;
   currentUserChatColor?: string | null;
+  currentUserAutoMarkRemarksAsRead?: boolean;
+  autoMarkRemarksAsRead?: boolean;
   userChatColors?: Record<string, string>;
   isAdmin: boolean;
   isOpen: boolean;
+  isSectionOpen?: boolean;
   height?: number | string;
   /** Label from the WYSIWYG layout — default "Interne Communicatie" */
   title?: string;
+  onUnreadCountChange?: (count: number) => void;
 }
 
 export default function ProductRemarksChat({
-  articleNumber, currentUserId, currentUserChatColor, userChatColors = {},
-  isAdmin, isOpen, height = 380, title = 'Interne Communicatie'
+  articleNumber, currentUserId, currentUserChatColor,
+  currentUserAutoMarkRemarksAsRead = true, autoMarkRemarksAsRead,
+  userChatColors = {},
+  isAdmin, isOpen, isSectionOpen = true, height = 380, title = 'Interne Communicatie',
+  onUnreadCountChange,
 }: Props) {
   const [remarks, setRemarks]   = useState<RemarkEntry[]>([]);
   const [loading, setLoading]   = useState(true);
   const [message, setMessage]   = useState('');
   const [error, setError]       = useState('');
   const [isPending, startT]     = useTransition();
+
+  // User auto-read preference: checks prop first, then localStorage
+  const baseAutoMark = autoMarkRemarksAsRead ?? currentUserAutoMarkRemarksAsRead ?? true;
+  const [effectiveAutoMark, setEffectiveAutoMark] = useState<boolean>(baseAutoMark);
+
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem('user_auto_mark_read_' + currentUserId);
+      if (cached !== null) {
+        setEffectiveAutoMark(cached === 'true');
+      } else {
+        setEffectiveAutoMark(baseAutoMark);
+      }
+    } catch {
+      setEffectiveAutoMark(baseAutoMark);
+    }
+  }, [currentUserId, baseAutoMark]);
+
+  useEffect(() => {
+    const handleSettingsUpdated = () => {
+      try {
+        const cached = localStorage.getItem('user_auto_mark_read_' + currentUserId);
+        if (cached !== null) setEffectiveAutoMark(cached === 'true');
+      } catch {}
+    };
+    window.addEventListener('chat_settings_updated', handleSettingsUpdated);
+    return () => window.removeEventListener('chat_settings_updated', handleSettingsUpdated);
+  }, [currentUserId]);
 
   // hover / delete confirm / edit
   const [hoveredId, setHoveredId]                   = useState<string | null>(null);
@@ -111,7 +146,10 @@ export default function ProductRemarksChat({
   // "new message" indicator
   const [hasNewMessages, setHasNewMessages] = useState(false);
   const [newCount, setNewCount]             = useState(0);
-  const dismissTimerRef                     = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When the user explicitly marks as unread while the section is currently open,
+  // do NOT immediately re-auto-mark as read until the section has been closed.
+  const userManuallyMarkedUnreadRef = useRef(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -119,7 +157,45 @@ export default function ProductRemarksChat({
   const markAsSeen = () => {
     try {
       localStorage.setItem(lastSeenKey(currentUserId, articleNumber), new Date().toISOString());
+      window.dispatchEvent(new Event('chat_seen_updated'));
     } catch { /* storage unavailable */ }
+    setHasNewMessages(false);
+    setNewCount(0);
+    onUnreadCountChange?.(0);
+  };
+
+  const markAsUnread = (beforeDate?: string) => {
+    try {
+      if (beforeDate) {
+        // Set last seen to 1 second before this message
+        const targetTime = new Date(new Date(beforeDate).getTime() - 1000).toISOString();
+        localStorage.setItem(lastSeenKey(currentUserId, articleNumber), targetTime);
+      } else {
+        localStorage.removeItem(lastSeenKey(currentUserId, articleNumber));
+      }
+      window.dispatchEvent(new Event('chat_seen_updated'));
+    } catch { /* storage unavailable */ }
+
+    userManuallyMarkedUnreadRef.current = true;
+
+    // Recalculate unread messages from current remarks
+    try {
+      const seen = localStorage.getItem(lastSeenKey(currentUserId, articleNumber));
+      const seenDate = seen ? new Date(seen) : null;
+      const newFromOthers = remarks.filter(r =>
+        r.user.id !== currentUserId &&
+        r.user.email !== 'jij' &&
+        (!seenDate || new Date(r.createdAt) > seenDate)
+      );
+      const count = newFromOthers.length > 0 ? newFromOthers.length : (remarks.length || 1);
+      setHasNewMessages(true);
+      setNewCount(count);
+      onUnreadCountChange?.(count);
+    } catch {
+      setHasNewMessages(true);
+      setNewCount(1);
+      onUnreadCountChange?.(1);
+    }
   };
 
   // ── data loading ──────────────────────────────────────────────────────
@@ -142,11 +218,11 @@ export default function ProductRemarksChat({
       if (newFromOthers.length > 0) {
         setHasNewMessages(true);
         setNewCount(newFromOthers.length);
+        onUnreadCountChange?.(newFromOthers.length);
       } else {
         setHasNewMessages(false);
         setNewCount(0);
-        // No unread messages — mark as seen now so the badge stays clear after refresh
-        markAsSeen();
+        onUnreadCountChange?.(0);
       }
     } catch { 
       /* storage unavailable */ 
@@ -154,9 +230,11 @@ export default function ProductRemarksChat({
   };
 
   useEffect(() => {
-    // Skip when the drawer is not open — avoids writing a stale timestamp on
-    // first mount (before any chat data has been fetched).
-    if (!isOpen) return;
+    // Reset manual unread flag and reload when drawer opens or article changes
+    if (!isOpen) {
+      userManuallyMarkedUnreadRef.current = false;
+      return;
+    }
     setLoading(true);
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -168,22 +246,26 @@ export default function ProductRemarksChat({
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [remarks]);
 
-  // 3-second auto-dismiss of new-message indicator
+  // Mark as seen ONLY when:
+  // 1. Drawer is open
+  // 2. The Interne Communicatie section is actually opened/expanded by the user
+  // 3. User setting allows auto-mark (effectiveAutoMark is true)
+  // 4. User has not explicitly flagged it as unread during this section view
+  // 5. There are unread messages to mark
   useEffect(() => {
-    if (!isOpen || !hasNewMessages) return;
+    if (!isSectionOpen) {
+      userManuallyMarkedUnreadRef.current = false;
+      return;
+    }
 
-    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-    dismissTimerRef.current = setTimeout(() => {
-      setHasNewMessages(false);
-      setNewCount(0);
-      markAsSeen();
-    }, 3000);
-
-    return () => {
-      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-    };
+    if (isOpen && isSectionOpen && effectiveAutoMark && !userManuallyMarkedUnreadRef.current && hasNewMessages) {
+      const timer = setTimeout(() => {
+        markAsSeen();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, hasNewMessages]);
+  }, [isOpen, isSectionOpen, effectiveAutoMark, hasNewMessages]);
 
   // ── actions ──────────────────────────────────────────────────────────
   const handleSend = () => {
@@ -255,35 +337,103 @@ export default function ProductRemarksChat({
     }}>
       {/* Header */}
       <div style={{
-        padding: '0.7rem 1rem', fontWeight: 700, fontSize: '0.85rem',
+        padding: '0.65rem 1rem', fontWeight: 700, fontSize: '0.85rem',
         color: 'var(--text)', backgroundColor: 'var(--surface)',
         borderBottom: '1px solid var(--border)',
         display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0,
+        flexWrap: 'wrap',
       }}>
-        <span>💬</span>
-        {title}
+        <span style={{ fontSize: '1rem' }}>💬</span>
+        <span>{title}</span>
 
-        {/* New message badge — pulses for 3 seconds */}
+        {/* New / unread message badge */}
         {hasNewMessages && (
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
             backgroundColor: '#ef4444', color: 'white',
-            fontSize: '0.65rem', fontWeight: 800,
+            fontSize: '0.68rem', fontWeight: 800,
             padding: '0.15rem 0.55rem', borderRadius: '1rem',
             animation: 'chat-pulse 1s ease-in-out infinite',
             marginLeft: '0.2rem',
           }}>
-            🔔 {newCount} nieuw{newCount === 1 ? '' : 'e'} bericht{newCount === 1 ? '' : 'en'}
+            🔔 {newCount} ongelezen
           </span>
         )}
 
-        <span style={{
-          marginLeft: 'auto', fontSize: '0.7rem', fontWeight: 600,
-          color: 'var(--text-muted)', backgroundColor: 'var(--border)',
-          padding: '0.1rem 0.5rem', borderRadius: '1rem',
-        }}>
-          {remarks.length} {remarks.length === 1 ? 'bericht' : 'berichten'}
-        </span>
+        {/* Header action buttons */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {hasNewMessages ? (
+            <button
+              type="button"
+              onClick={markAsSeen}
+              title="Markeer als gelezen"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+                padding: '0.2rem 0.6rem',
+                borderRadius: 'var(--radius)',
+                border: '1px solid var(--border)',
+                backgroundColor: 'var(--background)',
+                color: 'var(--text)',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = 'var(--primary)';
+                e.currentTarget.style.color = 'var(--primary)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = 'var(--border)';
+                e.currentTarget.style.color = 'var(--text)';
+              }}
+            >
+              ✓ Markeer als gelezen
+            </button>
+          ) : (
+            remarks.length > 0 && (
+              <button
+                type="button"
+                onClick={() => markAsUnread()}
+                title="Markeer dit gesprek weer als niet gelezen"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                  padding: '0.2rem 0.6rem',
+                  borderRadius: 'var(--radius)',
+                  border: '1px solid var(--border)',
+                  backgroundColor: 'var(--background)',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.borderColor = 'var(--primary)';
+                  e.currentTarget.style.color = 'var(--text)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.borderColor = 'var(--border)';
+                  e.currentTarget.style.color = 'var(--text-muted)';
+                }}
+              >
+                ✉️ Markeer als niet gelezen
+              </button>
+            )
+          )}
+
+          <span style={{
+            fontSize: '0.7rem', fontWeight: 600,
+            color: 'var(--text-muted)', backgroundColor: 'var(--border)',
+            padding: '0.12rem 0.5rem', borderRadius: '1rem',
+          }}>
+            {remarks.length} {remarks.length === 1 ? 'bericht' : 'berichten'}
+          </span>
+        </div>
       </div>
 
       {/* Messages */}
@@ -373,9 +523,33 @@ export default function ProductRemarksChat({
                     </div>
                   )}
 
-                  {/* Action buttons: edit + delete */}
+                  {/* Action buttons: mark unread + edit + delete */}
                   {!isEditing && (isHovered || confirmingDeleteId === r.id) && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                      {!isOptimistic && (
+                        <button
+                          type="button"
+                          onClick={() => markAsUnread(r.createdAt)}
+                          title="Markeer als ongelezen vanaf dit bericht"
+                          style={{
+                            width: '22px', height: '22px', borderRadius: '50%',
+                            border: '1px solid var(--border)', backgroundColor: 'var(--surface)',
+                            color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.65rem',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                            transition: 'all 0.15s ease',
+                          }}
+                          onMouseEnter={e => {
+                            (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--primary)';
+                            (e.currentTarget as HTMLButtonElement).style.color = 'var(--text)';
+                          }}
+                          onMouseLeave={e => {
+                            (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)';
+                            (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)';
+                          }}
+                        >
+                          ✉️
+                        </button>
+                      )}
                       {canEdit && (
                         <button type="button" onClick={() => startEdit(r)} title="Bewerken (binnen 5 min)"
                           style={{ width: '22px', height: '22px', borderRadius: '50%', border: '1px solid var(--border)', backgroundColor: 'var(--surface)', color: resolvedColor, cursor: 'pointer', fontSize: '0.65rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}

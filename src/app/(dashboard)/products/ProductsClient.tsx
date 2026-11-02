@@ -291,7 +291,7 @@ function getPageNumbers(currentPage: number, totalPages: number) {
 }
 
 export default function ProductsClient({
-  initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canUseAi = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null, aiScoreMap = {}, imageCountMap = {}, empcoMap = {}, allSuppliers = [] }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, canAssignProducts?: boolean, canUseAi?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, aiScoreMap?: Record<string, number | null>, imageCountMap?: Record<string, number>, empcoMap?: Record<string, EmpcoMapEntry>, allSuppliers?: { id: string; name: string }[] }) {
+  initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canUseAi = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null, currentUserAutoMarkRemarksAsRead = true, aiScoreMap = {}, imageCountMap = {}, empcoMap = {}, allSuppliers = [] }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, canAssignProducts?: boolean, canUseAi?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, currentUserAutoMarkRemarksAsRead?: boolean, aiScoreMap?: Record<string, number | null>, imageCountMap?: Record<string, number>, empcoMap?: Record<string, EmpcoMapEntry>, allSuppliers?: { id: string; name: string }[] }) {
   const router = useRouter();
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
@@ -352,6 +352,17 @@ export default function ProductsClient({
   useEffect(() => {
     if (!selectedProduct) checkUnreadProducts();
   }, [selectedProduct, checkUnreadProducts]);
+
+  // Real-time synchronization when a chat is marked read or unread
+  useEffect(() => {
+    const handleSeenUpdated = () => checkUnreadProducts();
+    window.addEventListener('chat_seen_updated', handleSeenUpdated);
+    window.addEventListener('storage', handleSeenUpdated);
+    return () => {
+      window.removeEventListener('chat_seen_updated', handleSeenUpdated);
+      window.removeEventListener('storage', handleSeenUpdated);
+    };
+  }, [checkUnreadProducts]);
 
   const getLayoutLabel = (fieldId: string, defaultLabel: string) => {
     if (!layout) return defaultLabel;
@@ -1344,6 +1355,7 @@ export default function ProductsClient({
         layout={layout}
         currentUserId={currentUserId}
         currentUserChatColor={currentUserChatColor}
+        currentUserAutoMarkRemarksAsRead={currentUserAutoMarkRemarksAsRead}
         userChatColors={Object.fromEntries(
           systemUsers.filter((u: any) => u.chatColor).map((u: any) => [u.id, u.chatColor])
         )}

@@ -26,10 +26,15 @@ export async function createUserAction(formData: FormData) {
 
     const hash = await bcrypt.hash(password, 10);
     
+    const autoMarkRemarksAsRead = formData.has("autoMarkRemarksAsRead")
+      ? formData.get("autoMarkRemarksAsRead") === "true" || formData.get("autoMarkRemarksAsRead") === "on"
+      : true;
+
     await prisma.user.create({
       data: {
         email,
         passwordHash: hash,
+        autoMarkRemarksAsRead,
         ...(chatColor ? { chatColor } : {}),
         userRoles: { create: { roleId: roleRecord.id } }
       }
@@ -63,6 +68,10 @@ export async function updateUserAction(userId: string, formData: FormData) {
 
     const dataPayload: any = { email, chatColor };
     
+    if (formData.has("autoMarkRemarksAsRead")) {
+      dataPayload.autoMarkRemarksAsRead = formData.get("autoMarkRemarksAsRead") === "true" || formData.get("autoMarkRemarksAsRead") === "on";
+    }
+
     if (password && password.length >= 8) {
       dataPayload.passwordHash = await bcrypt.hash(password, 10);
     }
@@ -79,6 +88,8 @@ export async function updateUserAction(userId: string, formData: FormData) {
     });
 
     revalidatePath("/admin");
+    revalidatePath("/profile");
+    revalidatePath("/products");
     return { success: true };
   } catch (e: any) {
     console.error("Update User Error:", e);
