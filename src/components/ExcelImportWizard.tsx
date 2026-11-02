@@ -14,6 +14,20 @@ export default function ExcelImportWizard({ onClose }: { onClose: (shouldRefresh
   const [overwriteRules, setOverwriteRules] = useState<Record<string, boolean>>({});
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [successCount, setSuccessCount] = useState<number>(0);
+  const [onlyUpdateExisting, setOnlyUpdateExisting] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        return localStorage.getItem('excel_import_only_update_existing') === 'true';
+      } catch {}
+    }
+    return false;
+  });
+  const [importStats, setImportStats] = useState<{
+    createdCount: number;
+    updatedCount: number;
+    skippedNonExistingCount: number;
+    onlyUpdateExisting: boolean;
+  } | null>(null);
   
   const [isPending, startTransition] = useTransition();
 
@@ -112,12 +126,18 @@ export default function ExcelImportWizard({ onClose }: { onClose: (shouldRefresh
     const headers = previewRows[headerRowIndex] || [];
 
     startTransition(async () => {
-      const res = await executeImportAction(fd, headerRowIndex, mapping, headers, overwriteRules);
+      const res = await executeImportAction(fd, headerRowIndex, mapping, headers, overwriteRules, onlyUpdateExisting);
       if (res.error) {
         setErrorMsg("Import Mislukt: " + res.error);
         setPhase('mapping');
       } else {
         setSuccessCount(res.count || 0);
+        setImportStats({
+          createdCount: res.createdCount || 0,
+          updatedCount: res.updatedCount || 0,
+          skippedNonExistingCount: res.skippedNonExistingCount || 0,
+          onlyUpdateExisting: !!res.onlyUpdateExisting,
+        });
         setPhase('success');
       }
     });
@@ -198,6 +218,43 @@ export default function ExcelImportWizard({ onClose }: { onClose: (shouldRefresh
                      ⚠️ Let op: Er is nog geen kolom gekoppeld aan <u>Artikel Nummer (ID)</u>. Koppel eerst de kolom met het artikelnummer om producten te kunnen vinden en bijwerken.
                    </div>
                  )}
+
+                  {/* Import modus optie: alleen bestaande producten bijwerken */}
+                  <div style={{
+                    marginTop: '1rem',
+                    padding: '0.85rem 1rem',
+                    backgroundColor: 'var(--surface)',
+                    borderRadius: 'var(--radius)',
+                    border: onlyUpdateExisting ? '1px solid var(--primary)' : '1px solid var(--border)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.35rem',
+                    transition: 'all 0.2s ease',
+                  }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)', userSelect: 'none' }}>
+                      <input
+                        type="checkbox"
+                        checked={onlyUpdateExisting}
+                        onChange={e => {
+                          const val = e.target.checked;
+                          setOnlyUpdateExisting(val);
+                          try { localStorage.setItem('excel_import_only_update_existing', val ? 'true' : 'false'); } catch {}
+                        }}
+                        style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary)' }}
+                      />
+                      <span>Geen nieuwe items aanmaken (alleen bestaande producten bijwerken)</span>
+                      {onlyUpdateExisting && (
+                        <span style={{ fontSize: '0.7rem', backgroundColor: 'var(--primary)', color: 'white', padding: '0.15rem 0.55rem', borderRadius: '1rem', fontWeight: 700, marginLeft: '0.25rem' }}>
+                          Update-only modus actief
+                        </span>
+                      )}
+                    </label>
+                    <p style={{ margin: 0, paddingLeft: '1.85rem', fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+                      {onlyUpdateExisting
+                        ? "Rijen met artikelnummers die nog niet in de database bestaan worden overgeslagen. Alleen bestaande producten worden geüpdatet met de gekoppelde kolommen."
+                        : "Standaard: Bestaande producten worden bijgewerkt én rijen met nieuwe artikelnummers worden als nieuw product aangemaakt."}
+                    </p>
+                  </div>
 
                  <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem' }}>
                     <button className="btn" style={{ fontSize: '0.85rem', padding: '0.4rem 1rem' }} onClick={() => {
@@ -285,8 +342,50 @@ export default function ExcelImportWizard({ onClose }: { onClose: (shouldRefresh
           {phase === 'success' && (
             <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
               <div style={{ fontSize: '4rem', marginBottom: '1rem', color: 'var(--success)' }}>✅</div>
-              <h3 style={{ fontSize: '1.4rem', marginBottom: '0.5rem', color: 'var(--text)' }}>Missie Geslaagd!</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>Succesvol <strong>{successCount}</strong> producten geïmporteerd of bijgewerkt!</p>
+              <h3 style={{ fontSize: '1.4rem', marginBottom: '0.5rem', color: 'var(--text)' }}>Import Succesvol Voltooid!</h3>
+              
+              {importStats ? (
+                <div style={{
+                  marginTop: '1.5rem',
+                  display: 'inline-flex',
+                  flexDirection: 'column',
+                  gap: '0.65rem',
+                  textAlign: 'left',
+                  backgroundColor: 'var(--surface-hover)',
+                  padding: '1.25rem 2rem',
+                  borderRadius: 'var(--radius)',
+                  border: '1px solid var(--border)',
+                  minWidth: '320px',
+                }}>
+                  {importStats.onlyUpdateExisting ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: 'var(--text)', fontSize: '0.95rem' }}>
+                      <span style={{ fontSize: '1.1rem' }}>🔄</span>
+                      <span>Bestaande producten bijgewerkt: <strong>{importStats.updatedCount}</strong></span>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: 'var(--text)', fontSize: '0.95rem' }}>
+                        <span style={{ fontSize: '1.1rem' }}>➕</span>
+                        <span>Nieuwe producten aangemaakt: <strong>{importStats.createdCount}</strong></span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: 'var(--text)', fontSize: '0.95rem' }}>
+                        <span style={{ fontSize: '1.1rem' }}>🔄</span>
+                        <span>Bestaande producten bijgewerkt: <strong>{importStats.updatedCount}</strong></span>
+                      </div>
+                    </>
+                  )}
+                  {importStats.skippedNonExistingCount > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: 'var(--text-muted)', fontSize: '0.88rem', borderTop: '1px solid var(--border)', paddingTop: '0.5rem' }}>
+                      <span style={{ fontSize: '1rem' }}>⏭️</span>
+                      <span>Niet-bestaande artikelen overgeslagen: <strong>{importStats.skippedNonExistingCount}</strong></span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>
+                  Succesvol <strong>{successCount}</strong> producten verwerkt!
+                </p>
+              )}
             </div>
           )}
         </div>

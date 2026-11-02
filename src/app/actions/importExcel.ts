@@ -40,11 +40,13 @@ export async function executeImportAction(
   headerRowIndex: number, 
   mapping: Record<number, string>, 
   headers: (string|null)[], 
-  overwriteRules: Record<string, boolean>
+  overwriteRules: Record<string, boolean>,
+  onlyUpdateExisting: boolean = false
 ) {
   console.log("=== EXECUTE IMPORT ACTION ===");
   console.log("mapping:", JSON.stringify(mapping));
   console.log("overwriteRules:", JSON.stringify(overwriteRules));
+  console.log("onlyUpdateExisting:", onlyUpdateExisting);
 
   const file = formData.get("file") as File;
   if (!file) return { error: "No file uploaded" };
@@ -60,6 +62,9 @@ export async function executeImportAction(
     const dataRows = allRows.slice(headerRowIndex + 1);
     
     let processedParams = 0;
+    let createdCount = 0;
+    let updatedCount = 0;
+    let skippedNonExistingCount = 0;
     
     for (const rawRow of dataRows) {
       if(!rawRow || rawRow.length === 0) continue;
@@ -127,6 +132,10 @@ export async function executeImportAction(
       }
 
       if (!existingProduct) {
+        if (onlyUpdateExisting) {
+          skippedNonExistingCount++;
+          continue;
+        }
         // Safe Create
         if (internalArticleNumber === '16815') {
            console.log(`[Import Row] Creating product in DB with title:`, rowData.title);
@@ -139,6 +148,8 @@ export async function executeImportAction(
              ...rowData
           }
         });
+        createdCount++;
+        processedParams++;
       } else {
         // Selective Update
         const updatePayload: Record<string, any> = {};
@@ -178,9 +189,9 @@ export async function executeImportAction(
              data: updatePayload
            });
         }
+        updatedCount++;
+        processedParams++;
       }
-      
-      processedParams++;
     }
 
     // Save mapping memory for future uploads
@@ -209,7 +220,14 @@ export async function executeImportAction(
     }
 
     revalidatePath('/products');
-    return { success: true, count: processedParams };
+    return { 
+      success: true, 
+      count: processedParams, 
+      createdCount, 
+      updatedCount, 
+      skippedNonExistingCount, 
+      onlyUpdateExisting 
+    };
   } catch (error: any) {
     console.error("Excel Import Execution Error:", error);
     return { error: error.message };
