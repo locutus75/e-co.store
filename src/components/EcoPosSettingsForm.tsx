@@ -1,0 +1,536 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import {
+  DEFAULT_ECOPOS_FIELD_MODES,
+  DEFAULT_ECOPOS_SETTINGS,
+  ECOPOS_CATEGORIES,
+  ECOPOS_FIELDS,
+  EcoPosCategoryKey,
+  EcoPosFieldMode,
+  EcoPosSettings,
+} from '@/lib/ecopos';
+import {
+  getEcoPosSettingsAction,
+  saveEcoPosSettingsAction,
+  testEcoPosConnectionAction,
+} from '@/app/actions/ecopos';
+
+const MODE_OPTIONS: { value: EcoPosFieldMode; label: string; badgeBg: string; badgeColor: string }[] = [
+  { value: 'ignore', label: '🚫 Niet ophalen', badgeBg: '#f1f5f9', badgeColor: '#64748b' },
+  { value: 'fill_empty', label: '➕ Alleen aanvullen indien leeg', badgeBg: '#dbeafe', badgeColor: '#1d4ed8' },
+  { value: 'overwrite', label: '🔄 Altijd overschrijven (EcoPos leidend)', badgeBg: '#dcfce7', badgeColor: '#15803d' },
+];
+
+export default function EcoPosSettingsForm() {
+  const [settings, setSettings] = useState<EcoPosSettings>(DEFAULT_ECOPOS_SETTINGS);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [activeTab, setActiveTab] = useState<'connection' | 'fields' | 'autosync'>('connection');
+  const [msg, setMsg] = useState<{ text: string; type: 'success' | 'error' | '' }>({ text: '', type: '' });
+  const [testResult, setTestResult] = useState<{
+    ok: boolean;
+    error?: string;
+    application?: string;
+    lastMplusSyncAt?: string | null;
+    totalProducts?: number | null;
+    latencyMs?: number;
+  } | null>(null);
+
+  useEffect(() => {
+    getEcoPosSettingsAction()
+      .then((s) => setSettings(s))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    setMsg({ text: '', type: '' });
+    try {
+      const res = await testEcoPosConnectionAction(settings.baseUrl, settings.apiKey);
+      setTestResult(res);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setMsg({ text: '', type: '' });
+    const res = await saveEcoPosSettingsAction(settings);
+    if (res.success && res.settings) {
+      setSettings(res.settings);
+      setMsg({ text: '✓ EcoPos-instellingen succesvol opgeslagen!', type: 'success' });
+    } else {
+      setMsg({ text: '✕ Fout bij opslaan: ' + (res.error || 'Onbekende fout'), type: 'error' });
+    }
+    setSaving(false);
+  };
+
+  const setFieldMode = (key: string, mode: EcoPosFieldMode) => {
+    setSettings((prev) => ({
+      ...prev,
+      fieldModes: {
+        ...prev.fieldModes,
+        [key]: mode,
+      },
+    }));
+  };
+
+  const setCategoryMode = (cat: EcoPosCategoryKey, mode: EcoPosFieldMode) => {
+    const nextModes = { ...settings.fieldModes };
+    ECOPOS_FIELDS.filter((f) => f.category === cat).forEach((f) => {
+      nextModes[f.key] = mode;
+    });
+    setSettings((prev) => ({ ...prev, fieldModes: nextModes }));
+  };
+
+  const resetDefaultFieldModes = () => {
+    setSettings((prev) => ({ ...prev, fieldModes: { ...DEFAULT_ECOPOS_FIELD_MODES } }));
+  };
+
+  if (loading) {
+    return (
+      <div className="glass" style={{ borderRadius: 'var(--radius-lg)', padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+        EcoPos-instellingen laden…
+      </div>
+    );
+  }
+
+  const activeFieldCount = ECOPOS_FIELDS.filter((f) => (settings.fieldModes[f.key] ?? 'ignore') !== 'ignore').length;
+
+  return (
+    <div className="glass" style={{ borderRadius: 'var(--radius-lg)', padding: '2rem' }}>
+      {/* Header */}
+      <div style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '1.2rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--text)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>🔄</span> EcoPos / MplusKassa Koppeling
+            </h2>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.35rem', lineHeight: 1.5 }}>
+              Haal actuele productstatussen, verkoopprijzen, voorraadstanden en basisgegevens rechtstreeks op uit EcoPos.
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <span
+              style={{
+                padding: '0.35rem 0.8rem',
+                borderRadius: '999px',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                backgroundColor: settings.enabled ? '#dcfce7' : '#f1f5f9',
+                color: settings.enabled ? '#15803d' : '#64748b',
+                border: `1px solid ${settings.enabled ? '#86efac' : '#cbd5e1'}`,
+              }}
+            >
+              {settings.enabled ? `● Actief (${activeFieldCount} velden)` : '○ Uitgeschakeld'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {msg.text && (
+        <div
+          style={{
+            padding: '0.85rem 1.25rem',
+            backgroundColor: msg.type === 'success' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+            color: msg.type === 'success' ? '#065f46' : '#991b1b',
+            border: `1px solid ${msg.type === 'success' ? '#a7f3d0' : '#fecaca'}`,
+            borderRadius: '10px',
+            marginBottom: '1.5rem',
+            fontWeight: 600,
+            fontSize: '0.9rem',
+          }}
+        >
+          {msg.text}
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border)', marginBottom: '1.75rem', flexWrap: 'wrap' }}>
+        {[
+          { id: 'connection' as const, label: '🔌 Verbinding & API' },
+          { id: 'fields' as const, label: `🎛️ Standaard Veldkiezer (${activeFieldCount}/${ECOPOS_FIELDS.length})` },
+          { id: 'autosync' as const, label: '⏱️ Automatische Sync' },
+        ].map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setActiveTab(t.id)}
+            style={{
+              padding: '0.75rem 1.25rem',
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === t.id ? '3px solid #0284c7' : '3px solid transparent',
+              color: activeTab === t.id ? '#0284c7' : 'var(--text-muted)',
+              fontWeight: activeTab === t.id ? 700 : 500,
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        {activeTab === 'connection' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                padding: '1rem 1.25rem',
+                borderRadius: 'var(--radius)',
+                backgroundColor: 'var(--background)',
+                border: '1px solid var(--border)',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={settings.enabled}
+                onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })}
+                style={{ width: '18px', height: '18px', accentColor: '#0284c7' }}
+              />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>
+                  EcoPos-koppeling inschakelen in PCM
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Toont de &ldquo;🔄 EcoPos Sync&rdquo; knoppen in het productenoverzicht en in de ProductDrawer.
+                </div>
+              </div>
+            </label>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>
+                  EcoPos Base URL
+                </label>
+                <input
+                  type="url"
+                  className="input"
+                  placeholder="bijv. http://localhost:3001 of https://ecopos.domein.nl"
+                  value={settings.baseUrl}
+                  onChange={(e) => setSettings({ ...settings, baseUrl: e.target.value })}
+                  required
+                />
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
+                  PCM roept <code>{settings.baseUrl.replace(/\/+$/, '') || '<url>'}/api/v1/pcm/products/query</code> aan.
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>
+                  API Sleutel (Bearer / X-API-Key)
+                </label>
+                <input
+                  type="password"
+                  className="input"
+                  placeholder="Plak hier de API-key uit EcoPos"
+                  value={settings.apiKey}
+                  onChange={(e) => setSettings({ ...settings, apiKey: e.target.value })}
+                />
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
+                  Wordt ook gebruikt om eventuele directe push-notificaties van EcoPos naar PCM te verifiëren.
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleTest}
+                disabled={testing || !settings.baseUrl.trim()}
+                style={{
+                  backgroundColor: 'var(--background)',
+                  border: '1px solid var(--border)',
+                  fontWeight: 600,
+                  padding: '0.55rem 1.1rem',
+                }}
+              >
+                {testing ? '⏳ Verbinding testen…' : '🔌 Test verbinding met EcoPos'}
+              </button>
+
+              {testResult && (
+                <div
+                  style={{
+                    flex: 1,
+                    padding: '0.75rem 1rem',
+                    borderRadius: 'var(--radius)',
+                    backgroundColor: testResult.ok ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                    border: `1px solid ${testResult.ok ? '#86efac' : '#fecaca'}`,
+                    color: testResult.ok ? '#065f46' : '#991b1b',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  {testResult.ok ? (
+                    <>
+                      ✅ Verbonden met <strong>{testResult.application}</strong> ({testResult.latencyMs}ms)
+                      {testResult.totalProducts != null && ` • ${testResult.totalProducts} producten beschikbaar`}
+                      {testResult.lastMplusSyncAt &&
+                        ` • Laatste Mplus-sync: ${new Date(testResult.lastMplusSyncAt).toLocaleString('nl-NL')}`}
+                    </>
+                  ) : (
+                    <>✕ {testResult.error}</>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'fields' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                Kies het standaardgedrag per veld wanneer je synchroniseert vanuit EcoPos. Bij een handmatige sync kun je dit altijd per sessie nog aanpassen.
+              </p>
+              <button
+                type="button"
+                className="btn"
+                onClick={resetDefaultFieldModes}
+                style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem', backgroundColor: 'var(--background)' }}
+              >
+                ↺ Herstel aanbevolen standaardwaarden
+              </button>
+            </div>
+
+            {(Object.keys(ECOPOS_CATEGORIES) as EcoPosCategoryKey[]).map((catKey) => {
+              const catMeta = ECOPOS_CATEGORIES[catKey];
+              const catFields = ECOPOS_FIELDS.filter((f) => f.category === catKey);
+
+              return (
+                <div
+                  key={catKey}
+                  style={{
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius)',
+                    backgroundColor: 'var(--background)',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: '0.85rem 1.15rem',
+                      backgroundColor: 'var(--surface)',
+                      borderBottom: '1px solid var(--border)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '0.75rem',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span>{catMeta.icon}</span>
+                        <span>{catMeta.label}</span>
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                        {catMeta.description}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginRight: '0.25rem' }}>Hele groep:</span>
+                      <button
+                        type="button"
+                        onClick={() => setCategoryMode(catKey, 'overwrite')}
+                        style={{ fontSize: '0.72rem', padding: '0.25rem 0.55rem', borderRadius: '6px', border: '1px solid #86efac', backgroundColor: '#dcfce7', color: '#15803d', fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Overschrijven
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCategoryMode(catKey, 'fill_empty')}
+                        style={{ fontSize: '0.72rem', padding: '0.25rem 0.55rem', borderRadius: '6px', border: '1px solid #93c5fd', backgroundColor: '#dbeafe', color: '#1d4ed8', fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Alleen leeg
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCategoryMode(catKey, 'ignore')}
+                        style={{ fontSize: '0.72rem', padding: '0.25rem 0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#f1f5f9', color: '#64748b', fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Uit
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {catFields.map((field, idx) => {
+                      const currentMode = settings.fieldModes[field.key] ?? field.defaultMode;
+                      return (
+                        <div
+                          key={field.key}
+                          style={{
+                            padding: '0.7rem 1.15rem',
+                            borderBottom: idx < catFields.length - 1 ? '1px solid var(--border)' : 'none',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '1rem',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <div style={{ flex: '1 1 260px' }}>
+                            <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text)' }}>
+                              {field.label}{' '}
+                              <code style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400 }}>
+                                ({field.key})
+                              </code>
+                            </div>
+                            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>{field.description}</div>
+                          </div>
+
+                          <select
+                            className="input"
+                            value={currentMode}
+                            onChange={(e) => setFieldMode(field.key, e.target.value as EcoPosFieldMode)}
+                            style={{ width: '270px', fontSize: '0.83rem', fontWeight: 600 }}
+                          >
+                            {MODE_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {activeTab === 'autosync' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                padding: '1rem 1.25rem',
+                borderRadius: 'var(--radius)',
+                backgroundColor: 'var(--background)',
+                border: '1px solid var(--border)',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={settings.autoSyncEnabled}
+                onChange={(e) => setSettings({ ...settings, autoSyncEnabled: e.target.checked })}
+                style={{ width: '18px', height: '18px', accentColor: '#0284c7' }}
+              />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>
+                  Periodieke automatische achtergrond-synchronisatie inschakelen
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Werkt op de achtergrond automatisch de geconfigureerde velden (zoals statussen, prijs en voorraad) bij.
+                </div>
+              </div>
+            </label>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+              <div
+                style={{
+                  padding: '1.15rem',
+                  borderRadius: 'var(--radius)',
+                  backgroundColor: 'var(--background)',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>
+                  Synchronisatie-interval (minuten)
+                </label>
+                <input
+                  type="number"
+                  min={5}
+                  max={1440}
+                  className="input"
+                  value={settings.autoSyncIntervalMinutes}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      autoSyncIntervalMinutes: Math.max(5, parseInt(e.target.value || '60', 10)),
+                    })
+                  }
+                />
+                <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+                  Standaard: 60 minuten. Minimaal 5 minuten.
+                </div>
+              </div>
+
+              <div
+                style={{
+                  padding: '1.15rem',
+                  borderRadius: 'var(--radius)',
+                  backgroundColor: 'var(--background)',
+                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.75rem',
+                  justifyContent: 'center',
+                }}
+              >
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', fontSize: '0.86rem', fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={settings.createNewProducts}
+                    onChange={(e) => setSettings({ ...settings, createNewProducts: e.target.checked })}
+                  />
+                  <span>Nieuwe artikelen uit EcoPos automatisch aanmaken in PCM</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', fontSize: '0.86rem', fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={settings.onlyActiveInSystem}
+                    onChange={(e) => setSettings({ ...settings, onlyActiveInSystem: e.target.checked })}
+                  />
+                  <span>Alleen artikelen ophalen die actief zijn in het kassasysteem</span>
+                </label>
+              </div>
+            </div>
+
+            {settings.lastSyncAt && (
+              <div
+                style={{
+                  padding: '1rem 1.25rem',
+                  borderRadius: 'var(--radius)',
+                  backgroundColor: settings.lastSyncStatus === 'error' ? 'rgba(239,68,68,0.08)' : 'rgba(2,132,199,0.08)',
+                  border: `1px solid ${settings.lastSyncStatus === 'error' ? '#fecaca' : '#bae6fd'}`,
+                  fontSize: '0.85rem',
+                }}
+              >
+                <strong>Laatste synchronisatie:</strong>{' '}
+                {new Date(settings.lastSyncAt).toLocaleString('nl-NL')} —{' '}
+                <span>{settings.lastSyncSummary || 'Voltooid'}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
+          <button type="submit" className="btn btn-primary" disabled={saving} style={{ padding: '0.6rem 1.5rem', fontWeight: 600 }}>
+            {saving ? 'Opslaan…' : 'EcoPos-instellingen opslaan'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+

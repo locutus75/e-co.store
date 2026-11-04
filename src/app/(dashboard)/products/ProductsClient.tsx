@@ -10,6 +10,8 @@ import EmpcoViewer from '@/components/EmpcoCheck';
 import EmpcoBulkFixModal from '@/components/EmpcoBulkFixModal';
 import TransferSupplierModal from '@/components/TransferSupplierModal';
 import FormattingRulePreviewModal from '@/components/FormattingRulePreviewModal';
+import EcoPosSyncModal from '@/components/EcoPosSyncModal';
+import { triggerAutoEcoPosSyncIfDueAction } from '@/app/actions/ecopos';
 import { confirmEmpcoReady } from '@/lib/empcoGateClient';
 import { deleteProductsAction, updateReadyForImportAction, updateProductStatusAction, bulkAssignAction, bulkUpdateReadyForImportAction } from '@/app/actions/product';
 
@@ -34,7 +36,7 @@ function computeCompleteness(product: any, layout: any[], imageCount: number) {
   for (const section of layout) {
     const fields: any[] = section.fields ?? [];
     const isBasisSection = fields.some((f: any) => f.id === 'FIELD:title');
-    const isCritSection  = fields.some((f: any) => f.id.replace('FIELD:', '').startsWith('crit'));
+    const isCritSection = fields.some((f: any) => f.id.replace('FIELD:', '').startsWith('crit'));
 
     for (const field of fields) {
       const key = field.id.replace('FIELD:', '');
@@ -78,17 +80,17 @@ function computeCompleteness(product: any, layout: any[], imageCount: number) {
   }
 
   return {
-    photos:    imageCount,
-    basisPct:  basisTotal  > 0 ? Math.round((basisFilled  / basisTotal)  * 100) : -1,
-    attrPct:   attrTotal   > 0 ? Math.round((attrFilled   / attrTotal)   * 100) : -1,
-    critPct:   critTotal   > 0 ? Math.round((critFilled   / critTotal)   * 100) : -1,
+    photos: imageCount,
+    basisPct: basisTotal > 0 ? Math.round((basisFilled / basisTotal) * 100) : -1,
+    attrPct: attrTotal > 0 ? Math.round((attrFilled / attrTotal) * 100) : -1,
+    critPct: critTotal > 0 ? Math.round((critFilled / critTotal) * 100) : -1,
     basisTotal, attrTotal, critTotal,
     basisFilled, attrFilled, critFilled,
   };
 }
 
 function pctStyle(pct: number): React.CSSProperties {
-  if (pct < 0)  return { backgroundColor: '#f3f4f6', color: '#9ca3af' }; // not applicable
+  if (pct < 0) return { backgroundColor: '#f3f4f6', color: '#9ca3af' }; // not applicable
   if (pct >= 75) return { backgroundColor: '#dcfce7', color: '#15803d' };
   if (pct >= 50) return { backgroundColor: '#fef9c3', color: '#92400e' };
   return { backgroundColor: '#fee2e2', color: '#b91c1c' };
@@ -191,17 +193,17 @@ function InlineStatusToggle({ product, isAdmin }: { product: any, isAdmin: boole
   }
 
   return (
-    <select 
+    <select
       value={currentStatus}
       onChange={handleSelect}
       onClick={(e) => e.stopPropagation()}
       disabled={isPending || isGloballyLocked}
-      style={{ 
-        padding: '0.35rem 1.75rem 0.35rem 0.85rem', 
-        borderRadius: '1rem', 
-        fontSize: '0.75rem', 
-        fontWeight: 600, 
-        backgroundColor: getStatusColor(currentStatus), 
+      style={{
+        padding: '0.35rem 1.75rem 0.35rem 0.85rem',
+        borderRadius: '1rem',
+        fontSize: '0.75rem',
+        fontWeight: 600,
+        backgroundColor: getStatusColor(currentStatus),
         color: 'white',
         cursor: (isPending || isGloballyLocked) ? 'not-allowed' : 'pointer',
         opacity: (isPending || isGloballyLocked) ? 0.6 : 1,
@@ -301,6 +303,8 @@ export default function ProductsClient({
   const [isDeleting, startTransition] = useTransition();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showFormattingModal, setShowFormattingModal] = useState(false);
+  const [showEcoPosModal, setShowEcoPosModal] = useState(false);
+  const [ecoPosArticles, setEcoPosArticles] = useState<string[] | undefined>(undefined);
 
   // ── Suppliers state & transfer modal (Admin only) ────────────────────────
   const [suppliersList, setSuppliersList] = useState<{ id: string; name: string }[]>(allSuppliers);
@@ -383,6 +387,18 @@ export default function ProductsClient({
     return () => clearInterval(interval);
   }, [router]);
 
+  useEffect(() => {
+    triggerAutoEcoPosSyncIfDueAction().then(res => {
+      if (res.triggered && res.result?.ok) router.refresh();
+    }).catch(() => { });
+    const ecoInterval = setInterval(() => {
+      triggerAutoEcoPosSyncIfDueAction().then(res => {
+        if (res.triggered && res.result?.ok) router.refresh();
+      }).catch(() => { });
+    }, 60000);
+    return () => clearInterval(ecoInterval);
+  }, [router]);
+
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [supplierFilter, setSupplierFilter] = useState('');
@@ -410,8 +426,8 @@ export default function ProductsClient({
 
   // Unique Lists for Dropdowns
   // Helper match functions for each filter (reused for dynamic option filtering)
-  const matchSearch = useCallback((p: any) => searchQuery === '' || 
-    p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+  const matchSearch = useCallback((p: any) => searchQuery === '' ||
+    p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.internalArticleNumber.toLowerCase().includes(searchQuery.toLowerCase()), [searchQuery]);
 
   const matchSupplier = useCallback((p: any) => supplierFilter === '' || p.supplier?.name === supplierFilter, [supplierFilter]);
@@ -436,13 +452,13 @@ export default function ProductsClient({
 
   // Unique Lists for Dropdowns based on "all other filters except itself" (faceted search)
   const uniqueSuppliers = useMemo(() => {
-    const subset = initialProducts.filter(p => 
-      matchSearch(p) && 
-      matchBrand(p) && 
-      matchStatus(p) && 
-      matchReady(p) && 
-      matchAssigned(p) && 
-      matchScore(p) && 
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchScore(p) &&
       matchUnread(p)
     );
     const names = subset.map(p => p.supplier?.name).filter(Boolean);
@@ -450,13 +466,13 @@ export default function ProductsClient({
   }, [initialProducts, matchSearch, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread]);
 
   const uniqueBrands = useMemo(() => {
-    const subset = initialProducts.filter(p => 
-      matchSearch(p) && 
-      matchSupplier(p) && 
-      matchStatus(p) && 
-      matchReady(p) && 
-      matchAssigned(p) && 
-      matchScore(p) && 
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchScore(p) &&
       matchUnread(p)
     );
     const names = subset.map(p => p.brand?.name).filter(Boolean);
@@ -464,13 +480,13 @@ export default function ProductsClient({
   }, [initialProducts, matchSearch, matchSupplier, matchStatus, matchReady, matchAssigned, matchScore, matchUnread]);
 
   const availableStatuses = useMemo(() => {
-    const subset = initialProducts.filter(p => 
-      matchSearch(p) && 
-      matchSupplier(p) && 
-      matchBrand(p) && 
-      matchReady(p) && 
-      matchAssigned(p) && 
-      matchScore(p) && 
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchScore(p) &&
       matchUnread(p)
     );
     const statuses = subset.map(p => (p.status || 'NEW').toUpperCase());
@@ -478,13 +494,13 @@ export default function ProductsClient({
   }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchReady, matchAssigned, matchScore, matchUnread]);
 
   const availableReadiness = useMemo(() => {
-    const subset = initialProducts.filter(p => 
-      matchSearch(p) && 
-      matchSupplier(p) && 
-      matchBrand(p) && 
-      matchStatus(p) && 
-      matchAssigned(p) && 
-      matchScore(p) && 
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchAssigned(p) &&
+      matchScore(p) &&
       matchUnread(p)
     );
     const readyValues = subset.map(p => (p.readyForImport || 'NEE').toUpperCase());
@@ -492,13 +508,13 @@ export default function ProductsClient({
   }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchAssigned, matchScore, matchUnread]);
 
   const availableAiScores = useMemo(() => {
-    const subset = initialProducts.filter(p => 
-      matchSearch(p) && 
-      matchSupplier(p) && 
-      matchBrand(p) && 
-      matchStatus(p) && 
-      matchReady(p) && 
-      matchAssigned(p) && 
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
       matchUnread(p)
     );
     const scores = new Set<string>();
@@ -513,13 +529,13 @@ export default function ProductsClient({
   }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchUnread, aiScoreMap]);
 
   const availableUnreadFilters = useMemo(() => {
-    const subset = initialProducts.filter(p => 
-      matchSearch(p) && 
-      matchSupplier(p) && 
-      matchBrand(p) && 
-      matchStatus(p) && 
-      matchReady(p) && 
-      matchAssigned(p) && 
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
       matchScore(p)
     );
     const unreadOpts = new Set<string>();
@@ -534,13 +550,13 @@ export default function ProductsClient({
   }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, unreadProducts]);
 
   const availableAssignedUsers = useMemo(() => {
-    const subset = initialProducts.filter(p => 
-      matchSearch(p) && 
-      matchSupplier(p) && 
-      matchBrand(p) && 
-      matchStatus(p) && 
-      matchReady(p) && 
-      matchScore(p) && 
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchScore(p) &&
       matchUnread(p)
     );
     const userIds = new Set<string>();
@@ -560,14 +576,14 @@ export default function ProductsClient({
 
   // Filtered resulting list (uses all filters)
   const filteredProducts = useMemo(() => {
-    return initialProducts.filter(p => 
-      matchSearch(p) && 
-      matchSupplier(p) && 
-      matchBrand(p) && 
-      matchStatus(p) && 
-      matchReady(p) && 
-      matchAssigned(p) && 
-      matchScore(p) && 
+    return initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchScore(p) &&
       matchUnread(p) &&
       matchEmpco(p)
     );
@@ -711,6 +727,17 @@ export default function ProductsClient({
           onSuccess={handleSupplierTransferSuccess}
         />
       )}
+      {showEcoPosModal && (
+        <EcoPosSyncModal
+          isOpen={showEcoPosModal}
+          onClose={() => setShowEcoPosModal(false)}
+          articleNumbers={ecoPosArticles}
+          onComplete={() => {
+            setSelectedIds(new Set());
+            router.refresh();
+          }}
+        />
+      )}
       {showFormattingModal && (
         <FormattingRulePreviewModal
           isOpen={showFormattingModal}
@@ -758,13 +785,13 @@ export default function ProductsClient({
           </button>
         </div>
       )}
-      
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)' }}>Products Database</h1>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           {selectedIds.size > 0 && (isAdmin || canAssignProducts) && (
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: 'var(--surface-hover)', padding: '0.2rem 0.5rem', borderRadius: 'var(--radius)' }}>
-              <select 
+              <select
                 className="input"
                 style={{ cursor: isDeleting ? 'wait' : 'pointer', border: 'none', backgroundColor: 'transparent', fontWeight: 600, fontSize: '0.85rem' }}
                 disabled={isDeleting}
@@ -853,10 +880,10 @@ export default function ProductsClient({
                   🏢 Omzetten
                 </button>
               )}
-              
+
               {isAdmin && (
-                <button 
-                  className="btn" 
+                <button
+                  className="btn"
                   style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', backgroundColor: 'var(--error)', border: 'none', cursor: isDeleting ? 'wait' : 'pointer', color: 'white' }}
                   onClick={executeBulkDelete}
                   disabled={isDeleting}
@@ -925,11 +952,59 @@ export default function ProductsClient({
               ✨ Formateren ({selectedIds.size})
             </button>
           )}
+          {selectedIds.size > 0 && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setEcoPosArticles(Array.from(selectedIds));
+                setShowEcoPosModal(true);
+              }}
+              style={{
+                padding: '0.4rem 0.9rem',
+                fontSize: '0.85rem',
+                backgroundColor: '#0284c7',
+                border: 'none',
+                color: 'white',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                fontWeight: 600,
+                borderRadius: 'var(--radius)',
+              }}
+              title={`Haal actuele status & productinfo uit EcoPos op voor ${selectedIds.size} geselecteerde producten`}
+            >
+              🔄 EcoPos ({selectedIds.size})
+            </button>
+          )}
           {isAdmin && (
-            <button 
-               className="btn" 
-               style={{ padding: '0.6rem 1.2rem', fontSize: '0.9rem', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text)' }}
-               onClick={() => setShowImportWizard(true)}
+            <button
+              type="button"
+              className="btn"
+              style={{
+                padding: '0.6rem 1.1rem',
+                fontSize: '0.9rem',
+                backgroundColor: '#f0f9ff',
+                border: '1px solid #7dd3fc',
+                cursor: 'pointer',
+                color: '#0369a1',
+                fontWeight: 600,
+              }}
+              onClick={() => {
+                setEcoPosArticles(undefined);
+                setShowEcoPosModal(true);
+              }}
+              title="Synchroniseer producten en statussen vanuit EcoPos / MplusKassa"
+            >
+              🔄 EcoPos Sync
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              className="btn"
+              style={{ padding: '0.6rem 1.2rem', fontSize: '0.9rem', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text)' }}
+              onClick={() => setShowImportWizard(true)}
             >
               📥 Import Excel
             </button>
@@ -940,16 +1015,16 @@ export default function ProductsClient({
 
       {/* Filter Toolbar */}
       <div className="glass" style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', padding: '1rem', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-        <input 
-          type="text" 
-          placeholder="🔍 Zoek Artikel of ID..." 
-          className="input" 
+        <input
+          type="text"
+          placeholder="🔍 Zoek Artikel of ID..."
+          className="input"
           style={{ flex: '1 1 300px', padding: '0.5rem 1rem', borderRadius: 'var(--radius)' }}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
-        <select 
-          className="input" 
+        <select
+          className="input"
           style={{ flex: '1 1 150px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
           value={supplierFilter}
           onChange={(e) => setSupplierFilter(e.target.value)}
@@ -959,8 +1034,8 @@ export default function ProductsClient({
             <option key={sup} value={sup as string}>{sup}</option>
           ))}
         </select>
-        <select 
-          className="input" 
+        <select
+          className="input"
           style={{ flex: '1 1 150px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
           value={brandFilter}
           onChange={(e) => setBrandFilter(e.target.value)}
@@ -970,8 +1045,8 @@ export default function ProductsClient({
             <option key={b} value={b as string}>{b}</option>
           ))}
         </select>
-        <select 
-          className="input" 
+        <select
+          className="input"
           style={{ flex: '1 1 120px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
@@ -982,8 +1057,8 @@ export default function ProductsClient({
           {(availableStatuses.includes('CHECK') || statusFilter === 'CHECK') && <option value="CHECK">CHECK</option>}
           {(availableStatuses.includes('DONE') || statusFilter === 'DONE') && <option value="DONE">DONE</option>}
         </select>
-        <select 
-          className="input" 
+        <select
+          className="input"
           style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
           value={webshopReadyFilter}
           onChange={(e) => setWebshopReadyFilter(e.target.value)}
@@ -994,8 +1069,8 @@ export default function ProductsClient({
           {(availableReadiness.includes('JA') || webshopReadyFilter === 'JA') && <option value="JA">Yes (Y)</option>}
         </select>
         {canUseAi && (
-          <select 
-            className="input" 
+          <select
+            className="input"
             style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
             value={aiScoreFilter}
             onChange={(e) => setAiScoreFilter(e.target.value)}
@@ -1005,8 +1080,8 @@ export default function ProductsClient({
             {(availableAiScores.includes('WITHOUT_SCORE') || aiScoreFilter === 'WITHOUT_SCORE') && <option value="WITHOUT_SCORE">Zonder score</option>}
           </select>
         )}
-        <select 
-          className="input" 
+        <select
+          className="input"
           style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
           value={unreadFilter}
           onChange={(e) => setUnreadFilter(e.target.value)}
@@ -1032,8 +1107,8 @@ export default function ProductsClient({
           <option value="PASS">✅ EmpCo OK ({empcoCounts.PASS})</option>
         </select>
         {(isAdmin || canAssignProducts) && (
-          <select 
-            className="input" 
+          <select
+            className="input"
             style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
             value={assignedUserFilter}
             onChange={(e) => setAssignedUserFilter(e.target.value)}
@@ -1051,15 +1126,15 @@ export default function ProductsClient({
           </select>
         )}
       </div>
-      
+
       <div className="glass" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
           <thead>
             <tr style={{ backgroundColor: 'rgba(0,0,0,0.02)', borderBottom: '1px solid var(--border)' }}>
               <th style={{ padding: '1.25rem 0.75rem 1.25rem 1.25rem', width: '48px', textAlign: 'center' }}>
                 <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     checked={selectedIds.size > 0 && selectedIds.size === filteredProducts.length}
                     ref={input => {
                       if (input) {
@@ -1067,9 +1142,9 @@ export default function ProductsClient({
                       }
                     }}
                     onChange={toggleSelectAll}
-                    style={{ 
-                      width: '20px', 
-                      height: '20px', 
+                    style={{
+                      width: '20px',
+                      height: '20px',
                       cursor: 'pointer',
                       accentColor: 'var(--primary)',
                       borderRadius: '4px'
@@ -1091,15 +1166,15 @@ export default function ProductsClient({
           </thead>
           <tbody>
             {paginatedProducts.map(product => (
-              <tr 
-                key={product.id} 
+              <tr
+                key={product.id}
                 onClick={() => setSelectedProduct(product)}
                 style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background-color 0.2s', backgroundColor: selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'transparent' }}
                 onMouseOver={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'var(--surface-hover)'}
                 onMouseOut={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'transparent'}
               >
-                <td 
-                  style={{ padding: '1rem 0.75rem 1rem 1.25rem', width: '48px', textAlign: 'center', verticalAlign: 'middle', cursor: 'pointer' }} 
+                <td
+                  style={{ padding: '1rem 0.75rem 1rem 1.25rem', width: '48px', textAlign: 'center', verticalAlign: 'middle', cursor: 'pointer' }}
                   onClick={e => {
                     e.stopPropagation();
                     toggleSelect(product.internalArticleNumber);
@@ -1107,17 +1182,17 @@ export default function ProductsClient({
                   title="Selecteer product"
                 >
                   <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       checked={selectedIds.has(product.internalArticleNumber)}
                       onChange={e => {
                         e.stopPropagation();
                         toggleSelect(product.internalArticleNumber);
                       }}
                       onClick={e => e.stopPropagation()}
-                      style={{ 
-                        width: '20px', 
-                        height: '20px', 
+                      style={{
+                        width: '20px',
+                        height: '20px',
                         cursor: 'pointer',
                         accentColor: 'var(--primary)',
                         borderRadius: '4px'
@@ -1157,7 +1232,7 @@ export default function ProductsClient({
                 </td>
                 {(isAdmin || canAssignProducts) && (
                   <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
-                    <select 
+                    <select
                       value={product.assignedUserId || 'NONE'}
                       onChange={(e) => {
                         startTransition(async () => { await bulkAssignAction([product.internalArticleNumber], e.target.value); });
@@ -1233,12 +1308,12 @@ export default function ProductsClient({
 
       {/* Pagination Controls */}
       {filteredProducts.length > 0 && (
-        <div className="glass" style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          padding: '0.75rem 1.5rem', 
-          borderRadius: 'var(--radius)', 
+        <div className="glass" style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '0.75rem 1.5rem',
+          borderRadius: 'var(--radius)',
           border: '1px solid var(--border)',
           gap: '1rem',
           flexWrap: 'wrap'
@@ -1270,9 +1345,9 @@ export default function ProductsClient({
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
               <button
                 className="btn"
-                style={{ 
-                  padding: '0.35rem 0.75rem', 
-                  fontSize: '0.875rem', 
+                style={{
+                  padding: '0.35rem 0.75rem',
+                  fontSize: '0.875rem',
                   backgroundColor: 'transparent',
                   border: '1px solid var(--border)',
                   color: currentPage === 1 ? 'var(--text-muted)' : 'var(--text)',
@@ -1319,9 +1394,9 @@ export default function ProductsClient({
 
               <button
                 className="btn"
-                style={{ 
-                  padding: '0.35rem 0.75rem', 
-                  fontSize: '0.875rem', 
+                style={{
+                  padding: '0.35rem 0.75rem',
+                  fontSize: '0.875rem',
                   backgroundColor: 'transparent',
                   border: '1px solid var(--border)',
                   color: currentPage === totalPages ? 'var(--text-muted)' : 'var(--text)',
@@ -1345,10 +1420,10 @@ export default function ProductsClient({
         </div>
       )}
 
-      <ProductDrawer 
-        product={selectedProduct} 
-        isOpen={!!selectedProduct} 
-        onClose={() => setSelectedProduct(null)} 
+      <ProductDrawer
+        product={selectedProduct}
+        isOpen={!!selectedProduct}
+        onClose={() => setSelectedProduct(null)}
         fieldPermissions={isAdmin ? undefined : fieldPermissions}
         isAdmin={isAdmin}
         canUseAi={canUseAi}

@@ -5,20 +5,21 @@ import LlmConfigSection from '@/components/LlmConfigSection';
 import ConfettiSettingsForm from '@/components/ConfettiSettingsForm';
 import EmpcoSettingsForm from '@/components/EmpcoSettingsForm';
 import FormattingRulesManager from '@/components/FormattingRulesManager';
+import EcoPosSettingsForm from '@/components/EcoPosSettingsForm';
 
 export default function AdminSystemClient() {
   const [checking, setChecking] = useState(true);
   const [updateInfo, setUpdateInfo] = useState<any>(null);
   const [updating, setUpdating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  
+
   // Database State
   const [dbConfig, setDbConfig] = useState({ host: '', port: '', user: '', password: '', database: '' });
   const [dbLoading, setDbLoading] = useState(true);
   const [dbError, setDbError] = useState('');
   const [dbSuccess, setDbSuccess] = useState('');
   const [testingDb, setTestingDb] = useState(false);
-  
+
   // Create DB State
   const [showCreateDb, setShowCreateDb] = useState(false);
   const [newDbName, setNewDbName] = useState('');
@@ -30,15 +31,15 @@ export default function AdminSystemClient() {
   const [modalBody, setModalBody] = useState<React.ReactNode>(null);
   const [modalActionText, setModalActionText] = useState('Confirm');
   const [modalActionClass, setModalActionClass] = useState('btn-primary');
-  const [modalAction, setModalAction] = useState<() => void>(() => {});
+  const [modalAction, setModalAction] = useState<() => void>(() => { });
   const [modalIsInfoOnly, setModalIsInfoOnly] = useState(false);
 
   // Exchange Rate State
-  const [exRate, setExRate]           = useState<{ rate: number; updatedAt: string | null; source: string } | null>(null);
+  const [exRate, setExRate] = useState<{ rate: number; updatedAt: string | null; source: string } | null>(null);
   const [exRateLoading, setExRateLoading] = useState(false);
-  const [exRateMsg, setExRateMsg]     = useState('');
+  const [exRateMsg, setExRateMsg] = useState('');
   const [exRateError, setExRateError] = useState('');
-  const [manualRate, setManualRate]   = useState('');
+  const [manualRate, setManualRate] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -167,9 +168,9 @@ export default function AdminSystemClient() {
         if (res.ok) {
           clearInterval(interval);
           setUpdating(false);
-          window.location.reload(); 
+          window.location.reload();
         }
-      } catch (e) {}
+      } catch (e) { }
     }, 5000);
   };
 
@@ -283,7 +284,7 @@ export default function AdminSystemClient() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
     openConfirmModal(
       'Import Database Backup',
       <div style={{ color: 'var(--text-muted)' }}>
@@ -298,7 +299,7 @@ export default function AdminSystemClient() {
   const performImport = async (file: File) => {
     setDbError('');
     setDbSuccess('Importing database file... please wait, this may take a moment.');
-    
+
     const formData = new FormData();
     formData.append('file', file);
 
@@ -327,7 +328,7 @@ export default function AdminSystemClient() {
         <p style={{ color: 'var(--text-muted)' }}>The server is currently processing and restarting. This typically takes 1 to 2 minutes.</p>
         <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>Do not close this page. It will automatically refresh when the server is back online.</p>
         <div style={{ marginTop: '2rem' }}>
-            <span style={{ display: 'inline-block', width: '20px', height: '20px', border: '3px solid var(--primary)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></span>
+          <span style={{ display: 'inline-block', width: '20px', height: '20px', border: '3px solid var(--primary)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></span>
         </div>
         <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
       </div>
@@ -336,7 +337,7 @@ export default function AdminSystemClient() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem', width: '100%', maxWidth: '1200px', position: 'relative' }}>
-      
+
       {/* Modal Overlay */}
       {modalOpen && (
         <>
@@ -353,8 +354,8 @@ export default function AdminSystemClient() {
       )}
 
       <div>
-         <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)' }}>System Settings</h1>
-         <p style={{ color: 'var(--text-muted)', fontSize: '1rem', marginTop: '0.2rem' }}>Manage application updates and database configuration.</p>
+        <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)' }}>System Settings</h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: '1rem', marginTop: '0.2rem' }}>Manage application updates and database configuration.</p>
       </div>
 
       {/* Software Update Card */}
@@ -382,22 +383,22 @@ export default function AdminSystemClient() {
                       <p><strong>Message:</strong></p>
                       <pre style={{ backgroundColor: 'rgba(0,0,0,0.05)', padding: '1rem', borderRadius: 'var(--radius)', whiteSpace: 'pre-wrap', marginTop: '0.5rem', fontFamily: 'monospace' }}>{updateInfo.localMessage || 'No local commits'}</pre>
                     </div>
-                  ))} style={{ 
-                    background: updateInfo.updateAvailable ? '#451a03' : '#064e3b', 
-                    color: updateInfo.updateAvailable ? '#fde047' : '#86efac', 
+                  ))} style={{
+                    background: updateInfo.updateAvailable ? '#451a03' : '#064e3b',
+                    color: updateInfo.updateAvailable ? '#fde047' : '#86efac',
                     border: `1px solid ${updateInfo.updateAvailable ? '#854d0e' : '#166534'}`,
-                    padding: '0.35rem 1rem', 
+                    padding: '0.35rem 1rem',
                     borderRadius: '9999px',
-                    fontSize: '0.9rem', 
-                    fontWeight: 700, 
-                    cursor: 'pointer', 
+                    fontSize: '0.9rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
                     textDecoration: 'none',
                     letterSpacing: '0.05em',
                     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                     transition: 'all 0.2s ease'
                   }}
-                  onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-1px)'}
-                  onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                    onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-1px)'}
+                    onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
                   >
                     {updateInfo.localHash ? updateInfo.localHash.substring(0, 7).toUpperCase() : 'UNKNOWN'}
                   </button>
@@ -416,23 +417,23 @@ export default function AdminSystemClient() {
                       <p><strong>Message:</strong></p>
                       <pre style={{ backgroundColor: 'rgba(0,0,0,0.05)', padding: '1rem', borderRadius: 'var(--radius)', whiteSpace: 'pre-wrap', marginTop: '0.5rem', fontFamily: 'monospace' }}>{updateInfo.remoteMessage || 'No remote commits'}</pre>
                     </div>
-                  ))} style={{ 
-                    background: '#064e3b', 
-                    color: '#86efac', 
+                  ))} style={{
+                    background: '#064e3b',
+                    color: '#86efac',
                     border: '1px solid #166534',
-                    padding: '0.35rem 1rem', 
+                    padding: '0.35rem 1rem',
                     borderRadius: '9999px',
-                    fontSize: '0.9rem', 
-                    fontWeight: 700, 
-                    cursor: 'pointer', 
+                    fontSize: '0.9rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
                     textDecoration: 'none',
                     letterSpacing: '0.05em',
                     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                     transition: 'all 0.2s ease',
                     display: 'inline-block'
                   }}
-                  onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-1px)'}
-                  onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                    onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-1px)'}
+                    onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
                   >
                     {updateInfo.remoteHash ? updateInfo.remoteHash.substring(0, 7).toUpperCase() : 'UNKNOWN'}
                   </button>
@@ -466,67 +467,67 @@ export default function AdminSystemClient() {
       {/* Database Management Card */}
       <div className="glass" style={{ borderRadius: 'var(--radius-lg)', padding: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text)' }}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text)' }}>
             Database Management
-            </h2>
-            <div style={{ display: 'flex', gap: '1rem' }}>
-                <input type="file" accept=".sql" style={{ display: 'none' }} ref={fileInputRef} onChange={handleFileChange} />
-                <button className="btn" style={{ backgroundColor: 'var(--background)' }} onClick={handleImportClick}>Import (.sql)</button>
-                <button className="btn" style={{ backgroundColor: 'var(--background)' }} onClick={handleExport}>Export Backup (.sql)</button>
-            </div>
+          </h2>
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            <input type="file" accept=".sql" style={{ display: 'none' }} ref={fileInputRef} onChange={handleFileChange} />
+            <button className="btn" style={{ backgroundColor: 'var(--background)' }} onClick={handleImportClick}>Import (.sql)</button>
+            <button className="btn" style={{ backgroundColor: 'var(--background)' }} onClick={handleExport}>Export Backup (.sql)</button>
+          </div>
         </div>
 
         {dbError && <div style={{ padding: '1rem', backgroundColor: 'rgba(255,50,50,0.1)', color: 'var(--error)', borderRadius: 'var(--radius)', marginBottom: '1.5rem', fontWeight: 500 }}>{dbError}</div>}
         {dbSuccess && <div style={{ padding: '1rem', backgroundColor: 'rgba(50,255,50,0.1)', color: 'var(--success)', borderRadius: 'var(--radius)', marginBottom: '1.5rem', fontWeight: 500 }}>{dbSuccess}</div>}
 
         {dbLoading ? (
-            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Loading configuration...</div>
+          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Loading configuration...</div>
         ) : (
-            <form onSubmit={confirmDbSave} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                    <div>
-                        <label className="label" style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>Host</label>
-                        <input className="input" type="text" value={dbConfig.host} onChange={e => setDbConfig({...dbConfig, host: e.target.value})} required />
-                    </div>
-                    <div>
-                        <label className="label" style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>Port</label>
-                        <input className="input" type="text" value={dbConfig.port} onChange={e => setDbConfig({...dbConfig, port: e.target.value})} required />
-                    </div>
-                    <div>
-                        <label className="label" style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>Username</label>
-                        <input className="input" type="text" value={dbConfig.user} onChange={e => setDbConfig({...dbConfig, user: e.target.value})} required />
-                    </div>
-                    <div>
-                        <label className="label" style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>Password <span style={{ color: 'var(--primary)', fontWeight: 400 }}>(Leave blank to keep current)</span></label>
-                        <input className="input" type="password" placeholder="••••••••" value={dbConfig.password} onChange={e => setDbConfig({...dbConfig, password: e.target.value})} />
-                    </div>
-                </div>
-                
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem', display: 'flex', alignItems: 'flex-end', gap: '1.5rem' }}>
-                    <div style={{ flex: 1 }}>
-                        <label className="label" style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>Target Database Name</label>
-                        <input className="input" type="text" value={dbConfig.database} onChange={e => setDbConfig({...dbConfig, database: e.target.value})} required />
-                    </div>
-                    <div style={{ paddingBottom: '0.2rem' }}>
-                        {!showCreateDb ? (
-                            <button type="button" className="btn" style={{ backgroundColor: 'var(--background)' }} onClick={() => setShowCreateDb(true)}>+ Provision New Database</button>
-                        ) : (
-                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                <input className="input" type="text" placeholder="new_db_name" value={newDbName} onChange={e => setNewDbName(e.target.value)} />
-                                <button type="button" className="btn btn-primary" onClick={handleDbCreate} disabled={creatingDb}>{creatingDb ? 'Creating...' : 'Create'}</button>
-                                <button type="button" className="btn" style={{ backgroundColor: 'transparent' }} onClick={() => setShowCreateDb(false)}>Cancel</button>
-                            </div>
-                        )}
-                    </div>
-                </div>
+          <form onSubmit={confirmDbSave} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+              <div>
+                <label className="label" style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>Host</label>
+                <input className="input" type="text" value={dbConfig.host} onChange={e => setDbConfig({ ...dbConfig, host: e.target.value })} required />
+              </div>
+              <div>
+                <label className="label" style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>Port</label>
+                <input className="input" type="text" value={dbConfig.port} onChange={e => setDbConfig({ ...dbConfig, port: e.target.value })} required />
+              </div>
+              <div>
+                <label className="label" style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>Username</label>
+                <input className="input" type="text" value={dbConfig.user} onChange={e => setDbConfig({ ...dbConfig, user: e.target.value })} required />
+              </div>
+              <div>
+                <label className="label" style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>Password <span style={{ color: 'var(--primary)', fontWeight: 400 }}>(Leave blank to keep current)</span></label>
+                <input className="input" type="password" placeholder="••••••••" value={dbConfig.password} onChange={e => setDbConfig({ ...dbConfig, password: e.target.value })} />
+              </div>
+            </div>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
-                    <button type="button" className="btn" style={{ backgroundColor: 'var(--background)' }} onClick={handleTestConnection} disabled={testingDb}>
-                      {testingDb ? 'Testing...' : 'Test Connection'}
-                    </button>
-                    <button type="submit" className="btn btn-primary">Apply Configuration</button>
-                </div>
-            </form>
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem', display: 'flex', alignItems: 'flex-end', gap: '1.5rem' }}>
+              <div style={{ flex: 1 }}>
+                <label className="label" style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>Target Database Name</label>
+                <input className="input" type="text" value={dbConfig.database} onChange={e => setDbConfig({ ...dbConfig, database: e.target.value })} required />
+              </div>
+              <div style={{ paddingBottom: '0.2rem' }}>
+                {!showCreateDb ? (
+                  <button type="button" className="btn" style={{ backgroundColor: 'var(--background)' }} onClick={() => setShowCreateDb(true)}>+ Provision New Database</button>
+                ) : (
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <input className="input" type="text" placeholder="new_db_name" value={newDbName} onChange={e => setNewDbName(e.target.value)} />
+                    <button type="button" className="btn btn-primary" onClick={handleDbCreate} disabled={creatingDb}>{creatingDb ? 'Creating...' : 'Create'}</button>
+                    <button type="button" className="btn" style={{ backgroundColor: 'transparent' }} onClick={() => setShowCreateDb(false)}>Cancel</button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
+              <button type="button" className="btn" style={{ backgroundColor: 'var(--background)' }} onClick={handleTestConnection} disabled={testingDb}>
+                {testingDb ? 'Testing...' : 'Test Connection'}
+              </button>
+              <button type="submit" className="btn btn-primary">Apply Configuration</button>
+            </div>
+          </form>
         )}
       </div>
 
@@ -612,6 +613,9 @@ export default function AdminSystemClient() {
 
         <style>{`@keyframes ex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </div>
+
+      {/* EcoPos / MplusKassa Koppeling */}
+      <EcoPosSettingsForm />
 
       {/* Confetti / Surprise Settings */}
       <ConfettiSettingsForm />

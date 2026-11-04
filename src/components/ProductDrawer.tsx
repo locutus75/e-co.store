@@ -13,6 +13,7 @@ import ProductEmpcoPanel, { ApplyFixResult } from './ProductEmpcoPanel';
 import ProductFieldHistoryModal from './ProductFieldHistoryModal';
 import TransferSupplierModal from './TransferSupplierModal';
 import FormattingRulePreviewModal, { AppliedFormattingChange } from './FormattingRulePreviewModal';
+import EcoPosSyncModal from './EcoPosSyncModal';
 import { confirmEmpcoReady } from '@/lib/empcoGateClient';
 import { replaceEmpcoFragment } from '@/lib/empco';
 
@@ -53,10 +54,10 @@ const JaNeeToggle = ({ name, defaultChecked, disabled, onChange }: { name?: stri
 
   return (
     <label style={{ display: 'flex', alignItems: 'center', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1, position: 'relative', width: 'fit-content' }}>
-      <input 
-        type="checkbox" 
-        name={name} 
-        checked={checked} 
+      <input
+        type="checkbox"
+        name={name}
+        checked={checked}
         onChange={handleToggle}
         style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }}
         disabled={disabled}
@@ -85,7 +86,7 @@ const JaNeeToggle = ({ name, defaultChecked, disabled, onChange }: { name?: stri
 
 const ThreeWayToggle = ({ name, defaultValue, disabled, onChange }: { name?: string, defaultValue?: string | null, disabled?: boolean, onChange?: () => void }) => {
   // 'Ja', 'Nee', or null (Leeg)
-  const [val, setVal] = useState<'Ja'|'Nee'|'Leeg'>(defaultValue === 'Ja' ? 'Ja' : (defaultValue === 'Nee' ? 'Nee' : 'Leeg'));
+  const [val, setVal] = useState<'Ja' | 'Nee' | 'Leeg'>(defaultValue === 'Ja' ? 'Ja' : (defaultValue === 'Nee' ? 'Nee' : 'Leeg'));
 
   let bg = '#94a3b8'; // Leeg (grey)
   let pos = '50%'; // center
@@ -100,26 +101,26 @@ const ThreeWayToggle = ({ name, defaultValue, disabled, onChange }: { name?: str
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const third = rect.width / 3;
-    let newVal: 'Ja'|'Nee'|'Leeg' = 'Leeg';
+    let newVal: 'Ja' | 'Nee' | 'Leeg' = 'Leeg';
     if (x < third) newVal = 'Nee';
     else if (x > third * 2) newVal = 'Ja';
-    
+
     setVal(newVal);
     if (onChange) onChange();
   };
 
   return (
-    <div 
+    <div
       onClick={handleClick}
-      style={{ 
-        position: 'relative', width: '84px', height: '28px', backgroundColor: bg, 
-        borderRadius: '30px', transition: 'background-color 0.2s', cursor: disabled ? 'not-allowed' : 'pointer', 
+      style={{
+        position: 'relative', width: '84px', height: '28px', backgroundColor: bg,
+        borderRadius: '30px', transition: 'background-color 0.2s', cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.6 : 1, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.1)',
         display: 'flex', alignItems: 'center', padding: '0 8px'
       }}
     >
       <input type="hidden" name={name} value={val} />
-      
+
       {/* Background Labels Context */}
       <div style={{ position: 'absolute', inset: '0 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', pointerEvents: 'none', zIndex: 0 }}>
         {val === 'Leeg' && (
@@ -224,6 +225,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   const [empcoRefreshKey, setEmpcoRefreshKey] = useState(0);                  // bump after save → reload EmpCo status
   const [showHistory, setShowHistory] = useState(false);
   const [formattingModalSection, setFormattingModalSection] = useState<string | null>(null);
+  const [showEcoPosModal, setShowEcoPosModal] = useState(false);
 
   useEffect(() => {
     if (isOpen && product?.internalArticleNumber !== initializedProductId.current) {
@@ -238,12 +240,12 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
       setRestoreFields(new Set());
       setShowHistory(false);
       setChatUnreadCount(0);
-      
+
       const initialCollapsed: Record<string, boolean> = {};
       layout.forEach(s => {
-         if (s.fields?.some((f: any) => f.type === 'chat')) {
-           initialCollapsed[s.id] = true;
-         }
+        if (s.fields?.some((f: any) => f.type === 'chat')) {
+          initialCollapsed[s.id] = true;
+        }
       });
       setCollapsedSections(initialCollapsed);
     } else if (!isOpen) {
@@ -299,7 +301,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     setFormKey(k => k + 1);
     setShowCopyModal(false);
     setIsDirty(true);
-    
+
     setCopySuccess(true);
     setTimeout(() => setCopySuccess(false), 4000);
   };
@@ -344,7 +346,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
             const direction = e.key === 'ArrowLeft' ? 'prev' : 'next';
             if (direction === 'prev' && !onPrev) return;
             if (direction === 'next' && !onNext) return;
-            
+
             if (isDirty) {
               setPendingNavigation(direction);
               setShowUnsavedWarning(true);
@@ -367,21 +369,21 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     if (!statusOverridden && currentStatus !== 'DONE' && formData.get('status') !== 'EDIT') {
       formData.set('status', 'EDIT');
     }
-    
+
     // Always use the header's readyForImport value if multiple exist in the DOM
     const readyVal = formData.getAll('readyForImport')[0];
     if (readyVal) {
       formData.set('readyForImport', readyVal);
     }
-    
+
     startTransition(async () => {
-      if(product?.internalArticleNumber) {
+      if (product?.internalArticleNumber) {
         await updateProductAction(product.internalArticleNumber, formData);
         setIsDirty(false);
         setEmpcoFields(new Set());
         setRestoreFields(new Set());
         setEmpcoRefreshKey(k => k + 1);
-        
+
         if (pendingNavigation === 'prev' && onPrev) { onPrev(); setPendingNavigation(null); }
         else if (pendingNavigation === 'next' && onNext) { onNext(); setPendingNavigation(null); }
         else if (saveModeRef.current === 'save_close') { onClose(); }
@@ -532,7 +534,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     if (data.volumeGr) lines.push(`- Inhoud (gr): ${data.volumeGr} gr`);
     if (data.mainMaterial) lines.push(`- Hoofdmateriaal: ${data.mainMaterial}`);
     if (data.material) lines.push(`- Materiaal: ${data.material}`);
-    
+
     const dims = [
       data.lengthCm ? `L: ${data.lengthCm}cm` : null,
       data.widthCm ? `B: ${data.widthCm}cm` : null,
@@ -568,11 +570,11 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     }
 
     if (action === 'HIDDEN') return null;
-    
+
     let key = moduleName.replace('FIELD:', '');
     if (key === 'description') key = 'longDescription';
     if (key === 'price') key = 'basePrice';
-    
+
     const writeIndicator = action !== 'READ' ? <input type="hidden" name="_present_fields" value={key} /> : null;
 
     // AI suggestion button — only for writable text-type fields when an analysis is available
@@ -590,7 +592,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
         onApply={(suggestion) => applyAiSuggestion(fieldKey!, suggestion)}
       />
     ) : null;
-    
+
     if (isCheckbox) {
       const isCriteria = moduleName.startsWith('FIELD:crit');
       return (
@@ -623,11 +625,13 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
             {val || '-'}
           </div>
         ) : (
-          React.cloneElement(inputComponent as React.ReactElement<any>, { onChange: (e: any) => {
-            const originalOnChange = (inputComponent as React.ReactElement<any>).props.onChange;
-            if (originalOnChange) originalOnChange(e);
-            setIsDirty(true);
-          }})
+          React.cloneElement(inputComponent as React.ReactElement<any>, {
+            onChange: (e: any) => {
+              const originalOnChange = (inputComponent as React.ReactElement<any>).props.onChange;
+              if (originalOnChange) originalOnChange(e);
+              setIsDirty(true);
+            }
+          })
         )}
       </div>
     );
@@ -637,9 +641,9 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     let key = f.id.replace('FIELD:', '');
     if (key === 'description') key = 'longDescription'; // Backward compatibility fix
     if (key === 'price') key = 'basePrice';
-    
+
     const effectiveTextColor = f.textColor || section?.textColor || 'var(--text)';
-    
+
     let val;
 
     // ── Relation fields: resolve dotted path on the product object ───────────
@@ -807,12 +811,12 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
       const datalistId = `datalist_${key}`;
       inputComponent = (
         <div style={{ width: '100%' }}>
-          <input 
-            type="text" 
-            name={key} 
-            list={datalistId} 
-            className="input" 
-            defaultValue={val || ''} 
+          <input
+            type="text"
+            name={key}
+            list={datalistId}
+            className="input"
+            defaultValue={val || ''}
             placeholder="Selecteer of typ vrij..."
             style={{ width: '100%', minHeight: computedHeight, color: 'inherit' }}
           />
@@ -834,7 +838,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     if (isNaN(span) || f.width === 'full') span = 24; // Backwards compatibility for exact strings
     if (f.width === '1') span = 8;
     if (f.width === '2') span = 16;
-    
+
     // Only show AI suggestion button for text-compatible, non-system fields
     const isAiEligible = !isCheckbox &&
       f.type !== 'media' && f.type !== 'chat' && f.type !== 'relation' &&
@@ -852,9 +856,9 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     <>
       {/* Backdrop overlay */}
       {isOpen && (
-        <div 
+        <div
           onClick={handleCloseAttempt}
-          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.3)', zIndex: 40, backdropFilter: 'blur(2px)' }} 
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.3)', zIndex: 40, backdropFilter: 'blur(2px)' }}
         />
       )}
 
@@ -925,13 +929,13 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                   </div>
                 </div>
               </div>
-              
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'flex-end' }}>
-                
+
                 {/* Top Row: Controls + Navigation + Close */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <select 
+                    <select
                       name="status"
                       value={activeStatus}
                       disabled={isGloballyLocked}
@@ -943,12 +947,12 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                           await updateProductStatusAction(localProductData.internalArticleNumber, newStatus);
                         });
                       }}
-                      style={{ 
-                        padding: '0.25rem 1.75rem 0.25rem 0.75rem', 
-                        borderRadius: '4px', 
-                        fontSize: '0.75rem', 
-                        fontWeight: 600, 
-                        backgroundColor: getStatusColor(activeStatus), 
+                      style={{
+                        padding: '0.25rem 1.75rem 0.25rem 0.75rem',
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        backgroundColor: getStatusColor(activeStatus),
                         color: 'white',
                         border: 'none',
                         outline: 'none',
@@ -966,18 +970,18 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                         <option key={s} value={s} style={{ color: 'var(--text)', backgroundColor: 'white' }}>{s}</option>
                       ))}
                     </select>
-                    
+
                     {!isGloballyLocked && (
-                      <button 
+                      <button
                         type="button"
                         title="Kopieer data van product (zelfde leverancier)"
                         onClick={() => setShowCopyModal(true)}
-                        style={{ 
-                          padding: '0.25rem 0.6rem', 
-                          borderRadius: '4px', 
-                          fontSize: '0.75rem', 
-                          fontWeight: 600, 
-                          backgroundColor: 'transparent', 
+                        style={{
+                          padding: '0.25rem 0.6rem',
+                          borderRadius: '4px',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          backgroundColor: 'transparent',
                           color: 'var(--text-muted)',
                           border: '1px solid var(--border)',
                           cursor: 'pointer',
@@ -1023,14 +1027,24 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                       >
                         ✨ Regels
                       </button>
+                      {!isGloballyLocked && (
+                        <button
+                          type="button"
+                          onClick={() => setShowEcoPosModal(true)}
+                          title="Haal actuele status, prijs, voorraad en productinfo op uit EcoPos / MplusKassa"
+                          style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, backgroundColor: '#f0f9ff', color: '#0369a1', border: '1px solid #7dd3fc', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                        >
+                          🔄 EcoPos
+                        </button>
+                      )}
                     </div>
                     {canUseAi && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderLeft: '1px solid var(--border)', paddingLeft: '0.75rem' }}>
-                        <AiAnalysisViewer 
-                          articleNumber={localProductData.internalArticleNumber} 
+                        <AiAnalysisViewer
+                          articleNumber={localProductData.internalArticleNumber}
                           productTitle={localProductData.title}
-                          score={aiScore} 
-                          canUseAi={canUseAi} 
+                          score={aiScore}
+                          canUseAi={canUseAi}
                           fallbackIcon={true}
                         />
                         <ProductAiPanel product={localProductData} layout={layout} isAdmin={isAdmin} />
@@ -1052,13 +1066,13 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                         </button>
                       </div>
                     )}
-                    <DrawerReadyToggle 
-                      readyMode={(localProductData.readyForImport || 'NEE').toUpperCase()} 
+                    <DrawerReadyToggle
+                      readyMode={(localProductData.readyForImport || 'NEE').toUpperCase()}
                       internalArticleNumber={localProductData.internalArticleNumber}
-                      isAdmin={isAdmin} 
+                      isAdmin={isAdmin}
                       onChange={(val) => {
                         setLocalProductData((prev: any) => ({ ...prev, readyForImport: val }));
-                      }} 
+                      }}
                     />
                   </div>
 
@@ -1067,10 +1081,10 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                     {(onPrev || onNext) && (
                       <div style={{ display: 'flex', gap: '0.25rem' }}>
                         <button type="button" onClick={() => handleNavigateAttempt('prev')} disabled={!onPrev} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: onPrev ? 'pointer' : 'not-allowed', opacity: onPrev ? 1 : 0.3, fontSize: '1.2rem', color: 'var(--text)' }} title="Vorige (Arrow Left)">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
                         </button>
                         <button type="button" onClick={() => handleNavigateAttempt('next')} disabled={!onNext} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: onNext ? 'pointer' : 'not-allowed', opacity: onNext ? 1 : 0.3, fontSize: '1.2rem', color: 'var(--text)' }} title="Volgende (Arrow Right)">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg>
                         </button>
                       </div>
                     )}
@@ -1115,89 +1129,90 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                   });
                 const isCollapsed = collapsedSections[section.id] || false;
                 const hasChat = section.fields?.some((f: any) => f.type === 'chat');
-                
+
                 return (
-                <section key={section.id}>
-                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', cursor: 'pointer', userSelect: 'none' }} onClick={() => setCollapsedSections(prev => ({...prev, [section.id]: !prev[section.id]}))}>
-                    <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: section.color, borderBottom: `2px solid ${section.color}`, paddingBottom: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
-                      <span style={{ fontSize: '0.85rem', transform: isCollapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.2s', display: 'inline-block', opacity: 0.8 }}>▼</span>
-                      {section.title}
-                    </h3>
-                    {hasChat && isCollapsed && chatUnreadCount > 0 && (
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.35rem',
-                        backgroundColor: '#ef4444',
-                        color: 'white',
-                        fontSize: '0.72rem',
-                        fontWeight: 700,
-                        padding: '0.2rem 0.65rem',
-                        borderRadius: '1rem',
-                        marginLeft: '0.75rem',
-                        boxShadow: '0 2px 6px rgba(239, 68, 68, 0.35)',
-                        animation: 'chat-pulse 1.2s ease-in-out infinite',
-                      }}>
-                        🔔 {chatUnreadCount} nieuw{chatUnreadCount === 1 ? '' : 'e'} {chatUnreadCount === 1 ? 'bericht' : 'berichten'}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setFormattingModalSection(section.id);
-                      }}
-                      title={`Formatteer velden in "${section.title}" volgens een standaardregel`}
-                      style={{
-                        marginLeft: '0.75rem',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.35rem',
-                        padding: '0.2rem 0.6rem',
-                        borderRadius: 'var(--radius)',
-                        border: '1px solid var(--border)',
-                        backgroundColor: 'var(--surface)',
-                        color: 'var(--text-muted)',
-                        fontSize: '0.72rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = 'var(--primary)';
-                        e.currentTarget.style.color = 'var(--text)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = 'var(--border)';
-                        e.currentTarget.style.color = 'var(--text-muted)';
-                      }}
-                    >
-                      ✨ Regels
-                    </button>
-                    {canUseAi && analysisNarrative && sectionAiFields.length > 0 && (
-                      <AiSectionSuggestion
-                        sectionTitle={section.title}
-                        fields={sectionAiFields}
-                        analysisNarrative={analysisNarrative}
-                        productTitle={localProductData?.title || ''}
-                        sectionInstruction={section.aiInstruction}
-                        getProductContext={getLiveProductContext}
-                        onApply={applyAiSectionSuggestions}
-                      />
-                    )}
-                  </div>
-                  <div style={{ display: isCollapsed ? 'none' : 'grid', gridTemplateColumns: 'repeat(24, minmax(0, 1fr))', gap: '0.75rem', backgroundColor: section.backgroundColor || 'var(--background)', color: section.textColor || 'var(--text)', padding: '1rem', borderRadius: 'var(--radius)', border: `1px solid rgba(0,0,0,0.05)` }}>
-                    {section.fields.map((f: any) => renderDataField(f, section))}
-                  </div>
-                </section>
-              )})}
+                  <section key={section.id}>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', cursor: 'pointer', userSelect: 'none' }} onClick={() => setCollapsedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}>
+                      <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: section.color, borderBottom: `2px solid ${section.color}`, paddingBottom: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
+                        <span style={{ fontSize: '0.85rem', transform: isCollapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.2s', display: 'inline-block', opacity: 0.8 }}>▼</span>
+                        {section.title}
+                      </h3>
+                      {hasChat && isCollapsed && chatUnreadCount > 0 && (
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          backgroundColor: '#ef4444',
+                          color: 'white',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          padding: '0.2rem 0.65rem',
+                          borderRadius: '1rem',
+                          marginLeft: '0.75rem',
+                          boxShadow: '0 2px 6px rgba(239, 68, 68, 0.35)',
+                          animation: 'chat-pulse 1.2s ease-in-out infinite',
+                        }}>
+                          🔔 {chatUnreadCount} nieuw{chatUnreadCount === 1 ? '' : 'e'} {chatUnreadCount === 1 ? 'bericht' : 'berichten'}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFormattingModalSection(section.id);
+                        }}
+                        title={`Formatteer velden in "${section.title}" volgens een standaardregel`}
+                        style={{
+                          marginLeft: '0.75rem',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          padding: '0.2rem 0.6rem',
+                          borderRadius: 'var(--radius)',
+                          border: '1px solid var(--border)',
+                          backgroundColor: 'var(--surface)',
+                          color: 'var(--text-muted)',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--primary)';
+                          e.currentTarget.style.color = 'var(--text)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--border)';
+                          e.currentTarget.style.color = 'var(--text-muted)';
+                        }}
+                      >
+                        ✨ Regels
+                      </button>
+                      {canUseAi && analysisNarrative && sectionAiFields.length > 0 && (
+                        <AiSectionSuggestion
+                          sectionTitle={section.title}
+                          fields={sectionAiFields}
+                          analysisNarrative={analysisNarrative}
+                          productTitle={localProductData?.title || ''}
+                          sectionInstruction={section.aiInstruction}
+                          getProductContext={getLiveProductContext}
+                          onApply={applyAiSectionSuggestions}
+                        />
+                      )}
+                    </div>
+                    <div style={{ display: isCollapsed ? 'none' : 'grid', gridTemplateColumns: 'repeat(24, minmax(0, 1fr))', gap: '0.75rem', backgroundColor: section.backgroundColor || 'var(--background)', color: section.textColor || 'var(--text)', padding: '1rem', borderRadius: 'var(--radius)', border: `1px solid rgba(0,0,0,0.05)` }}>
+                      {section.fields.map((f: any) => renderDataField(f, section))}
+                    </div>
+                  </section>
+                )
+              })}
             </div>
           </>
         )}
       </form>
 
       {showCopyModal && localProductData?.supplierId && (
-        <ProductCopyModal 
+        <ProductCopyModal
           supplierId={localProductData.supplierId}
           currentArticleId={localProductData.internalArticleNumber}
           layout={layout}
@@ -1207,7 +1222,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
           onCopy={handleCopyCommit}
         />
       )}
-      
+
       {showWebEnrichModal && (
         <ProductWebEnrichModal
           product={localProductData}
@@ -1260,11 +1275,11 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
           onComplete={handleFormattingComplete}
         />
       )}
-      
+
       {/* Toast Notification */}
       {copySuccess && (
         <div style={{ position: 'fixed', bottom: '2rem', right: '3rem', backgroundColor: '#10b981', color: 'white', padding: '1rem 2rem', borderRadius: 'var(--radius)', boxShadow: '0 10px 40px rgba(16, 185, 129, 0.35)', zIndex: 100, display: 'flex', alignItems: 'center', gap: '0.75rem', fontWeight: 600, animation: 'slideIn 0.3s ease-out' }}>
-          <span style={{ fontSize: '1.25rem' }}>✓</span> 
+          <span style={{ fontSize: '1.25rem' }}>✓</span>
           <span>Data succesvol gekopieerd! Controleer en klik op Opslaan.</span>
           <style>{`
             @keyframes slideIn {
@@ -1289,30 +1304,30 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                 </p>
               </div>
             </div>
-            
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <button 
-                onClick={() => { setShowUnsavedWarning(false); formRef.current?.requestSubmit(); }} 
-                className="btn btn-primary" 
+              <button
+                onClick={() => { setShowUnsavedWarning(false); formRef.current?.requestSubmit(); }}
+                className="btn btn-primary"
                 style={{ padding: '1.25rem', fontSize: '1.1rem', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', border: 'none', borderRadius: '12px' }}
               >
                 💾 Wijzigingen Opslaan
               </button>
-              <button 
-                onClick={() => { 
-                  setShowUnsavedWarning(false); 
+              <button
+                onClick={() => {
+                  setShowUnsavedWarning(false);
                   if (pendingNavigation === 'prev' && onPrev) { onPrev(); setPendingNavigation(null); }
                   else if (pendingNavigation === 'next' && onNext) { onNext(); setPendingNavigation(null); }
                   else { onClose(); setPendingNavigation(null); }
-                }} 
-                className="btn" 
+                }}
+                className="btn"
                 style={{ padding: '1.25rem', fontSize: '1.1rem', backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '12px', fontWeight: 600 }}
               >
                 {pendingNavigation ? '🗑️ Wijzigingen Negeren & Verdergaan' : '🗑️ Wijzigingen Negeren & Sluiten'}
               </button>
-              <button 
-                onClick={() => { setShowUnsavedWarning(false); setPendingNavigation(null); }} 
-                className="btn ghost" 
+              <button
+                onClick={() => { setShowUnsavedWarning(false); setPendingNavigation(null); }}
+                className="btn ghost"
                 style={{ padding: '1rem', color: 'var(--text-muted)' }}
               >
                 Blijf op deze pagina
@@ -1322,6 +1337,17 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
         </div>
       )}
 
+      {showEcoPosModal && localProductData?.internalArticleNumber && (
+        <EcoPosSyncModal
+          isOpen={showEcoPosModal}
+          onClose={() => setShowEcoPosModal(false)}
+          articleNumbers={[localProductData.internalArticleNumber]}
+          singleProductMode={true}
+          onComplete={() => {
+            window.location.reload();
+          }}
+        />
+      )}
     </>
   );
 }
