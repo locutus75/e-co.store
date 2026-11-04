@@ -65,6 +65,7 @@ const PRODUCT_COLUMNS: {
       { label: 'Klaar voor Import',    field: 'readyForImport',      type: 'text' },
       { label: 'Webshop (Actief)',     field: 'webshopActive',       type: 'checkbox' },
       { label: 'Actief (Systeem)',     field: 'systemActive',        type: 'checkbox' },
+      { label: 'Uitlopend (Uitl.)',    field: 'uitlopend',           type: 'checkbox' },
       { label: 'Leverancier Contact',  field: 'supplierContacted',   type: 'text' },
       { label: 'Kwaliteitscontrole',   field: 'qualityControlStatus', type: 'text' },
       { label: 'Export Status',        field: 'exportStatus',        type: 'text' },
@@ -72,9 +73,11 @@ const PRODUCT_COLUMNS: {
     ],
   },
   {
-    group: 'Prijs',
+    group: 'Prijs & Voorraad (EcoPos)',
     cols: [
       { label: 'Basisprijs (€)', field: 'basePrice', type: 'number' },
+      { label: 'BTW (%)',        field: 'custom_ecoposVatRate', type: 'number' },
+      { label: 'Voorraad',       field: 'custom_ecoposStock',   type: 'number' },
     ],
   },
   {

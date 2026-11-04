@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from 'react';
 import { getSupplierProductsAction, getProductDataAction } from '@/app/actions/product';
+import { isReadOnlyProductField } from '@/lib/constants';
 
 const ALL_STATUSES = ['NEW', 'EDIT', 'CHECK', 'DONE'] as const;
 
@@ -159,7 +160,7 @@ export default function ProductCopyModal({
     const finalDataToInject: any = {};
     layout.forEach((sec: any) => {
       sec.fields.forEach((f: any) => {
-        if (f.id === 'FIELD:internalArticleNumber' || f.id === 'FIELD:media' || f.type === 'chat') return;
+        if (isReadOnlyProductField(f.id) || f.id === 'FIELD:media' || f.type === 'chat') return;
         const action = isAdmin ? 'WRITE' : (fieldPermissions?.[f.id] ?? 'READ');
         
         if (action === 'WRITE' && !deselectedFields.has(f.id)) {
@@ -194,7 +195,7 @@ export default function ProductCopyModal({
     const valid: any[] = [];
     layout.forEach((sec: any) => {
       sec.fields.forEach((f: any) => {
-        if (f.id === 'FIELD:internalArticleNumber' || f.id === 'FIELD:media' || f.type === 'chat') return;
+        if (isReadOnlyProductField(f.id) || f.id === 'FIELD:media' || f.type === 'chat') return;
         const action = isAdmin ? 'WRITE' : (fieldPermissions?.[f.id] ?? 'READ');
         if (action === 'WRITE') valid.push({ ...f, section: sec.title });
       });

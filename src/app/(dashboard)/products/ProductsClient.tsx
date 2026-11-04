@@ -20,7 +20,7 @@ export interface EmpcoMapEntry { status: string; stale: boolean; issueCount: num
 // ── Completeness helpers ────────────────────────────────────────────────────
 const BASIS_TEXT_TYPES = new Set(['text', 'textarea']);
 const ATTR_TYPES = new Set(['text', 'textarea', 'number', 'picklist']);
-const SKIP_BASIS_FIELDS = new Set(['FIELD:internalArticleNumber', 'FIELD:internalRemarks']);
+const SKIP_BASIS_FIELDS = new Set(['FIELD:internalArticleNumber', 'FIELD:internalRemarks', 'FIELD:ean']);
 
 // Mirrors the alias in ProductDrawer.tsx (line 281): FIELD:description → longDescription
 const FIELD_KEY_ALIAS: Record<string, string> = {
@@ -65,7 +65,7 @@ function computeCompleteness(product: any, layout: any[], imageCount: number) {
       }
 
       // ── Physical / attribute fields (non-basis, non-criteria) ───────────
-      if (!isBasisSection && !isCritSection && ATTR_TYPES.has(field.type)) {
+      if (!isBasisSection && !isCritSection && ATTR_TYPES.has(field.type) && key !== 'custom_ecoposStock' && key !== 'custom_ecoposVatRate') {
         attrTotal++;
         const modelKey = FIELD_KEY_ALIAS[key] || key;
         let val: any;
@@ -786,673 +786,781 @@ export default function ProductsClient({
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)' }}>Products Database</h1>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          {selectedIds.size > 0 && (isAdmin || canAssignProducts) && (
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: 'var(--surface-hover)', padding: '0.2rem 0.5rem', borderRadius: 'var(--radius)' }}>
-              <select
-                className="input"
-                style={{ cursor: isDeleting ? 'wait' : 'pointer', border: 'none', backgroundColor: 'transparent', fontWeight: 600, fontSize: '0.85rem' }}
-                disabled={isDeleting}
-                value=""
-                onChange={(e) => handleBulkAssign(e.target.value)}
-              >
-                <option value="" disabled>Aantal ({selectedIds.size}) toewijzen aan...</option>
-                <option value="NONE">-- Ontkoppelen (Unassign) --</option>
-                {systemUsers.map(su => (
-                  <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>
-                ))}
-              </select>
-
-              {isAdmin && (
-                <select
-                  className="input"
-                  style={{ cursor: isDeleting ? 'wait' : 'pointer', border: 'none', backgroundColor: 'transparent', fontWeight: 600, fontSize: '0.85rem', borderLeft: '1px solid var(--border)', borderRadius: 0, paddingLeft: '1rem', marginLeft: '0.5rem' }}
-                  disabled={isDeleting}
-                  value=""
-                  onChange={(e) => handleBulkReadyForImport(e.target.value)}
-                >
-                  <option value="" disabled>Webshop Ready...</option>
-                  <option value="NEE">Nee (N)</option>
-                  <option value="REVIEW">Review (R)</option>
-                  <option value="JA">Ja (Y)</option>
-                </select>
-              )}
-
-              {isAdmin && (
-                <select
-                  className="input"
-                  style={{
-                    cursor: isDeleting ? 'wait' : 'pointer',
-                    border: 'none',
-                    backgroundColor: 'transparent',
-                    fontWeight: 600,
-                    fontSize: '0.85rem',
-                    borderLeft: '1px solid var(--border)',
-                    borderRadius: 0,
-                    paddingLeft: '1rem',
-                    marginLeft: '0.5rem',
-                  }}
-                  disabled={isDeleting}
-                  value=""
-                  onChange={(e) => {
-                    setPreselectedTransferSupplierId(e.target.value);
-                    setShowTransferSupplierModal(true);
-                  }}
-                >
-                  <option value="" disabled>
-                    Leverancier omzetten...
-                  </option>
-                  {suppliersList.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                  <option value="__NEW__">➕ Nieuwe leverancier...</option>
-                </select>
-              )}
-
+          {/* Top Header Row: Title + Global Actions */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <h1 style={{ fontSize: '1.85rem', fontWeight: 700, color: 'var(--text)', margin: 0, whiteSpace: 'nowrap' }}>Products Database</h1>
+            <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
               {isAdmin && (
                 <button
                   type="button"
                   className="btn"
                   style={{
-                    padding: '0.4rem 0.8rem',
-                    fontSize: '0.85rem',
-                    backgroundColor: 'var(--color-teal)',
-                    border: 'none',
-                    cursor: isDeleting ? 'wait' : 'pointer',
-                    color: 'white',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.35rem',
+                    padding: '0.55rem 1rem',
+                    fontSize: '0.88rem',
+                    backgroundColor: '#f0f9ff',
+                    border: '1px solid #7dd3fc',
+                    cursor: 'pointer',
+                    color: '#0369a1',
                     fontWeight: 600,
-                    borderRadius: 'var(--radius)',
+                    whiteSpace: 'nowrap',
                   }}
                   onClick={() => {
-                    setPreselectedTransferSupplierId('');
-                    setShowTransferSupplierModal(true);
+                    setEcoPosArticles(undefined);
+                    setShowEcoPosModal(true);
                   }}
-                  disabled={isDeleting}
-                  title={`Zet ${selectedIds.size} geselecteerde product(en) om naar een andere leverancier`}
+                  title="Synchroniseer producten en statussen vanuit EcoPos / MplusKassa"
                 >
-                  🏢 Omzetten
+                  🔄 EcoPos Sync
                 </button>
               )}
-
               {isAdmin && (
                 <button
                   className="btn"
-                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', backgroundColor: 'var(--error)', border: 'none', cursor: isDeleting ? 'wait' : 'pointer', color: 'white' }}
-                  onClick={executeBulkDelete}
-                  disabled={isDeleting}
+                  style={{ padding: '0.55rem 1rem', fontSize: '0.88rem', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text)', whiteSpace: 'nowrap' }}
+                  onClick={() => setShowImportWizard(true)}
                 >
-                  {isDeleting ? '...' : `🗑 Verwijder`}
+                  📥 Import Excel
                 </button>
               )}
+              <button className="btn btn-primary" style={{ padding: '0.55rem 1rem', fontSize: '0.88rem', whiteSpace: 'nowrap' }}>+ New Product</button>
             </div>
-          )}
-          {/* Batch AI Analyse — shown when products are selected and user has AI access */}
-          {selectedIds.size > 0 && canUseAi && (
-            <button
-              className="btn"
-              onClick={() => { setBatchMode(undefined); setShowBatchAnalyze(true); }}
-              style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem', backgroundColor: '#7c3aed', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, borderRadius: 'var(--radius)' }}
-              title={`Analyseer ${selectedIds.size} geselecteerde producten`}
-            >
-              🤖 Analyseer ({selectedIds.size})
-            </button>
-          )}
-          {/* Batch EmpCo check — available for all users */}
-          {selectedIds.size > 0 && (
-            <button
-              className="btn"
-              onClick={() => { setBatchMode('empco'); setShowBatchAnalyze(true); }}
-              style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem', background: 'linear-gradient(135deg,#0f766e,#065f46)', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, borderRadius: 'var(--radius)' }}
-              title={`EmpCo-check voor ${selectedIds.size} geselecteerde producten`}
-            >
-              ⚖️ EmpCo-check ({selectedIds.size})
-            </button>
-          )}
-          {/* Bulk apply EmpCo suggestions — available for all users */}
-          {selectedIds.size > 0 && (
-            <button
-              id="empco-bulk-fix-btn"
-              className="btn"
-              onClick={() => setBulkFixIds(Array.from(selectedIds))}
-              style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem', backgroundColor: 'white', border: '1.5px solid #0f766e', color: '#0f766e', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, borderRadius: 'var(--radius)' }}
-              title={`EmpCo-voorstellen bekijken en doorvoeren voor ${selectedIds.size} geselecteerde producten`}
-            >
-              ✍️ EmpCo-voorstellen doorvoeren ({selectedIds.size})
-            </button>
-          )}
-          {/* Batch Formatteren met regels */}
-          {selectedIds.size > 0 && (
-            <button
-              id="formatting-bulk-btn"
-              type="button"
-              className="btn"
-              onClick={() => setShowFormattingModal(true)}
-              style={{
-                padding: '0.4rem 0.9rem',
-                fontSize: '0.85rem',
-                background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-                border: 'none',
-                color: 'white',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                fontWeight: 600,
-                borderRadius: 'var(--radius)',
-              }}
-              title={`Formatteer ${selectedIds.size} geselecteerde producten met standaard regels`}
-            >
-              ✨ Formateren ({selectedIds.size})
-            </button>
-          )}
-          {selectedIds.size > 0 && (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => {
-                setEcoPosArticles(Array.from(selectedIds));
-                setShowEcoPosModal(true);
-              }}
-              style={{
-                padding: '0.4rem 0.9rem',
-                fontSize: '0.85rem',
-                backgroundColor: '#0284c7',
-                border: 'none',
-                color: 'white',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                fontWeight: 600,
-                borderRadius: 'var(--radius)',
-              }}
-              title={`Haal actuele status & productinfo uit EcoPos op voor ${selectedIds.size} geselecteerde producten`}
-            >
-              🔄 EcoPos ({selectedIds.size})
-            </button>
-          )}
-          {isAdmin && (
-            <button
-              type="button"
-              className="btn"
-              style={{
-                padding: '0.6rem 1.1rem',
-                fontSize: '0.9rem',
-                backgroundColor: '#f0f9ff',
-                border: '1px solid #7dd3fc',
-                cursor: 'pointer',
-                color: '#0369a1',
-                fontWeight: 600,
-              }}
-              onClick={() => {
-                setEcoPosArticles(undefined);
-                setShowEcoPosModal(true);
-              }}
-              title="Synchroniseer producten en statussen vanuit EcoPos / MplusKassa"
-            >
-              🔄 EcoPos Sync
-            </button>
-          )}
-          {isAdmin && (
-            <button
-              className="btn"
-              style={{ padding: '0.6rem 1.2rem', fontSize: '0.9rem', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text)' }}
-              onClick={() => setShowImportWizard(true)}
-            >
-              📥 Import Excel
-            </button>
-          )}
-          <button className="btn btn-primary" style={{ padding: '0.6rem 1.2rem', fontSize: '0.9rem' }}>+ New Product</button>
-        </div>
-      </div>
+          </div>
 
-      {/* Filter Toolbar */}
-      <div className="glass" style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', padding: '1rem', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-        <input
-          type="text"
-          placeholder="🔍 Zoek Artikel of ID..."
-          className="input"
-          style={{ flex: '1 1 300px', padding: '0.5rem 1rem', borderRadius: 'var(--radius)' }}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-        <select
-          className="input"
-          style={{ flex: '1 1 150px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
-          value={supplierFilter}
-          onChange={(e) => setSupplierFilter(e.target.value)}
-        >
-          <option value="">-- Leveranciers --</option>
-          {uniqueSuppliers.map(sup => (
-            <option key={sup} value={sup as string}>{sup}</option>
-          ))}
-        </select>
-        <select
-          className="input"
-          style={{ flex: '1 1 150px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
-          value={brandFilter}
-          onChange={(e) => setBrandFilter(e.target.value)}
-        >
-          <option value="">-- Merken --</option>
-          {uniqueBrands.map(b => (
-            <option key={b} value={b as string}>{b}</option>
-          ))}
-        </select>
-        <select
-          className="input"
-          style={{ flex: '1 1 120px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-        >
-          <option value="">-- Status --</option>
-          {(availableStatuses.includes('NEW') || statusFilter === 'NEW') && <option value="NEW">NEW</option>}
-          {(availableStatuses.includes('EDIT') || statusFilter === 'EDIT') && <option value="EDIT">EDIT</option>}
-          {(availableStatuses.includes('CHECK') || statusFilter === 'CHECK') && <option value="CHECK">CHECK</option>}
-          {(availableStatuses.includes('DONE') || statusFilter === 'DONE') && <option value="DONE">DONE</option>}
-        </select>
-        <select
-          className="input"
-          style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
-          value={webshopReadyFilter}
-          onChange={(e) => setWebshopReadyFilter(e.target.value)}
-        >
-          <option value="">-- Webshop Ready --</option>
-          {(availableReadiness.includes('NEE') || webshopReadyFilter === 'NEE') && <option value="NEE">No (N)</option>}
-          {(availableReadiness.includes('REVIEW') || webshopReadyFilter === 'REVIEW') && <option value="REVIEW">Review (R)</option>}
-          {(availableReadiness.includes('JA') || webshopReadyFilter === 'JA') && <option value="JA">Yes (Y)</option>}
-        </select>
-        {canUseAi && (
-          <select
-            className="input"
-            style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
-            value={aiScoreFilter}
-            onChange={(e) => setAiScoreFilter(e.target.value)}
-          >
-            <option value="">-- AI Score --</option>
-            {(availableAiScores.includes('WITH_SCORE') || aiScoreFilter === 'WITH_SCORE') && <option value="WITH_SCORE">Met score</option>}
-            {(availableAiScores.includes('WITHOUT_SCORE') || aiScoreFilter === 'WITHOUT_SCORE') && <option value="WITHOUT_SCORE">Zonder score</option>}
-          </select>
-        )}
-        <select
-          className="input"
-          style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
-          value={unreadFilter}
-          onChange={(e) => setUnreadFilter(e.target.value)}
-        >
-          <option value="">-- Berichten --</option>
-          {(availableUnreadFilters.includes('UNREAD') || unreadFilter === 'UNREAD') && <option value="UNREAD">Ongelezen (💬)</option>}
-          {(availableUnreadFilters.includes('READ') || unreadFilter === 'READ') && <option value="READ">Geen ongelezen</option>}
-        </select>
-        <select
-          id="empco-filter"
-          className="input"
-          style={{ flex: '1 1 160px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
-          value={empcoFilter}
-          onChange={(e) => setEmpcoFilter(e.target.value)}
-        >
-          <option value="">-- EmpCo --</option>
-          <option value="TODO">⚖️ Te checken ({empcoCounts.NONE + empcoCounts.STALE})</option>
-          <option value="NONE"> Niet gecheckt ({empcoCounts.NONE})</option>
-          <option value="STALE"> 🕓 Verouderd ({empcoCounts.STALE})</option>
-          <option value="ISSUES">🚩 Met bevindingen ({empcoCounts.FAIL + empcoCounts.WARNING})</option>
-          <option value="FAIL"> ⛔ Overtreding ({empcoCounts.FAIL})</option>
-          <option value="WARNING"> ⚠️ Aandachtspunten ({empcoCounts.WARNING})</option>
-          <option value="PASS">✅ EmpCo OK ({empcoCounts.PASS})</option>
-        </select>
-        {(isAdmin || canAssignProducts) && (
-          <select
-            className="input"
-            style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 'var(--radius)' }}
-            value={assignedUserFilter}
-            onChange={(e) => setAssignedUserFilter(e.target.value)}
-          >
-            <option value="">-- Toegewezen --</option>
-            {(availableAssignedUsers.hasUnassigned || assignedUserFilter === 'UNASSIGNED') && <option value="UNASSIGNED">[ Niet Toegewezen ]</option>}
-            {systemUsers.map(su => {
-              const hasUser = availableAssignedUsers.userIds.includes(su.id);
-              const isSelected = assignedUserFilter === su.id;
-              if (hasUser || isSelected) {
-                return <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>;
-              }
-              return null;
-            })}
-          </select>
-        )}
-      </div>
-
-      <div className="glass" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-          <thead>
-            <tr style={{ backgroundColor: 'rgba(0,0,0,0.02)', borderBottom: '1px solid var(--border)' }}>
-              <th style={{ padding: '1.25rem 0.75rem 1.25rem 1.25rem', width: '48px', textAlign: 'center' }}>
-                <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.size > 0 && selectedIds.size === filteredProducts.length}
-                    ref={input => {
-                      if (input) {
-                        input.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredProducts.length;
-                      }
-                    }}
-                    onChange={toggleSelectAll}
-                    style={{
-                      width: '20px',
-                      height: '20px',
-                      cursor: 'pointer',
-                      accentColor: 'var(--primary)',
-                      borderRadius: '4px'
-                    }}
-                  />
-                </div>
-              </th>
-              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:internalArticleNumber', 'Article ID')}</th>
-              {(isAdmin || canAssignProducts) && <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Toewijzing</th>}
-              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:supplierId', 'Leverancier')}</th>
-              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:brandId', 'Merk')}</th>
-              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:title', 'Title')}</th>
-              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:status', 'Status')}</th>
-              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Compleet</th>
-              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Score</th>
-              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>EmpCo</th>
-              <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Webshop Ready</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paginatedProducts.map(product => (
-              <tr
-                key={product.id}
-                onClick={() => setSelectedProduct(product)}
-                style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background-color 0.2s', backgroundColor: selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'transparent' }}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'var(--surface-hover)'}
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'transparent'}
+          {/* Filter Toolbar */}
+            <div className="glass" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', alignItems: 'center', padding: '0.75rem 0.9rem', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+              <input
+                type="text"
+                placeholder="🔍 Zoek Artikel of ID..."
+                className="input"
+                style={{ flex: '2 1 190px', minWidth: '170px', padding: '0.45rem 0.75rem', fontSize: '0.85rem', borderRadius: 'var(--radius)' }}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <select
+                className="input"
+                style={{ flex: '1 1 125px', minWidth: '115px', padding: '0.45rem 0.5rem', fontSize: '0.85rem', borderRadius: 'var(--radius)' }}
+                value={supplierFilter}
+                onChange={(e) => setSupplierFilter(e.target.value)}
               >
-                <td
-                  style={{ padding: '1rem 0.75rem 1rem 1.25rem', width: '48px', textAlign: 'center', verticalAlign: 'middle', cursor: 'pointer' }}
-                  onClick={e => {
-                    e.stopPropagation();
-                    toggleSelect(product.internalArticleNumber);
-                  }}
-                  title="Selecteer product"
+                <option value="">-- Leveranciers --</option>
+                {uniqueSuppliers.map(sup => (
+                  <option key={sup} value={sup as string}>{sup}</option>
+                ))}
+              </select>
+              <select
+                className="input"
+                style={{ flex: '1 1 115px', minWidth: '105px', padding: '0.45rem 0.5rem', fontSize: '0.85rem', borderRadius: 'var(--radius)' }}
+                value={brandFilter}
+                onChange={(e) => setBrandFilter(e.target.value)}
+              >
+                <option value="">-- Merken --</option>
+                {uniqueBrands.map(b => (
+                  <option key={b} value={b as string}>{b}</option>
+                ))}
+              </select>
+              <select
+                className="input"
+                style={{ flex: '1 1 100px', minWidth: '95px', padding: '0.45rem 0.5rem', fontSize: '0.85rem', borderRadius: 'var(--radius)' }}
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="">-- Status --</option>
+                {(availableStatuses.includes('NEW') || statusFilter === 'NEW') && <option value="NEW">NEW</option>}
+                {(availableStatuses.includes('EDIT') || statusFilter === 'EDIT') && <option value="EDIT">EDIT</option>}
+                {(availableStatuses.includes('CHECK') || statusFilter === 'CHECK') && <option value="CHECK">CHECK</option>}
+                {(availableStatuses.includes('DONE') || statusFilter === 'DONE') && <option value="DONE">DONE</option>}
+              </select>
+              <select
+                className="input"
+                style={{ flex: '1 1 130px', minWidth: '120px', padding: '0.45rem 0.5rem', fontSize: '0.85rem', borderRadius: 'var(--radius)' }}
+                value={webshopReadyFilter}
+                onChange={(e) => setWebshopReadyFilter(e.target.value)}
+              >
+                <option value="">-- Webshop Ready --</option>
+                {(availableReadiness.includes('NEE') || webshopReadyFilter === 'NEE') && <option value="NEE">No (N)</option>}
+                {(availableReadiness.includes('REVIEW') || webshopReadyFilter === 'REVIEW') && <option value="REVIEW">Review (R)</option>}
+                {(availableReadiness.includes('JA') || webshopReadyFilter === 'JA') && <option value="JA">Yes (Y)</option>}
+              </select>
+              {canUseAi && (
+                <select
+                  className="input"
+                  style={{ flex: '1 1 115px', minWidth: '105px', padding: '0.45rem 0.5rem', fontSize: '0.85rem', borderRadius: 'var(--radius)' }}
+                  value={aiScoreFilter}
+                  onChange={(e) => setAiScoreFilter(e.target.value)}
                 >
-                  <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(product.internalArticleNumber)}
-                      onChange={e => {
-                        e.stopPropagation();
-                        toggleSelect(product.internalArticleNumber);
-                      }}
-                      onClick={e => e.stopPropagation()}
+                  <option value="">-- AI Score --</option>
+                  {(availableAiScores.includes('WITH_SCORE') || aiScoreFilter === 'WITH_SCORE') && <option value="WITH_SCORE">Met score</option>}
+                  {(availableAiScores.includes('WITHOUT_SCORE') || aiScoreFilter === 'WITHOUT_SCORE') && <option value="WITHOUT_SCORE">Zonder score</option>}
+                </select>
+              )}
+              <select
+                className="input"
+                style={{ flex: '1 1 115px', minWidth: '105px', padding: '0.45rem 0.5rem', fontSize: '0.85rem', borderRadius: 'var(--radius)' }}
+                value={unreadFilter}
+                onChange={(e) => setUnreadFilter(e.target.value)}
+              >
+                <option value="">-- Berichten --</option>
+                {(availableUnreadFilters.includes('UNREAD') || unreadFilter === 'UNREAD') && <option value="UNREAD">Ongelezen (💬)</option>}
+                {(availableUnreadFilters.includes('READ') || unreadFilter === 'READ') && <option value="READ">Geen ongelezen</option>}
+              </select>
+              <select
+                id="empco-filter"
+                className="input"
+                style={{ flex: '1 1 130px', minWidth: '115px', padding: '0.45rem 0.5rem', fontSize: '0.85rem', borderRadius: 'var(--radius)' }}
+                value={empcoFilter}
+                onChange={(e) => setEmpcoFilter(e.target.value)}
+              >
+                <option value="">-- EmpCo --</option>
+                <option value="TODO">⚖️ Te checken ({empcoCounts.NONE + empcoCounts.STALE})</option>
+                <option value="NONE"> Niet gecheckt ({empcoCounts.NONE})</option>
+                <option value="STALE"> 🕓 Verouderd ({empcoCounts.STALE})</option>
+                <option value="ISSUES">🚩 Met bevindingen ({empcoCounts.FAIL + empcoCounts.WARNING})</option>
+                <option value="FAIL"> ⛔ Overtreding ({empcoCounts.FAIL})</option>
+                <option value="WARNING"> ⚠️ Aandachtspunten ({empcoCounts.WARNING})</option>
+                <option value="PASS">✅ EmpCo OK ({empcoCounts.PASS})</option>
+              </select>
+              {(isAdmin || canAssignProducts) && (
+                <select
+                  className="input"
+                  style={{ flex: '1 1 125px', minWidth: '115px', padding: '0.45rem 0.5rem', fontSize: '0.85rem', borderRadius: 'var(--radius)' }}
+                  value={assignedUserFilter}
+                  onChange={(e) => setAssignedUserFilter(e.target.value)}
+                >
+                  <option value="">-- Toegewezen --</option>
+                  {(availableAssignedUsers.hasUnassigned || assignedUserFilter === 'UNASSIGNED') && <option value="UNASSIGNED">[ Niet Toegewezen ]</option>}
+                  {systemUsers.map(su => {
+                    const hasUser = availableAssignedUsers.userIds.includes(su.id);
+                    const isSelected = assignedUserFilter === su.id;
+                    if (hasUser || isSelected) {
+                      return <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>;
+                    }
+                    return null;
+                  })}
+                </select>
+              )}
+            </div>
+
+            {/* Dedicated Bulk Selection Action Bar */}
+            {selectedIds.size > 0 && (
+              <div
+                className="glass"
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.6rem',
+                  padding: '0.65rem 0.9rem',
+                  borderRadius: 'var(--radius)',
+                  border: '1px solid #c7d2fe',
+                  backgroundColor: '#f8fafc',
+                  boxShadow: '0 2px 8px rgba(15, 23, 42, 0.05)',
+                }}
+              >
+                {/* Left group: Selection count + Bulk property dropdowns */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem' }}>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      padding: '0.35rem 0.7rem',
+                      borderRadius: '999px',
+                      backgroundColor: '#e0e7ff',
+                      color: '#3730a3',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    ✓ {selectedIds.size} geselecteerd
+                    <button
+                      type="button"
+                      onClick={() => setSelectedIds(new Set())}
+                      title="Selectie wissen"
                       style={{
-                        width: '20px',
-                        height: '20px',
+                        border: 'none',
+                        background: 'transparent',
+                        color: '#4338ca',
                         cursor: 'pointer',
-                        accentColor: 'var(--primary)',
-                        borderRadius: '4px'
+                        padding: '0 0.15rem',
+                        fontSize: '0.85rem',
+                        lineHeight: 1,
+                        fontWeight: 700,
                       }}
-                    />
-                  </div>
-                </td>
-                <td style={{ padding: '1.25rem', fontWeight: 600, color: 'var(--text)' }}>
-                  {(() => {
-                    const googleUrl = buildGoogleSearchUrl(product, layout);
-                    if (!googleUrl) return product.internalArticleNumber;
-                    return (
-                      <a
-                        href={googleUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={e => e.stopPropagation()}
-                        title="Google zoeken op basis van gemarkeerde velden"
-                        style={{
-                          color: 'var(--primary)',
-                          textDecoration: 'none',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.3rem',
-                          borderBottom: '1px dashed var(--primary)',
-                          paddingBottom: '1px',
-                          transition: 'opacity 0.15s',
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.opacity = '0.7')}
-                        onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-                      >
-                        {product.internalArticleNumber}
-                        <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>🌐</span>
-                      </a>
-                    );
-                  })()}
-                </td>
-                {(isAdmin || canAssignProducts) && (
-                  <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
-                    <select
-                      value={product.assignedUserId || 'NONE'}
-                      onChange={(e) => {
-                        startTransition(async () => { await bulkAssignAction([product.internalArticleNumber], e.target.value); });
-                      }}
-                      style={{ border: 'none', backgroundColor: 'transparent', color: product.assignedUserId ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
                     >
-                      <option value="NONE">-</option>
+                      ✕
+                    </button>
+                  </span>
+
+                  {(isAdmin || canAssignProducts) && (
+                    <select
+                      className="input"
+                      style={{
+                        width: 'auto',
+                        minWidth: '155px',
+                        height: '34px',
+                        padding: '0 0.65rem',
+                        cursor: isDeleting ? 'wait' : 'pointer',
+                        backgroundColor: 'white',
+                        border: '1px solid var(--border)',
+                        fontWeight: 600,
+                        fontSize: '0.82rem',
+                        borderRadius: 'var(--radius)',
+                      }}
+                      disabled={isDeleting}
+                      value=""
+                      onChange={(e) => handleBulkAssign(e.target.value)}
+                    >
+                      <option value="" disabled>👤 Toewijzen aan...</option>
+                      <option value="NONE">-- Ontkoppelen (Unassign) --</option>
                       {systemUsers.map(su => (
                         <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>
                       ))}
                     </select>
-                  </td>
-                )}
-                <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.supplier?.name || '-'}</td>
-                <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.brand?.name || '-'}</td>
-                <td style={{ padding: '1.25rem', color: 'var(--text)', fontWeight: 500 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span>{product.title}</span>
-                    {unreadProducts.has(product.internalArticleNumber) && (
-                      <span
-                        title="Ongelezen berichten in interne communicatie"
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
-                          backgroundColor: '#ef4444', color: 'white',
-                          fontSize: '0.6rem', fontWeight: 800,
-                          padding: '0.1rem 0.45rem', borderRadius: '1rem',
-                          flexShrink: 0, animation: 'chat-unread-pulse 2s ease-in-out infinite',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        💬 nieuw
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td style={{ padding: '1.25rem' }}>
-                  <InlineStatusToggle product={product} isAdmin={isAdmin} />
-                </td>
-                <td style={{ padding: '0.6rem 1.25rem' }}>
-                  <CompletenessCell product={product} layout={layout} imageCount={imageCountMap[product.internalArticleNumber] ?? 0} />
-                </td>
-                <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
-                  <AiAnalysisViewer
-                    articleNumber={product.internalArticleNumber}
-                    productTitle={product.title}
-                    score={aiScoreMap[product.internalArticleNumber] ?? null}
-                    canUseAi={canUseAi}
-                  />
-                </td>
-                <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
-                  <EmpcoViewer
-                    articleNumber={product.internalArticleNumber}
-                    productTitle={product.title}
-                    status={liveEmpcoMap[product.internalArticleNumber]?.status ?? null}
-                    stale={liveEmpcoMap[product.internalArticleNumber]?.stale ?? false}
-                    issueCount={liveEmpcoMap[product.internalArticleNumber]?.issueCount ?? 0}
-                    onOpenProduct={() => setSelectedProduct(product)}
-                  />
-                </td>
-                <td style={{ padding: '1.25rem' }}>
-                  <InlineReadyToggle product={product} isAdmin={isAdmin} />
-                </td>
-              </tr>
-            ))}
-            {filteredProducts.length === 0 && (
-              <tr>
-                <td colSpan={11} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>Geen producten gevonden die voldoen aan je filters.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                  )}
 
-      {/* Pagination Controls */}
-      {filteredProducts.length > 0 && (
-        <div className="glass" style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '0.75rem 1.5rem',
-          borderRadius: 'var(--radius)',
-          border: '1px solid var(--border)',
-          gap: '1rem',
-          flexWrap: 'wrap'
-        }}>
-          {/* Left section: Items per page */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-            <span>Producten per pagina:</span>
-            <select
-              className="input"
-              style={{ width: 'auto', padding: '0.35rem 1.75rem 0.35rem 0.75rem', fontSize: '0.875rem', cursor: 'pointer', minWidth: '85px' }}
-              value={pageSize}
-              onChange={(e) => {
-                const val = e.target.value;
-                setPageSize(val === 'ALL' ? 'ALL' : Number(val));
-                setCurrentPage(1);
-              }}
-            >
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-              <option value={250}>250</option>
-              <option value="ALL">Alles</option>
-            </select>
-          </div>
+                  {isAdmin && (
+                    <select
+                      className="input"
+                      style={{
+                        width: 'auto',
+                        minWidth: '150px',
+                        height: '34px',
+                        padding: '0 0.65rem',
+                        cursor: isDeleting ? 'wait' : 'pointer',
+                        backgroundColor: 'white',
+                        border: '1px solid var(--border)',
+                        fontWeight: 600,
+                        fontSize: '0.82rem',
+                        borderRadius: 'var(--radius)',
+                      }}
+                      disabled={isDeleting}
+                      value=""
+                      onChange={(e) => handleBulkReadyForImport(e.target.value)}
+                    >
+                      <option value="" disabled>🌐 Webshop Ready...</option>
+                      <option value="NEE">Nee (N)</option>
+                      <option value="REVIEW">Review (R)</option>
+                      <option value="JA">Ja (Y)</option>
+                    </select>
+                  )}
 
-          {/* Middle section: Page buttons */}
-          {pageSize !== 'ALL' && totalPages > 1 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <button
-                className="btn"
-                style={{
-                  padding: '0.35rem 0.75rem',
-                  fontSize: '0.875rem',
-                  backgroundColor: 'transparent',
-                  border: '1px solid var(--border)',
-                  color: currentPage === 1 ? 'var(--text-muted)' : 'var(--text)',
-                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                  opacity: currentPage === 1 ? 0.5 : 1
-                }}
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              >
-                Vorige
-              </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{
+                        height: '34px',
+                        padding: '0 0.75rem',
+                        fontSize: '0.82rem',
+                        backgroundColor: 'white',
+                        border: '1px solid var(--border)',
+                        cursor: isDeleting ? 'wait' : 'pointer',
+                        color: 'var(--text)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        fontWeight: 600,
+                        borderRadius: 'var(--radius)',
+                        whiteSpace: 'nowrap',
+                      }}
+                      onClick={() => {
+                        setPreselectedTransferSupplierId('');
+                        setShowTransferSupplierModal(true);
+                      }}
+                      disabled={isDeleting}
+                      title={`Zet ${selectedIds.size} geselecteerde product(en) om naar een andere leverancier`}
+                    >
+                      🏢 Leverancier omzetten
+                    </button>
+                  )}
+                </div>
 
-              {getPageNumbers(currentPage, totalPages).map((p, idx) => {
-                if (p === '...') {
-                  return (
-                    <span key={`dots-${idx}`} style={{ padding: '0.25rem 0.5rem', color: 'var(--text-muted)' }}>
-                      ...
-                    </span>
-                  );
-                }
-                const isSelected = p === currentPage;
-                return (
+                {/* Right group: Batch tools + Delete */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.45rem' }}>
+                  {canUseAi && (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => { setBatchMode(undefined); setShowBatchAnalyze(true); }}
+                      style={{
+                        height: '34px',
+                        padding: '0 0.75rem',
+                        fontSize: '0.82rem',
+                        backgroundColor: '#7c3aed',
+                        border: 'none',
+                        color: 'white',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        fontWeight: 600,
+                        borderRadius: 'var(--radius)',
+                        whiteSpace: 'nowrap',
+                      }}
+                      title={`Analyseer ${selectedIds.size} geselecteerde producten`}
+                    >
+                      🤖 Analyseer ({selectedIds.size})
+                    </button>
+                  )}
+
                   <button
-                    key={p}
+                    type="button"
                     className="btn"
+                    onClick={() => { setBatchMode('empco'); setShowBatchAnalyze(true); }}
                     style={{
-                      padding: '0.35rem 0.75rem',
-                      fontSize: '0.875rem',
-                      minWidth: '35px',
-                      backgroundColor: isSelected ? 'var(--primary)' : 'transparent',
-                      color: isSelected ? '#1e293b' : 'var(--text)',
-                      border: isSelected ? 'none' : '1px solid transparent',
-                      fontWeight: isSelected ? 700 : 500,
+                      height: '34px',
+                      padding: '0 0.75rem',
+                      fontSize: '0.82rem',
+                      background: 'linear-gradient(135deg,#0f766e,#065f46)',
+                      border: 'none',
+                      color: 'white',
                       cursor: 'pointer',
-                      borderRadius: 'var(--radius-sm)',
-                      transition: 'all 0.15s ease'
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      fontWeight: 600,
+                      borderRadius: 'var(--radius)',
+                      whiteSpace: 'nowrap',
                     }}
-                    onClick={() => setCurrentPage(p as number)}
+                    title={`EmpCo-check voor ${selectedIds.size} geselecteerde producten`}
                   >
-                    {p}
+                    ⚖️ EmpCo-check ({selectedIds.size})
                   </button>
-                );
-              })}
 
-              <button
-                className="btn"
-                style={{
-                  padding: '0.35rem 0.75rem',
-                  fontSize: '0.875rem',
-                  backgroundColor: 'transparent',
-                  border: '1px solid var(--border)',
-                  color: currentPage === totalPages ? 'var(--text-muted)' : 'var(--text)',
-                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                  opacity: currentPage === totalPages ? 0.5 : 1
-                }}
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              >
-                Volgende
-              </button>
+                  <button
+                    id="empco-bulk-fix-btn"
+                    type="button"
+                    className="btn"
+                    onClick={() => setBulkFixIds(Array.from(selectedIds))}
+                    style={{
+                      height: '34px',
+                      padding: '0 0.75rem',
+                      fontSize: '0.82rem',
+                      backgroundColor: 'white',
+                      border: '1.5px solid #0f766e',
+                      color: '#0f766e',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      fontWeight: 600,
+                      borderRadius: 'var(--radius)',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={`EmpCo-voorstellen bekijken en doorvoeren voor ${selectedIds.size} geselecteerde producten`}
+                  >
+                    ✍️ EmpCo-voorstellen ({selectedIds.size})
+                  </button>
+
+                  <button
+                    id="formatting-bulk-btn"
+                    type="button"
+                    className="btn"
+                    onClick={() => setShowFormattingModal(true)}
+                    style={{
+                      height: '34px',
+                      padding: '0 0.75rem',
+                      fontSize: '0.82rem',
+                      background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                      border: 'none',
+                      color: 'white',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      fontWeight: 600,
+                      borderRadius: 'var(--radius)',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={`Formatteer ${selectedIds.size} geselecteerde producten met standaard regels`}
+                  >
+                    ✨ Formateren ({selectedIds.size})
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      setEcoPosArticles(Array.from(selectedIds));
+                      setShowEcoPosModal(true);
+                    }}
+                    style={{
+                      height: '34px',
+                      padding: '0 0.75rem',
+                      fontSize: '0.82rem',
+                      backgroundColor: '#0284c7',
+                      border: 'none',
+                      color: 'white',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      fontWeight: 600,
+                      borderRadius: 'var(--radius)',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={`Haal actuele status & productinfo uit EcoPos op voor ${selectedIds.size} geselecteerde producten`}
+                  >
+                    🔄 EcoPos ({selectedIds.size})
+                  </button>
+
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{
+                        height: '34px',
+                        padding: '0 0.75rem',
+                        fontSize: '0.82rem',
+                        backgroundColor: 'var(--error)',
+                        border: 'none',
+                        cursor: isDeleting ? 'wait' : 'pointer',
+                        color: 'white',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        fontWeight: 600,
+                        borderRadius: 'var(--radius)',
+                        whiteSpace: 'nowrap',
+                      }}
+                      onClick={executeBulkDelete}
+                      disabled={isDeleting}
+                    >
+                      {isDeleting ? '...' : '🗑 Verwijder'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="glass" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ backgroundColor: 'rgba(0,0,0,0.02)', borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ padding: '1.25rem 0.75rem 1.25rem 1.25rem', width: '48px', textAlign: 'center' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.size > 0 && selectedIds.size === filteredProducts.length}
+                          ref={input => {
+                            if (input) {
+                              input.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredProducts.length;
+                            }
+                          }}
+                          onChange={toggleSelectAll}
+                          style={{
+                            width: '20px',
+                            height: '20px',
+                            cursor: 'pointer',
+                            accentColor: 'var(--primary)',
+                            borderRadius: '4px'
+                          }}
+                        />
+                      </div>
+                    </th>
+                    <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:internalArticleNumber', 'Article ID')}</th>
+                    {(isAdmin || canAssignProducts) && <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Toewijzing</th>}
+                    <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:supplierId', 'Leverancier')}</th>
+                    <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:brandId', 'Merk')}</th>
+                    <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:title', 'Title')}</th>
+                    <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:status', 'Status')}</th>
+                    <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Compleet</th>
+                    <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Score</th>
+                    <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>EmpCo</th>
+                    <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Webshop Ready</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedProducts.map(product => (
+                    <tr
+                      key={product.id}
+                      onClick={() => setSelectedProduct(product)}
+                      style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background-color 0.2s', backgroundColor: selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'transparent' }}
+                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'var(--surface-hover)'}
+                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'transparent'}
+                    >
+                      <td
+                        style={{ padding: '1rem 0.75rem 1rem 1.25rem', width: '48px', textAlign: 'center', verticalAlign: 'middle', cursor: 'pointer' }}
+                        onClick={e => {
+                          e.stopPropagation();
+                          toggleSelect(product.internalArticleNumber);
+                        }}
+                        title="Selecteer product"
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(product.internalArticleNumber)}
+                            onChange={e => {
+                              e.stopPropagation();
+                              toggleSelect(product.internalArticleNumber);
+                            }}
+                            onClick={e => e.stopPropagation()}
+                            style={{
+                              width: '20px',
+                              height: '20px',
+                              cursor: 'pointer',
+                              accentColor: 'var(--primary)',
+                              borderRadius: '4px'
+                            }}
+                          />
+                        </div>
+                      </td>
+                      <td style={{ padding: '1.25rem', fontWeight: 600, color: 'var(--text)' }}>
+                        {(() => {
+                          const googleUrl = buildGoogleSearchUrl(product, layout);
+                          if (!googleUrl) return product.internalArticleNumber;
+                          return (
+                            <a
+                              href={googleUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              title="Google zoeken op basis van gemarkeerde velden"
+                              style={{
+                                color: 'var(--primary)',
+                                textDecoration: 'none',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.3rem',
+                                borderBottom: '1px dashed var(--primary)',
+                                paddingBottom: '1px',
+                                transition: 'opacity 0.15s',
+                              }}
+                              onMouseEnter={e => (e.currentTarget.style.opacity = '0.7')}
+                              onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+                            >
+                              {product.internalArticleNumber}
+                              <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>🌐</span>
+                            </a>
+                          );
+                        })()}
+                      </td>
+                      {(isAdmin || canAssignProducts) && (
+                        <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
+                          <select
+                            value={product.assignedUserId || 'NONE'}
+                            onChange={(e) => {
+                              startTransition(async () => { await bulkAssignAction([product.internalArticleNumber], e.target.value); });
+                            }}
+                            style={{ border: 'none', backgroundColor: 'transparent', color: product.assignedUserId ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
+                          >
+                            <option value="NONE">-</option>
+                            {systemUsers.map(su => (
+                              <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>
+                            ))}
+                          </select>
+                        </td>
+                      )}
+                      <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.supplier?.name || '-'}</td>
+                      <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.brand?.name || '-'}</td>
+                      <td style={{ padding: '1.25rem', color: 'var(--text)', fontWeight: 500 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span>{product.title}</span>
+                          {unreadProducts.has(product.internalArticleNumber) && (
+                            <span
+                              title="Ongelezen berichten in interne communicatie"
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
+                                backgroundColor: '#ef4444', color: 'white',
+                                fontSize: '0.6rem', fontWeight: 800,
+                                padding: '0.1rem 0.45rem', borderRadius: '1rem',
+                                flexShrink: 0, animation: 'chat-unread-pulse 2s ease-in-out infinite',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              💬 nieuw
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td style={{ padding: '1.25rem' }}>
+                        <InlineStatusToggle product={product} isAdmin={isAdmin} />
+                      </td>
+                      <td style={{ padding: '0.6rem 1.25rem' }}>
+                        <CompletenessCell product={product} layout={layout} imageCount={imageCountMap[product.internalArticleNumber] ?? 0} />
+                      </td>
+                      <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
+                        <AiAnalysisViewer
+                          articleNumber={product.internalArticleNumber}
+                          productTitle={product.title}
+                          score={aiScoreMap[product.internalArticleNumber] ?? null}
+                          canUseAi={canUseAi}
+                        />
+                      </td>
+                      <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
+                        <EmpcoViewer
+                          articleNumber={product.internalArticleNumber}
+                          productTitle={product.title}
+                          status={liveEmpcoMap[product.internalArticleNumber]?.status ?? null}
+                          stale={liveEmpcoMap[product.internalArticleNumber]?.stale ?? false}
+                          issueCount={liveEmpcoMap[product.internalArticleNumber]?.issueCount ?? 0}
+                          onOpenProduct={() => setSelectedProduct(product)}
+                        />
+                      </td>
+                      <td style={{ padding: '1.25rem' }}>
+                        <InlineReadyToggle product={product} isAdmin={isAdmin} />
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredProducts.length === 0 && (
+                    <tr>
+                      <td colSpan={11} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>Geen producten gevonden die voldoen aan je filters.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-          )}
 
-          {/* Right section: Info text */}
-          <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-            Weergave {Math.min(filteredProducts.length, (currentPage - 1) * (pageSize === 'ALL' ? filteredProducts.length : pageSize) + 1)}-
-            {Math.min(filteredProducts.length, currentPage * (pageSize === 'ALL' ? filteredProducts.length : pageSize))} van{' '}
-            <strong>{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'product' : 'producten'}
+            {/* Pagination Controls */}
+            {filteredProducts.length > 0 && (
+              <div className="glass" style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '0.75rem 1.5rem',
+                borderRadius: 'var(--radius)',
+                border: '1px solid var(--border)',
+                gap: '1rem',
+                flexWrap: 'wrap'
+              }}>
+                {/* Left section: Items per page */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+                  <span>Producten per pagina:</span>
+                  <select
+                    className="input"
+                    style={{ width: 'auto', padding: '0.35rem 1.75rem 0.35rem 0.75rem', fontSize: '0.875rem', cursor: 'pointer', minWidth: '85px' }}
+                    value={pageSize}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setPageSize(val === 'ALL' ? 'ALL' : Number(val));
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={250}>250</option>
+                    <option value="ALL">Alles</option>
+                  </select>
+                </div>
+
+                {/* Middle section: Page buttons */}
+                {pageSize !== 'ALL' && totalPages > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <button
+                      className="btn"
+                      style={{
+                        padding: '0.35rem 0.75rem',
+                        fontSize: '0.875rem',
+                        backgroundColor: 'transparent',
+                        border: '1px solid var(--border)',
+                        color: currentPage === 1 ? 'var(--text-muted)' : 'var(--text)',
+                        cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                        opacity: currentPage === 1 ? 0.5 : 1
+                      }}
+                      disabled={currentPage === 1}
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    >
+                      Vorige
+                    </button>
+
+                    {getPageNumbers(currentPage, totalPages).map((p, idx) => {
+                      if (p === '...') {
+                        return (
+                          <span key={`dots-${idx}`} style={{ padding: '0.25rem 0.5rem', color: 'var(--text-muted)' }}>
+                            ...
+                          </span>
+                        );
+                      }
+                      const isSelected = p === currentPage;
+                      return (
+                        <button
+                          key={p}
+                          className="btn"
+                          style={{
+                            padding: '0.35rem 0.75rem',
+                            fontSize: '0.875rem',
+                            minWidth: '35px',
+                            backgroundColor: isSelected ? 'var(--primary)' : 'transparent',
+                            color: isSelected ? '#1e293b' : 'var(--text)',
+                            border: isSelected ? 'none' : '1px solid transparent',
+                            fontWeight: isSelected ? 700 : 500,
+                            cursor: 'pointer',
+                            borderRadius: 'var(--radius-sm)',
+                            transition: 'all 0.15s ease'
+                          }}
+                          onClick={() => setCurrentPage(p as number)}
+                        >
+                          {p}
+                        </button>
+                      );
+                    })}
+
+                    <button
+                      className="btn"
+                      style={{
+                        padding: '0.35rem 0.75rem',
+                        fontSize: '0.875rem',
+                        backgroundColor: 'transparent',
+                        border: '1px solid var(--border)',
+                        color: currentPage === totalPages ? 'var(--text-muted)' : 'var(--text)',
+                        cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                        opacity: currentPage === totalPages ? 0.5 : 1
+                      }}
+                      disabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    >
+                      Volgende
+                    </button>
+                  </div>
+                )}
+
+                {/* Right section: Info text */}
+                <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+                  Weergave {Math.min(filteredProducts.length, (currentPage - 1) * (pageSize === 'ALL' ? filteredProducts.length : pageSize) + 1)}-
+                  {Math.min(filteredProducts.length, currentPage * (pageSize === 'ALL' ? filteredProducts.length : pageSize))} van{' '}
+                  <strong>{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'product' : 'producten'}
+                </div>
+              </div>
+            )}
+
+            <ProductDrawer
+              product={selectedProduct}
+              isOpen={!!selectedProduct}
+              onClose={() => setSelectedProduct(null)}
+              fieldPermissions={isAdmin ? undefined : fieldPermissions}
+              isAdmin={isAdmin}
+              canUseAi={canUseAi}
+              layout={layout}
+              currentUserId={currentUserId}
+              currentUserChatColor={currentUserChatColor}
+              currentUserAutoMarkRemarksAsRead={currentUserAutoMarkRemarksAsRead}
+              userChatColors={Object.fromEntries(
+                systemUsers.filter((u: any) => u.chatColor).map((u: any) => [u.id, u.chatColor])
+              )}
+              onPrev={handlePrev}
+              onNext={handleNext}
+              aiScore={selectedProduct ? (aiScoreMap[selectedProduct.internalArticleNumber] ?? null) : null}
+              onEmpcoCheck={(artNum, status, stale, issueCount) => {
+                setLiveEmpcoMap(prev => ({ ...prev, [artNum]: { status, stale, issueCount } }));
+              }}
+              allSuppliers={suppliersList}
+            />
+
+            <ConfirmationModal
+              isOpen={showDeleteConfirm}
+              title="Producten verwijderen"
+              message={`Weet je zeker dat je de ${selectedIds.size} geselecteerde producten permanent wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`}
+              confirmLabel="Verwijderen"
+              cancelLabel="Annuleren"
+              type="danger"
+              onConfirm={confirmDeleteProducts}
+              onCancel={() => setShowDeleteConfirm(false)}
+            />
           </div>
-        </div>
-      )}
-
-      <ProductDrawer
-        product={selectedProduct}
-        isOpen={!!selectedProduct}
-        onClose={() => setSelectedProduct(null)}
-        fieldPermissions={isAdmin ? undefined : fieldPermissions}
-        isAdmin={isAdmin}
-        canUseAi={canUseAi}
-        layout={layout}
-        currentUserId={currentUserId}
-        currentUserChatColor={currentUserChatColor}
-        currentUserAutoMarkRemarksAsRead={currentUserAutoMarkRemarksAsRead}
-        userChatColors={Object.fromEntries(
-          systemUsers.filter((u: any) => u.chatColor).map((u: any) => [u.id, u.chatColor])
-        )}
-        onPrev={handlePrev}
-        onNext={handleNext}
-        aiScore={selectedProduct ? (aiScoreMap[selectedProduct.internalArticleNumber] ?? null) : null}
-        onEmpcoCheck={(artNum, status, stale, issueCount) => {
-          setLiveEmpcoMap(prev => ({ ...prev, [artNum]: { status, stale, issueCount } }));
-        }}
-        allSuppliers={suppliersList}
-      />
-
-      <ConfirmationModal
-        isOpen={showDeleteConfirm}
-        title="Producten verwijderen"
-        message={`Weet je zeker dat je de ${selectedIds.size} geselecteerde producten permanent wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`}
-        confirmLabel="Verwijderen"
-        cancelLabel="Annuleren"
-        type="danger"
-        onConfirm={confirmDeleteProducts}
-        onCancel={() => setShowDeleteConfirm(false)}
-      />
-    </div>
-  );
+          );
 }

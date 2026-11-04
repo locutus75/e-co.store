@@ -16,6 +16,7 @@ import FormattingRulePreviewModal, { AppliedFormattingChange } from './Formattin
 import EcoPosSyncModal from './EcoPosSyncModal';
 import { confirmEmpcoReady } from '@/lib/empcoGateClient';
 import { replaceEmpcoFragment } from '@/lib/empco';
+import { isReadOnlyProductField } from '@/lib/constants';
 
 /**
  * Builds a Google search URL using fields marked `useForSearch` in the layout.
@@ -565,7 +566,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     if (isGloballyLocked) action = 'READ';
 
     // internalArticleNumber is explicitly READ-only even for Admins usually
-    if (moduleName === 'FIELD:internalArticleNumber') {
+    if (isReadOnlyProductField(moduleName)) {
       action = 'READ';
     }
 
@@ -830,7 +831,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     } else if (f.type === 'textarea') {
       inputComponent = <textarea name={key} className="input" defaultValue={val || ''} style={{ minHeight: computedHeight, resize: 'vertical', color: 'inherit' }} />;
     } else {
-      const readOnly = f.id === 'FIELD:internalArticleNumber';
+      const readOnly = isReadOnlyProductField(f.id);
       inputComponent = <input name={key} className="input" defaultValue={val || ''} readOnly={readOnly} style={{ minHeight: computedHeight, backgroundColor: readOnly ? 'rgba(0,0,0,0.02)' : undefined, color: 'inherit' }} />;
     }
 
@@ -842,7 +843,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     // Only show AI suggestion button for text-compatible, non-system fields
     const isAiEligible = !isCheckbox &&
       f.type !== 'media' && f.type !== 'chat' && f.type !== 'relation' &&
-      f.id !== 'FIELD:internalArticleNumber';
+      !isReadOnlyProductField(f.id);
 
     return (
       <div key={f.id} style={{ gridColumn: `span ${span}`, backgroundColor: f.backgroundColor || 'transparent', padding: f.backgroundColor ? '0.75rem' : '0', borderRadius: 'var(--radius)', color: effectiveTextColor }}>

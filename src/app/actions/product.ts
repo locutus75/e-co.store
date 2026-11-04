@@ -635,6 +635,9 @@ export async function updateProductAction(internalId: string, formData: FormData
           for (const [k, v] of Object.entries(data.customData as Record<string, any>)) {
             pushIfChanged(`custom_${k}`, existing.customData?.[k], v);
           }
+          if (existing.customData && typeof existing.customData === 'object') {
+            data.customData = { ...(existing.customData as Record<string, any>), ...data.customData };
+          }
         }
       }
     } catch (histErr) {

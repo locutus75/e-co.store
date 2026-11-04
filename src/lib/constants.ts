@@ -3,6 +3,7 @@ export const PRISMA_FIELDS = [
   { key: 'ean', label: 'EAN', type: 'string' },
   { key: 'rel_supplier', label: 'Leverancier (Naam)', type: 'relation' },
   { key: 'rel_brand', label: 'Merk (Naam)', type: 'relation' },
+  { key: 'rel_category', label: 'Categorie (Naam)', type: 'relation' },
   { key: 'title', label: 'Omschrijving (Titel / Naam)', type: 'string' },
   { key: 'basePrice', label: 'Prijs', type: 'float' },
   { key: 'seoTitle', label: 'SEO Titel', type: 'string' },
@@ -24,6 +25,8 @@ export const PRISMA_FIELDS = [
   { key: 'volumeMl', label: 'Inhoud (ml)', type: 'number' },
   { key: 'volumeGr', label: 'Inhoud (gr)', type: 'number' },
   { key: 'critTransportDistance', label: 'Afstand (km)', type: 'number' },
+  { key: 'custom_ecoposStock', label: 'Voorraad', type: 'number' },
+  { key: 'custom_ecoposVatRate', label: 'BTW (%)', type: 'float' },
   // Bools
   { key: 'uitlopend', label: 'Uitlopend (Uitl.)', type: 'boolean' },
   { key: 'systemActive', label: 'Actief in Systeem?', type: 'boolean' },
@@ -44,3 +47,32 @@ export const PRISMA_FIELDS = [
   { key: 'critCircular', label: 'Circulair/Hergebruik', type: 'string' },
   { key: 'critMilieuCarbonCompensated', label: 'Uitstootcompensatie', type: 'string' },
 ];
+
+/**
+ * Product fields that are managed via POS/EcoPos/Import and must always be
+ * rendered as Read-Only in the product form (even for administrators).
+ */
+export const READ_ONLY_PRODUCT_FIELDS = new Set<string>([
+  'FIELD:internalArticleNumber',
+  'FIELD:ean',
+  'FIELD:price',
+  'FIELD:basePrice',
+  'FIELD:webshopActive',
+  'FIELD:systemActive',
+  'FIELD:uitlopend',
+  'FIELD:custom_ecoposStock',
+  'FIELD:ecoposStock',
+  'FIELD:stockTotalAvailable',
+  'FIELD:custom_ecoposVatRate',
+  'FIELD:ecoposVatRate',
+  'FIELD:vatRate',
+  'FIELD:category.name',
+  'FIELD:category',
+  'FIELD:categoryId',
+]);
+
+export function isReadOnlyProductField(fieldIdOrKey: string): boolean {
+  if (!fieldIdOrKey) return false;
+  const normalized = fieldIdOrKey.startsWith('FIELD:') ? fieldIdOrKey : `FIELD:${fieldIdOrKey}`;
+  return READ_ONLY_PRODUCT_FIELDS.has(normalized);
+}

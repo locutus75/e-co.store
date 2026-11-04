@@ -3,6 +3,7 @@ import React, { useTransition, useState } from 'react';
 import { setRolePermissionAction, createRoleAction, renameRoleAction, deleteRoleAction } from '@/app/actions/role';
 import FormLayoutBuilder from '@/components/FormLayoutBuilder';
 import ConfirmationModal from '@/components/ConfirmationModal';
+import { isReadOnlyProductField } from '@/lib/constants';
 
 const MENU_MODULES = [
   { module: 'MENU:dashboard',   label: 'Dashboard' },
@@ -286,10 +287,14 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
             <div style={{ padding: '3rem', display: 'flex', flexDirection: 'column', gap: '3.5rem' }}>
                 {(() => {
                   const renderDropdown = (moduleName: string, label: string) => {
-                    const currentAction = getActionForModule(selectedRoleForFields, moduleName, 'READ');
+                    const isSystemReadOnly = isReadOnlyProductField(moduleName);
+                    const rawAction = getActionForModule(selectedRoleForFields, moduleName, 'READ');
+                    const currentAction = isSystemReadOnly && rawAction === 'WRITE' ? 'READ' : rawAction;
                     return (
                       <div style={{ marginBottom: '1.25rem' }}>
-                        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>{label}</label>
+                        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>
+                          {label} {isSystemReadOnly && <span style={{ fontSize: '0.72rem', color: 'var(--primary)' }}>(Read-only)</span>}
+                        </label>
                         <select 
                           className="input" 
                           style={{ padding: '0.4rem 0.5rem', fontSize: '0.85rem', width: '100%', border: currentAction === 'HIDDEN' ? '1px solid var(--error)' : '1px solid var(--border)', backgroundColor: currentAction === 'HIDDEN' ? 'rgba(255,0,0,0.02)' : 'white', minHeight: '38px' }}
@@ -297,7 +302,7 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
                           value={currentAction}
                           onChange={(e) => handleActionChange(selectedRoleForFields.id, moduleName, e.target.value)}
                         >
-                          <option value="WRITE">📝 Bewerken</option>
+                          {!isSystemReadOnly && <option value="WRITE">📝 Bewerken</option>}
                           <option value="READ">👀 Alleen Lezen</option>
                           <option value="HIDDEN">🚫 Verborgen</option>
                         </select>

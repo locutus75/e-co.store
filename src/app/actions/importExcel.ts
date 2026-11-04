@@ -100,14 +100,17 @@ export async function executeImportAction(
           const upper = cellVal.toUpperCase();
           rowData[dbField] = (upper === "JA" || upper === "TRUE" || upper === "1" || upper === "Y" || upper === "J" || upper === "X" || upper === "UITLOPEND");
         } else if (fieldDef.type === 'relation') {
-          // It's either rel_supplier or rel_brand
-          const relationName = dbField.replace('rel_', ''); // 'supplier' or 'brand'
-          rowData[relationName] = {
-            connectOrCreate: {
-              where: { name: cellVal },
-              create: { name: cellVal }
-            }
-          };
+          const relationName = dbField.replace('rel_', ''); // 'supplier', 'brand', or 'category'
+          if (relationName === 'category') {
+            rowData._categoryName = cellVal;
+          } else {
+            rowData[relationName] = {
+              connectOrCreate: {
+                where: { name: cellVal },
+                create: { name: cellVal }
+              }
+            };
+          }
         }
       }
 
@@ -126,6 +129,30 @@ export async function executeImportAction(
       const existingProduct = await prisma.product.findUnique({
         where: { internalArticleNumber }
       });
+
+      // Handle _categoryName and custom_* keys before Prisma create/update
+      if (rowData._categoryName) {
+        const catName = String(rowData._categoryName).trim();
+        delete rowData._categoryName;
+        let cat = await prisma.category.findFirst({ where: { name: { equals: catName, mode: 'insensitive' } } });
+        if (!cat) cat = await prisma.category.create({ data: { name: catName } });
+        rowData.category = { connect: { id: cat.id } };
+      }
+
+      const customUpdates: Record<string, any> = {};
+      for (const k of Object.keys(rowData)) {
+        if (k.startsWith('custom_')) {
+          customUpdates[k.replace('custom_', '')] = rowData[k];
+          delete rowData[k];
+        }
+      }
+      if (Object.keys(customUpdates).length > 0) {
+        const prevCustom =
+          existingProduct?.customData && typeof existingProduct.customData === 'object'
+            ? (existingProduct.customData as Record<string, any>)
+            : {};
+        rowData.customData = { ...prevCustom, ...customUpdates };
+      }
 
       if (internalArticleNumber === '16815') {
          console.log(`[Import Row] DB lookup result:`, existingProduct ? { id: existingProduct.id, title: existingProduct.title } : "null");

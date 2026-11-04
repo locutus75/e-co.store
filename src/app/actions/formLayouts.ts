@@ -39,9 +39,13 @@ const DEFAULT_PRODUCT_LAYOUT: FormSection[] = [
       { id: "FIELD:title", label: "Omschrijving", type: "text" },
       { id: "FIELD:seoTitle", label: "SEO Titel", type: "text" },
       { id: "FIELD:price", label: "Basis Prijs (€)", type: "number" },
+      { id: "FIELD:custom_ecoposVatRate", label: "BTW (%)", type: "number" },
+      { id: "FIELD:custom_ecoposStock", label: "Voorraad", type: "number" },
+      { id: "FIELD:category.name", label: "Categorie", type: "relation", relationPath: "category.name" },
       { id: "FIELD:description", label: "Lange Omschrijving", type: "textarea" },
       { id: "FIELD:webshopActive", label: "Webshop (Actief op shop)", type: "checkbox" },
       { id: "FIELD:systemActive", label: "Actief (In systeem)", type: "checkbox" },
+      { id: "FIELD:uitlopend", label: "Uitlopend (Uitl.)", type: "checkbox" },
       { id: "FIELD:media", label: "Product Afbeeldingen (Media)", type: "media" }
     ]
   },
@@ -212,6 +216,67 @@ export async function getFormLayoutAction(): Promise<FormSection[]> {
   // No internalRemarks field existed at all → prepend a fresh chat field
   if (!chatFieldFound && layout.length > 0) {
     layout[0].fields = [CHAT_FIELD, ...layout[0].fields];
+  }
+
+  // ── Ensure POS / EcoPos read-only fields (Uitlopend, Voorraad, BTW, Categorie) exist ──
+  try {
+    const posMigrationFlag = await prisma.$queryRaw<{ value: string }[]>`
+      SELECT "value" FROM "SystemSetting"
+      WHERE "key" = 'migration_pos_readonly_fields_v1' LIMIT 1
+    `;
+    if ((!posMigrationFlag || posMigrationFlag.length === 0) && layout.length > 0) {
+      const existingFieldIds = new Set(
+        layout.flatMap((s) => s.fields.map((f) => f.id))
+      );
+      const targetSection = layout.find((s) => s.id === 'sect-basis') ?? layout[0];
+      const fieldsToAddAfterPrice: FormField[] = [];
+
+      if (!existingFieldIds.has('FIELD:custom_ecoposVatRate') && !existingFieldIds.has('FIELD:ecoposVatRate')) {
+        fieldsToAddAfterPrice.push({ id: 'FIELD:custom_ecoposVatRate', label: 'BTW (%)', type: 'number', width: 8 });
+      }
+      if (!existingFieldIds.has('FIELD:custom_ecoposStock') && !existingFieldIds.has('FIELD:ecoposStock')) {
+        fieldsToAddAfterPrice.push({ id: 'FIELD:custom_ecoposStock', label: 'Voorraad', type: 'number', width: 8 });
+      }
+      if (!existingFieldIds.has('FIELD:category.name') && !existingFieldIds.has('FIELD:category') && !existingFieldIds.has('FIELD:categoryId')) {
+        fieldsToAddAfterPrice.push({ id: 'FIELD:category.name', label: 'Categorie', type: 'relation', relationPath: 'category.name', width: 8 });
+      }
+
+      if (fieldsToAddAfterPrice.length > 0) {
+        const priceIdx = targetSection.fields.findIndex(
+          (f) => f.id === 'FIELD:price' || f.id === 'FIELD:basePrice'
+        );
+        if (priceIdx !== -1) {
+          targetSection.fields.splice(priceIdx + 1, 0, ...fieldsToAddAfterPrice);
+        } else {
+          targetSection.fields.push(...fieldsToAddAfterPrice);
+        }
+      }
+
+      if (!existingFieldIds.has('FIELD:uitlopend')) {
+        const uitlopendField: FormField = { id: 'FIELD:uitlopend', label: 'Uitlopend (Uitl.)', type: 'checkbox', width: 8 };
+        const sysActiveIdx = targetSection.fields.findIndex((f) => f.id === 'FIELD:systemActive');
+        if (sysActiveIdx !== -1) {
+          targetSection.fields.splice(sysActiveIdx + 1, 0, uitlopendField);
+        } else {
+          targetSection.fields.push(uitlopendField);
+        }
+      }
+
+      const updatedLayoutJson = JSON.stringify(layout);
+      await prisma.$executeRaw`
+        INSERT INTO "SystemSetting" ("key", "value")
+        VALUES ('product_form_layout', ${updatedLayoutJson})
+        ON CONFLICT ("key")
+        DO UPDATE SET "value" = ${updatedLayoutJson}
+      `;
+      await prisma.$executeRaw`
+        INSERT INTO "SystemSetting" ("key", "value")
+        VALUES ('migration_pos_readonly_fields_v1', 'true')
+        ON CONFLICT ("key") DO NOTHING
+      `;
+    }
+  } catch (e) {
+    console.warn('[getFormLayoutAction] POS fields migration warning:', e);
   }
 
   return layout;
