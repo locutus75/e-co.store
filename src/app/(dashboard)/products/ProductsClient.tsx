@@ -642,41 +642,19 @@ export default function ProductsClient({
       matchUnread(p) &&
       matchEmpco(p)
     );
-  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread, matchEmpco]);
-  // Filtered resulting list (uses all filters)
-  const filteredProducts = useMemo(() => {
-    return initialProducts.filter(p =>
-      matchSearch(p) &&
-      matchSupplier(p) &&
-      matchBrand(p) &&
-      matchCategory(p) &&
-      matchStatus(p) &&
-      matchReady(p) &&
-      matchAssigned(p) &&
-      matchScore(p) &&
-      matchUnread(p) &&
-      matchEmpco(p)
-    );
   }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchCategory, matchStatus, matchReady, matchAssigned, matchScore, matchUnread, matchEmpco]);
 
   // EmpCo filter option counts (based on all other filters)
   const empcoCounts = useMemo(() => {
     const c: Record<string, number> = { NONE: 0, STALE: 0, PASS: 0, WARNING: 0, FAIL: 0 };
     initialProducts.forEach(p => {
-      if (matchSearch(p) && matchSupplier(p) && matchBrand(p) && matchStatus(p) && matchReady(p) && matchAssigned(p) && matchScore(p) && matchUnread(p)) {
-        // EmpCo filter option counts (based on all other filters)
-        const empcoCounts = useMemo(() => {
-          const c: Record<string, number> = { NONE: 0, STALE: 0, PASS: 0, WARNING: 0, FAIL: 0 };
-          initialProducts.forEach(p => {
-            if (matchSearch(p) && matchSupplier(p) && matchBrand(p) && matchCategory(p) && matchStatus(p) && matchReady(p) && matchAssigned(p) && matchScore(p) && matchUnread(p)) {
-              const s = empcoStateOf(p);
-              c[s] = (c[s] ?? 0) + 1;
-            }
-          });
-          return c;
-        }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread, empcoStateOf]);
-        return c;
-      }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchCategory, matchStatus, matchReady, matchAssigned, matchScore, matchUnread, empcoStateOf]);
+      if (matchSearch(p) && matchSupplier(p) && matchBrand(p) && matchCategory(p) && matchStatus(p) && matchReady(p) && matchAssigned(p) && matchScore(p) && matchUnread(p)) {
+        const s = empcoStateOf(p);
+        c[s] = (c[s] ?? 0) + 1;
+      }
+    });
+    return c;
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchCategory, matchStatus, matchReady, matchAssigned, matchScore, matchUnread, empcoStateOf]);
 
     const totalPages = useMemo(() => {
       if (pageSize === 'ALL') return 1;
