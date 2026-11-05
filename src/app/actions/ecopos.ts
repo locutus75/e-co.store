@@ -182,91 +182,77 @@ async function fetchProductsFromEcoPos(options: {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 20000);
 
-      let res = await fetch(`${baseUrl}/api/v1/pcm/products/query`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          articleNumbers: options.articleNumbers && options.articleNumbers.length > 0 ? options.articleNumbers : undefined,
-          onlyActiveInSystem: options.onlyActiveInSystem ?? false,
-          updatedSince: options.updatedSince,
-          fields: ['status', 'pricing', 'basic', 'dimensions', 'stock', 'custom'],
-          page,
-          limit,
-        }),
-        cache: 'no-store',
-        signal: controller.signal,
-      });
-
-      // Fallback to GET /api/v1/pcm/products if POST /query returns 404/405
-      if (res.status === 404 || res.status === 405) {
         const params = new URLSearchParams({
           page: String(page),
           limit: String(limit),
         });
-        if (options.articleNumbers?.length) {
+        if(options.articleNumbers?.length) {
           params.set('articleNumbers', options.articleNumbers.join(','));
-        }
-        if (options.onlyActiveInSystem) {
-          params.set('onlyActiveInSystem', 'true');
-        }
-        res = await fetch(`${baseUrl}/api/v1/pcm/products?${params.toString()}`, {
-          method: 'GET',
-          headers,
-          cache: 'no-store',
-          signal: controller.signal,
-        });
-      }
-
-      clearTimeout(timeout);
-
-      if (!res.ok) {
-        const errBody = await res.text().catch(() => '');
-        return {
-          ok: false,
-          error: `EcoPos API fout (HTTP ${res.status}): ${errBody.slice(0, 200) || res.statusText}`,
-          products: [],
-        };
-      }
-
-      const payload = await res.json();
-      const rawList: any[] = Array.isArray(payload)
-        ? payload
-        : Array.isArray(payload?.products)
-          ? payload.products
-          : Array.isArray(payload?.data)
-            ? payload.data
-            : [];
-
-      for (const item of rawList) {
-        const norm = normalizeEcoPosProduct(item);
-        if (norm) {
-          if (
-            !options.articleNumbers?.length ||
-            options.articleNumbers.includes(norm.internalArticleNumber)
-          ) {
-            allNormalized.push(norm);
-          }
-        }
-      }
-
-      const totalPages = payload?.meta?.totalPages ?? 1;
-      if (page >= totalPages || rawList.length < limit) {
-        break;
-      }
-      page++;
+    }
+    if (options.onlyActiveInSystem) {
+      params.set('onlyActiveInSystem', 'true');
+    }
+    if (options.updatedSince) {
+      params.set('updatedSince', options.updatedSince);
     }
 
-    return { ok: true, products: allNormalized };
-  } catch (err: any) {
-    return {
-      ok: false,
-      error:
-        err?.name === 'AbortError'
-          ? 'Time-out bij ophalen van producten uit EcoPos.'
-          : `Verbindingsfout met EcoPos (${baseUrl}): ${err?.message || 'Onbekende fout'}`,
-      products: [],
-    };
+    const res = await fetch(`${baseUrl}/api/v1/pcm/products?${params.toString()}`, {
+      method: 'GET',
+      headers,
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      return {
+        ok: false,
+        error: `EcoPos API fout (HTTP ${res.status}): ${errBody.slice(0, 200) || res.statusText}`,
+        products: [],
+      };
+    }
+
+    const payload = await res.json();
+    const rawList: any[] = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.products)
+        ? payload.products
+        : Array.isArray(payload?.data)
+          ? payload.data
+          : [];
+
+    for (const item of rawList) {
+      const norm = normalizeEcoPosProduct(item);
+      if (norm) {
+        if (
+          !options.articleNumbers?.length ||
+          options.articleNumbers.includes(norm.internalArticleNumber)
+        ) {
+          allNormalized.push(norm);
+        }
+      }
+    }
+
+    const totalPages = payload?.meta?.totalPages ?? 1;
+    if (page >= totalPages || rawList.length < limit) {
+      break;
+    }
+    page++;
   }
+
+    return { ok: true, products: allNormalized };
+} catch (err: any) {
+  return {
+    ok: false,
+    error:
+      err?.name === 'AbortError'
+        ? 'Time-out bij ophalen van producten uit EcoPos.'
+        : `Verbindingsfout met EcoPos (${baseUrl}): ${err?.message || 'Onbekende fout'}`,
+    products: [],
+  };
+}
 }
 
 export interface EcoPosPreviewResult {
@@ -387,6 +373,7 @@ export interface EcoPosExecuteResult {
   skippedNewCount: number;
   totalFieldsChanged: number;
   syncedAt: string;
+  updatedProducts?: any[];
 }
 
 export async function executeEcoPosSyncAction(options: {
@@ -557,12 +544,16 @@ export async function executeEcoPosSyncAction(options: {
             create: { name: String(ch.newValue).trim() },
           },
         };
-      } else if (ch.fieldKey === 'category') {
-        resolvedCategoryId = await resolveCategoryId(String(ch.newValue).trim(), null);
-        dataPayload.category = { connect: { id: resolvedCategoryId } };
-      } else if (ch.fieldKey === 'subcategory') {
-        const subId = await resolveCategoryId(String(ch.newValue).trim(), resolvedCategoryId ?? null);
-        dataPayload.subcategory = { connect: { id: subId } };
+      } else if (ch.fieldKey === 'category' || ch.fieldKey === 'subcategory') {
+        const trimmedCat = ch.newValue !== null && ch.newValue !== undefined ? String(ch.newValue).trim() : '';
+        if (!trimmedCat) {
+          dataPayload.subcategory = { disconnect: true };
+          dataPayload.category = { disconnect: true };
+        } else {
+          const catId = await resolveCategoryId(trimmedCat);
+          dataPayload.subcategory = { connect: { id: catId } };
+          dataPayload.category = { connect: { id: catId } };
+        }
       } else if (ch.fieldKey === 'stockTotalAvailable') {
         existingCustomData.ecoposStock = ch.newValue;
         customDataModified = true;
@@ -570,7 +561,7 @@ export async function executeEcoPosSyncAction(options: {
         existingCustomData.ecoposCostPrice = ch.newValue;
         customDataModified = true;
       } else if (ch.fieldKey === 'vatRate') {
-        existingCustomData.ecoposVatRate = ch.newValue;
+        existingCustomData.ecoposVatRate = Math.round(Number(ch.newValue));
         customDataModified = true;
       } else if (ch.fieldKey === 'customFields') {
         existingCustomData.ecoposExtra = ch.newValue;
@@ -615,8 +606,8 @@ export async function executeEcoPosSyncAction(options: {
               articleNumber: ecoProd.internalArticleNumber,
               fieldKey: ch.fieldKey,
               fieldLabel: ch.fieldLabel,
-              oldValue: formatEcoPosValue(ch.oldValue, def?.type),
-              newValue: formatEcoPosValue(ch.newValue, def?.type),
+              oldValue: formatEcoPosValue(ch.oldValue, def?.type, ch.fieldKey),
+              newValue: formatEcoPosValue(ch.newValue, def?.type, ch.fieldKey),
               source: 'ECOPOS',
               userId,
               userEmail,
@@ -643,6 +634,21 @@ export async function executeEcoPosSyncAction(options: {
 
   revalidatePath('/products');
 
+  let updatedProducts: any[] | undefined;
+  if (options.articleNumbers && options.articleNumbers.length > 0 && options.articleNumbers.length <= 10) {
+    updatedProducts = await prisma.product.findMany({
+      where: { internalArticleNumber: { in: options.articleNumbers } },
+      include: {
+        brand: true,
+        supplier: true,
+        category: true,
+        subcategory: true,
+        assignedUser: true,
+        lastEditedByUser: true,
+      },
+    });
+  }
+
   return {
     ok: true,
     updatedCount,
@@ -651,6 +657,7 @@ export async function executeEcoPosSyncAction(options: {
     skippedNewCount,
     totalFieldsChanged,
     syncedAt: nowIso,
+    updatedProducts,
   };
 }
 

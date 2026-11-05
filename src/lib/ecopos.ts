@@ -128,21 +128,12 @@ export const ECOPOS_FIELDS: EcoPosFieldDef[] = [
     prismaTarget: 'supplier',
   },
   {
-    key: 'category',
+    key: 'subcategory',
     label: 'Categorie',
     category: 'basic',
     type: 'relation',
-    defaultMode: 'fill_empty',
-    description: 'Hoofdcategorie uit EcoPos/MplusKassa',
-    prismaTarget: 'category',
-  },
-  {
-    key: 'subcategory',
-    label: 'Subcategorie',
-    category: 'basic',
-    type: 'relation',
-    defaultMode: 'fill_empty',
-    description: 'Subcategorie uit EcoPos/MplusKassa',
+    defaultMode: 'overwrite',
+    description: 'Productcategorie (subcategorie uit EcoPos/MplusKassa; hoofdcategorie MplusWebshops wordt genegeerd)',
     prismaTarget: 'subcategory',
   },
 
@@ -225,9 +216,9 @@ export const ECOPOS_FIELDS: EcoPosFieldDef[] = [
     key: 'vatRate',
     label: 'BTW-tarief (%)',
     category: 'stock',
-    type: 'float',
+    type: 'number',
     defaultMode: 'overwrite',
-    description: 'BTW-percentage in MplusKassa (bijv. 21 of 9)',
+    description: 'BTW-percentage in MplusKassa als geheel getal (bijv. 21 of 9)',
     prismaTarget: 'customData.ecoposVatRate',
   },
   {
@@ -359,206 +350,249 @@ export function normalizeEcoPosProduct(raw: any): NormalizedEcoPosProduct | null
   );
   if (supplier !== undefined) values.supplier = supplier;
 
-  const category = parseStr(
-    typeof basic.category === 'string'
-      ? basic.category
-      : basic.category?.name ?? raw.category?.name ?? raw.category
-  );
-  if (category !== undefined) values.category = category;
+  const isIgnoredRootCat = (name?: string) => !name || name.trim().toLowerCase() === 'mpluswebshops';
 
-  const subcategory = parseStr(
-    typeof basic.subcategory === 'string'
-      ? basic.subcategory
-      : basic.subcategory?.name ?? raw.subcategory?.name ?? raw.subcategory
-  );
-  if (subcategory !== undefined) values.subcategory = subcategory;
+  // Support optional array of groups/subcategories if EcoPos sends multiple groups for a product
+  const rawGroupsArray =
+    basic.subcategories ?? basic.groups ?? basic.categories ?? raw.subcategories ?? raw.groups ?? raw.categories;
 
-  // Dimensions
-  const weightGr = parseNum(dimensions.weightGr ?? raw.weightGr ?? raw.weight, false);
-  if (weightGr !== undefined) values.weightGr = weightGr;
+  if (Array.isArray(rawGroupsArray)) {
+    const groupNames = Array.from(
+      new Set(
+        rawGroupsArray
+          .map((item: any) => {
+            if (typeof item === 'string') return item.trim();
+            if (item && typeof item === 'object') {
+              return String(item.subcategory ?? item.name ?? item.group ?? item.category ?? '').trim();
+            }
+            return '';
+          })
+          .filter((n: string) => n && !isIgnoredRootCat(n))
+      )
+    );
+    values.subcategory = groupNames.length > 0 ? groupNames.join(', ') : null;
+  } else {
+    const rawCategory = parseStr(
+      typeof basic.category === 'string'
+        ? basic.category
+        : basic.category?.name ?? raw.category?.name ?? raw.category
+    );
 
-  const lengthCm = parseNum(dimensions.lengthCm ?? raw.lengthCm ?? raw.length, false);
-  if (lengthCm !== undefined) values.lengthCm = lengthCm;
+      const rawSubcategory = parseStr(
+        typeof basic.subcategory === 'string'
+          ? basic.subcategory
+          : basic.subcategory?.name ?? raw.subcategory?.name ?? raw.subcategory
+      );
 
-  const widthCm = parseNum(dimensions.widthCm ?? raw.widthCm ?? raw.width, false);
-  if (widthCm !== undefined) values.widthCm = widthCm;
-
-  const heightCm = parseNum(dimensions.heightCm ?? raw.heightCm ?? raw.height, false);
-  if (heightCm !== undefined) values.heightCm = heightCm;
-
-  const volumeMl = parseNum(dimensions.volumeMl ?? raw.volumeMl, false);
-  if (volumeMl !== undefined) values.volumeMl = volumeMl;
-
-  const volumeGr = parseNum(dimensions.volumeGr ?? raw.volumeGr, false);
-  if (volumeGr !== undefined) values.volumeGr = volumeGr;
-
-  // Stock & POS
-  const stockTotal = parseNum(
-    stock.totalAvailable ?? stock.quantity ?? raw.stockTotalAvailable ?? raw.stockQuantity ?? (typeof raw.stock === 'number' ? raw.stock : undefined),
-    false
-  );
-  if (stockTotal !== undefined) values.stockTotalAvailable = stockTotal;
-
-  const costPrice = parseNum(pricing.costPrice ?? raw.costPrice ?? raw.inkoopprijs, true);
-  if (costPrice !== undefined) values.costPrice = costPrice;
-
-  const vatRate = parseNum(pricing.vatRate ?? raw.vatRate ?? raw.btw, true);
-  if (vatRate !== undefined) values.vatRate = vatRate;
-
-  const extraObj: Record<string, any> = {};
-  if (Array.isArray(stock.locations) && stock.locations.length > 0) {
-    extraObj.locations = stock.locations;
-  }
-  if (typeof stock.inStock === 'boolean') {
-    extraObj.inStock = stock.inStock;
-  }
-  if (raw.customFields && typeof raw.customFields === 'object') {
-    Object.assign(extraObj, raw.customFields);
-  }
-  if (Object.keys(extraObj).length > 0) {
-    values.customFields = extraObj;
-  }
-
-  return {
-    internalArticleNumber: articleNumber,
-    values,
-    rawStockLocations: Array.isArray(stock.locations) ? stock.locations : undefined,
-    rawCustomFields: raw.customFields,
-    sourceUpdatedAt: raw.sourceUpdatedAt ?? raw.updatedAt ?? null,
-  };
-}
-
-export interface EcoPosFieldChange {
-  fieldKey: string;
-  fieldLabel: string;
-  category: EcoPosCategoryKey;
-  oldValue: any;
-  newValue: any;
-  modeUsed: EcoPosFieldMode;
-}
-
-export interface EcoPosProductDiff {
-  internalArticleNumber: string;
-  title: string;
-  isNew: boolean;
-  changes: EcoPosFieldChange[];
-  allEcoPosValues: Record<string, any>;
-}
-
-/**
- * Extracts the current value of an EcoPos-mapped field from a Prisma Product record
- * (with included brand, supplier, category, subcategory relations).
- */
-export function getCurrentPcmFieldValue(product: any, fieldKey: string): any {
-  if (!product) return null;
-  switch (fieldKey) {
-    case 'brand':
-      return product.brand?.name ?? null;
-    case 'supplier':
-      return product.supplier?.name ?? null;
-    case 'category':
-      return product.category?.name ?? null;
-    case 'subcategory':
-      return product.subcategory?.name ?? null;
-    case 'stockTotalAvailable':
-      return product.customData?.ecoposStock ?? null;
-    case 'costPrice':
-      return product.customData?.ecoposCostPrice ?? null;
-    case 'vatRate':
-      return product.customData?.ecoposVatRate ?? null;
-    case 'customFields':
-      return product.customData?.ecoposExtra ?? null;
-    default:
-      return product[fieldKey] ?? null;
-  }
-}
-
-export function isValueEmpty(val: any): boolean {
-  if (val === null || val === undefined) return true;
-  if (typeof val === 'string') return val.trim() === '';
-  if (typeof val === 'object') return Object.keys(val).length === 0;
-  return false;
-}
-
-export function valuesAreEqual(a: any, b: any, type: EcoPosFieldDef['type']): boolean {
-  if (isValueEmpty(a) && isValueEmpty(b)) return true;
-  if (isValueEmpty(a) || isValueEmpty(b)) return false;
-  if (type === 'float') {
-    return Math.abs(Number(a) - Number(b)) < 0.0001;
-  }
-  if (type === 'number') {
-    return Number(a) === Number(b);
-  }
-  if (type === 'boolean') {
-    return Boolean(a) === Boolean(b);
-  }
-  if (type === 'custom_json') {
-    return JSON.stringify(a) === JSON.stringify(b);
-  }
-  return String(a).trim() === String(b).trim();
-}
-
-export function computeEcoPosProductDiff(
-  ecoProduct: NormalizedEcoPosProduct,
-  existingPcmProduct: any | null,
-  fieldModes: Record<string, EcoPosFieldMode>
-): EcoPosProductDiff {
-  const isNew = !existingPcmProduct;
-  const changes: EcoPosFieldChange[] = [];
-
-  for (const fieldDef of ECOPOS_FIELDS) {
-    const mode = fieldModes[fieldDef.key] ?? 'ignore';
-    if (mode === 'ignore') continue;
-
-    const incomingVal = ecoProduct.values[fieldDef.key];
-    if (isValueEmpty(incomingVal)) continue;
-
-    if (isNew) {
-      changes.push({
-        fieldKey: fieldDef.key,
-        fieldLabel: fieldDef.label,
-        category: fieldDef.category,
-        oldValue: null,
-        newValue: incomingVal,
-        modeUsed: mode,
-      });
-      continue;
+      if (rawSubcategory && !isIgnoredRootCat(rawSubcategory)) {
+        values.subcategory = rawSubcategory;
+      } else if (rawCategory && !isIgnoredRootCat(rawCategory)) {
+        values.subcategory = rawCategory;
+      } else if (
+        'subcategory' in basic ||
+        'category' in basic ||
+        'subcategory' in raw ||
+        'category' in raw
+      ) {
+        values.subcategory = null;
+      }
     }
 
-    const currentVal = getCurrentPcmFieldValue(existingPcmProduct, fieldDef.key);
-    if (mode === 'fill_empty' && !isValueEmpty(currentVal)) {
-      continue; // Already has a value in PCM, do not overwrite
+    // Dimensions
+    const weightGr = parseNum(dimensions.weightGr ?? raw.weightGr ?? raw.weight, false);
+    if (weightGr !== undefined) values.weightGr = weightGr;
+
+    const lengthCm = parseNum(dimensions.lengthCm ?? raw.lengthCm ?? raw.length, false);
+    if (lengthCm !== undefined) values.lengthCm = lengthCm;
+
+    const widthCm = parseNum(dimensions.widthCm ?? raw.widthCm ?? raw.width, false);
+    if (widthCm !== undefined) values.widthCm = widthCm;
+
+    const heightCm = parseNum(dimensions.heightCm ?? raw.heightCm ?? raw.height, false);
+    if (heightCm !== undefined) values.heightCm = heightCm;
+
+    const volumeMl = parseNum(dimensions.volumeMl ?? raw.volumeMl, false);
+    if (volumeMl !== undefined) values.volumeMl = volumeMl;
+
+    const volumeGr = parseNum(dimensions.volumeGr ?? raw.volumeGr, false);
+    if (volumeGr !== undefined) values.volumeGr = volumeGr;
+
+    // Stock & POS
+    const stockTotal = parseNum(
+      stock.totalAvailable ?? stock.quantity ?? raw.stockTotalAvailable ?? raw.stockQuantity ?? (typeof raw.stock === 'number' ? raw.stock : undefined),
+      false
+    );
+    if (stockTotal !== undefined) values.stockTotalAvailable = stockTotal;
+
+    const costPrice = parseNum(pricing.costPrice ?? raw.costPrice ?? raw.inkoopprijs, true);
+    if (costPrice !== undefined) values.costPrice = costPrice;
+
+    const rawVat = parseNum(pricing.vatRate ?? raw.vatRate ?? raw.btw, true);
+    if (rawVat !== undefined) values.vatRate = Math.round(rawVat);
+
+    const extraObj: Record<string, any> = {};
+    if (Array.isArray(stock.locations) && stock.locations.length > 0) {
+      extraObj.locations = stock.locations;
+    }
+    if (typeof stock.inStock === 'boolean') {
+      extraObj.inStock = stock.inStock;
+    }
+    if (raw.customFields && typeof raw.customFields === 'object') {
+      Object.assign(extraObj, raw.customFields);
+    }
+    if (Object.keys(extraObj).length > 0) {
+      values.customFields = extraObj;
     }
 
-    if (!valuesAreEqual(currentVal, incomingVal, fieldDef.type)) {
-      changes.push({
-        fieldKey: fieldDef.key,
-        fieldLabel: fieldDef.label,
-        category: fieldDef.category,
-        oldValue: currentVal,
-        newValue: incomingVal,
-        modeUsed: mode,
-      });
+    return {
+      internalArticleNumber: articleNumber,
+      values,
+      rawStockLocations: Array.isArray(stock.locations) ? stock.locations : undefined,
+      rawCustomFields: raw.customFields,
+      sourceUpdatedAt: raw.sourceUpdatedAt ?? raw.updatedAt ?? null,
+    };
+  }
+
+  export interface EcoPosFieldChange {
+    fieldKey: string;
+    fieldLabel: string;
+    category: EcoPosCategoryKey;
+    oldValue: any;
+    newValue: any;
+    modeUsed: EcoPosFieldMode;
+  }
+
+  export interface EcoPosProductDiff {
+    internalArticleNumber: string;
+    title: string;
+    isNew: boolean;
+    changes: EcoPosFieldChange[];
+    allEcoPosValues: Record<string, any>;
+  }
+
+  /**
+   * Extracts the current value of an EcoPos-mapped field from a Prisma Product record
+   * (with included brand, supplier, category, subcategory relations).
+   */
+  export function getCurrentPcmFieldValue(product: any, fieldKey: string): any {
+    if (!product) return null;
+    switch (fieldKey) {
+      case 'brand':
+        return product.brand?.name ?? null;
+      case 'supplier':
+        return product.supplier?.name ?? null;
+      case 'category':
+      case 'subcategory': {
+        const subName = product.subcategory?.name ?? null;
+        if (subName && subName.trim().toLowerCase() !== 'mpluswebshops') return subName;
+        const catName = product.category?.name ?? null;
+        if (catName && catName.trim().toLowerCase() !== 'mpluswebshops') return catName;
+        return null;
+      }
+      case 'stockTotalAvailable':
+        return product.customData?.ecoposStock ?? null;
+      case 'costPrice':
+        return product.customData?.ecoposCostPrice ?? null;
+      case 'vatRate': {
+        const rawVat = product.customData?.ecoposVatRate;
+        return rawVat !== undefined && rawVat !== null && rawVat !== '' ? Math.round(Number(rawVat)) : null;
+      }
+      case 'customFields':
+        return product.customData?.ecoposExtra ?? null;
+      default:
+        return product[fieldKey] ?? null;
     }
   }
 
-  return {
-    internalArticleNumber: ecoProduct.internalArticleNumber,
-    title:
-      existingPcmProduct?.title ||
-      ecoProduct.values.title ||
-      `Artikel #${ecoProduct.internalArticleNumber}`,
-    isNew,
-    changes,
-    allEcoPosValues: ecoProduct.values,
-  };
-}
+  export function isValueEmpty(val: any): boolean {
+    if (val === null || val === undefined) return true;
+    if (typeof val === 'string') return val.trim() === '';
+    if (typeof val === 'object') return Object.keys(val).length === 0;
+    return false;
+  }
 
-export function formatEcoPosValue(val: any, type?: EcoPosFieldDef['type']): string {
-  if (isValueEmpty(val)) return '—';
-  if (typeof val === 'boolean' || type === 'boolean') return val ? 'Ja' : 'Nee';
-  if (type === 'float' && typeof val === 'number') return `€ ${val.toFixed(2).replace('.', ',')}`;
-  if (typeof val === 'object') return JSON.stringify(val);
-  return String(val);
-}
+  export function valuesAreEqual(a: any, b: any, type: EcoPosFieldDef['type']): boolean {
+    if (isValueEmpty(a) && isValueEmpty(b)) return true;
+    if (isValueEmpty(a) || isValueEmpty(b)) return false;
+    if (type === 'float') {
+      return Math.abs(Number(a) - Number(b)) < 0.0001;
+    }
+    if (type === 'number') {
+      return Number(a) === Number(b);
+    }
+    if (type === 'boolean') {
+      return Boolean(a) === Boolean(b);
+    }
+    if (type === 'custom_json') {
+      return JSON.stringify(a) === JSON.stringify(b);
+    }
+    return String(a).trim() === String(b).trim();
+  }
+
+  export function computeEcoPosProductDiff(
+    ecoProduct: NormalizedEcoPosProduct,
+    existingPcmProduct: any | null,
+    fieldModes: Record<string, EcoPosFieldMode>
+  ): EcoPosProductDiff {
+    const isNew = !existingPcmProduct;
+    const changes: EcoPosFieldChange[] = [];
+
+    for (const fieldDef of ECOPOS_FIELDS) {
+      const mode = fieldModes[fieldDef.key] ?? 'ignore';
+      if (mode === 'ignore') continue;
+
+      const incomingVal = ecoProduct.values[fieldDef.key];
+      const allowNullClear =
+        fieldDef.key === 'subcategory' && incomingVal === null && mode === 'overwrite' && !isNew;
+      if (isValueEmpty(incomingVal) && !allowNullClear) continue;
+
+      if (isNew) {
+        changes.push({
+          fieldKey: fieldDef.key,
+          fieldLabel: fieldDef.label,
+          category: fieldDef.category,
+          oldValue: null,
+          newValue: incomingVal,
+          modeUsed: mode,
+        });
+        continue;
+      }
+
+      const currentVal = getCurrentPcmFieldValue(existingPcmProduct, fieldDef.key);
+      if (mode === 'fill_empty' && !isValueEmpty(currentVal)) {
+        continue; // Already has a value in PCM, do not overwrite
+      }
+
+      if (!valuesAreEqual(currentVal, incomingVal, fieldDef.type)) {
+        changes.push({
+          fieldKey: fieldDef.key,
+          fieldLabel: fieldDef.label,
+          category: fieldDef.category,
+          oldValue: currentVal,
+          newValue: incomingVal,
+          modeUsed: mode,
+        });
+      }
+    }
+
+    return {
+      internalArticleNumber: ecoProduct.internalArticleNumber,
+      title:
+        existingPcmProduct?.title ||
+        ecoProduct.values.title ||
+        `Artikel #${ecoProduct.internalArticleNumber}`,
+      isNew,
+      changes,
+      allEcoPosValues: ecoProduct.values,
+    };
+  }
+
+  export function formatEcoPosValue(val: any, type?: EcoPosFieldDef['type'], fieldKey?: string): string {
+    if (isValueEmpty(val)) return '—';
+    if (fieldKey === 'vatRate') return `${Math.round(Number(val))}%`;
+    if (typeof val === 'boolean' || type === 'boolean') return val ? 'Ja' : 'Nee';
+    if (type === 'float' && typeof val === 'number') return `€ ${val.toFixed(2).replace('.', ',')}`;
+    if (typeof val === 'object') return JSON.stringify(val);
+    return String(val);
+  }
 

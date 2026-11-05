@@ -330,38 +330,90 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   // Handle escape key and navigation arrows
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isOpen && !showUnsavedWarning && !showCopyModal) {
-        if (e.key === 'Escape') {
+      if (!isOpen || showUnsavedWarning) return;
+      const isLightboxOpen = !!document.querySelector('[data-lightbox="true"]');
+
+      if (e.key === 'Escape') {
+        if (isLightboxOpen) return;
+        if (showEcoPosModal) {
+          e.preventDefault();
+          setShowEcoPosModal(false);
+          return;
+        }
+        if (formattingModalSection) {
+          e.preventDefault();
+          setFormattingModalSection(null);
+          return;
+        }
+        if (showTransferSupplierModal) {
+          e.preventDefault();
+          setShowTransferSupplierModal(false);
+          return;
+        }
+        if (showHistory) {
+          e.preventDefault();
+          setShowHistory(false);
+          return;
+        }
+        if (showWebEnrichModal) {
+          e.preventDefault();
+          setShowWebEnrichModal(false);
+          return;
+        }
+        if (showCopyModal) {
+          e.preventDefault();
+          setShowCopyModal(false);
+          return;
+        }
+        if (isDirty) {
+          setPendingNavigation(null);
+          setShowUnsavedWarning(true);
+        } else {
+          onClose();
+        }
+      } else if (
+        (e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
+        !showCopyModal &&
+        !showEcoPosModal &&
+        !formattingModalSection &&
+        !showTransferSupplierModal &&
+        !showHistory &&
+        !showWebEnrichModal
+      ) {
+        const active = document.activeElement;
+        const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || (active as HTMLElement).isContentEditable);
+        if (!isInput && !isLightboxOpen) {
+          e.preventDefault();
+          const direction = e.key === 'ArrowLeft' ? 'prev' : 'next';
+          if (direction === 'prev' && !onPrev) return;
+          if (direction === 'next' && !onNext) return;
+
           if (isDirty) {
-            setPendingNavigation(null);
+            setPendingNavigation(direction);
             setShowUnsavedWarning(true);
           } else {
-            onClose();
-          }
-        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-          const active = document.activeElement;
-          const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || (active as HTMLElement).isContentEditable);
-          const isLightboxOpen = !!document.querySelector('[data-lightbox="true"]');
-          if (!isInput && !isLightboxOpen) {
-            e.preventDefault();
-            const direction = e.key === 'ArrowLeft' ? 'prev' : 'next';
-            if (direction === 'prev' && !onPrev) return;
-            if (direction === 'next' && !onNext) return;
-
-            if (isDirty) {
-              setPendingNavigation(direction);
-              setShowUnsavedWarning(true);
-            } else {
-              if (direction === 'prev') onPrev!();
-              if (direction === 'next') onNext!();
-            }
+            if (direction === 'prev') onPrev!();
+            if (direction === 'next') onNext!();
           }
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isDirty, showUnsavedWarning, showCopyModal, onClose, onPrev, onNext]);
+  }, [
+    isOpen,
+    isDirty,
+    showUnsavedWarning,
+    showCopyModal,
+    showEcoPosModal,
+    formattingModalSection,
+    showTransferSupplierModal,
+    showHistory,
+    showWebEnrichModal,
+    onClose,
+    onPrev,
+    onNext,
+  ]);
 
   const handleSubmit = (formData: FormData) => {
     // Auto-fallback: if the user did NOT touch the status dropdown during this edit session,
@@ -649,9 +701,20 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
 
     // ── Relation fields: resolve dotted path on the product object ───────────
     if (f.type === 'relation' && f.relationPath) {
-      const parts = f.relationPath.split('.');
-      let resolved: any = localProductData;
-      for (const p of parts) { resolved = resolved?.[p]; }
+      let resolved: any = null;
+      if (f.relationPath === 'category.name' || f.relationPath === 'subcategory.name') {
+        const subName = localProductData?.subcategory?.name;
+        const catName = localProductData?.category?.name;
+        if (subName && subName.trim().toLowerCase() !== 'mpluswebshops') {
+          resolved = subName;
+        } else if (catName && catName.trim().toLowerCase() !== 'mpluswebshops') {
+          resolved = catName;
+        }
+      } else {
+        const parts = f.relationPath.split('.');
+        resolved = localProductData;
+        for (const p of parts) { resolved = resolved?.[p]; }
+      }
       // For email addresses (assignedUser) strip the domain for brevity
       const displayVal = typeof resolved === 'string' && resolved.includes('@')
         ? resolved.split('@')[0]
@@ -760,6 +823,10 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
 
     if (key.startsWith('custom_')) {
       val = localProductData?.customData ? localProductData.customData[key.replace('custom_', '')] : null;
+      if (key === 'custom_ecoposVatRate' && val !== null && val !== undefined && val !== '') {
+        const n = Number(String(val).replace('%', '').replace(',', '.'));
+        if (!Number.isNaN(n)) val = `${Math.round(n)}%`;
+      }
     } else {
       val = localProductData?.[key];
     }
@@ -1362,8 +1429,17 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
             onClose={() => setShowEcoPosModal(false)}
             articleNumbers={[localProductData.internalArticleNumber]}
             singleProductMode={true}
-            onComplete={() => {
-              window.location.reload();
+            onComplete={(result) => {
+              if (result?.updatedProducts && result.updatedProducts.length > 0) {
+                const updated = result.updatedProducts[0];
+                setLocalProductData((prev: any) => ({
+                  ...prev,
+                  ...updated,
+                }));
+                setActiveStatus((updated.status || 'NEW').toUpperCase());
+                setFormKey((k) => k + 1);
+                setEmpcoRefreshKey((k) => k + 1);
+              }
             }}
           />
         )}

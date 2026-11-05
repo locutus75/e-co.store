@@ -58,6 +58,20 @@ export default function EcoPosSyncModal({
   const backdropProps = useBackdropClose(onClose);
   const articleNumbersKey = (articleNumbers ?? []).join(',');
 
+  // Close EcoPosSyncModal on Escape key before any parent drawer handles it
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !executing) {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isOpen, executing, onClose]);
+
   useEffect(() => {
     if (!isOpen) return;
     const targetArticles = articleNumbersKey ? articleNumbersKey.split(',') : undefined;
@@ -545,10 +559,10 @@ return (
                               </td>
                               <td style={{ padding: '0.65rem 0.9rem', fontWeight: 600 }}>{ch.fieldLabel}</td>
                               <td style={{ padding: '0.65rem 0.9rem', color: 'var(--text-muted)' }}>
-                                {formatEcoPosValue(ch.oldValue, def?.type)}
+                                {formatEcoPosValue(ch.oldValue, def?.type, ch.fieldKey)}
                               </td>
                               <td style={{ padding: '0.65rem 0.9rem', fontWeight: 700, color: '#0369a1' }}>
-                                {formatEcoPosValue(ch.newValue, def?.type)}
+                                {formatEcoPosValue(ch.newValue, def?.type, ch.fieldKey)}
                               </td>
                             </tr>
                           );
@@ -681,13 +695,13 @@ return (
                                     {!item.isNew && (
                                       <>
                                         <span style={{ color: 'var(--text-muted)', textDecoration: 'line-through' }}>
-                                          {formatEcoPosValue(ch.oldValue, def?.type)}
+                                          {formatEcoPosValue(ch.oldValue, def?.type, ch.fieldKey)}
                                         </span>{' '}
                                         →{' '}
                                       </>
                                     )}
                                     <span style={{ fontWeight: 700, color: '#0284c7' }}>
-                                      {formatEcoPosValue(ch.newValue, def?.type)}
+                                      {formatEcoPosValue(ch.newValue, def?.type, ch.fieldKey)}
                                     </span>
                                   </span>
                                 );
