@@ -182,77 +182,77 @@ async function fetchProductsFromEcoPos(options: {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 20000);
 
-        const params = new URLSearchParams({
-          page: String(page),
-          limit: String(limit),
-        });
-        if(options.articleNumbers?.length) {
-          params.set('articleNumbers', options.articleNumbers.join(','));
-    }
-    if (options.onlyActiveInSystem) {
-      params.set('onlyActiveInSystem', 'true');
-    }
-    if (options.updatedSince) {
-      params.set('updatedSince', options.updatedSince);
-    }
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(limit),
+      });
+      if (options.articleNumbers?.length) {
+        params.set('articleNumbers', options.articleNumbers.join(','));
+      }
+      if (options.onlyActiveInSystem) {
+        params.set('onlyActiveInSystem', 'true');
+      }
+      if (options.updatedSince) {
+        params.set('updatedSince', options.updatedSince);
+      }
 
-    const res = await fetch(`${baseUrl}/api/v1/pcm/products?${params.toString()}`, {
-      method: 'GET',
-      headers,
-      cache: 'no-store',
-      signal: controller.signal,
-    });
+      const res = await fetch(`${baseUrl}/api/v1/pcm/products?${params.toString()}`, {
+        method: 'GET',
+        headers,
+        cache: 'no-store',
+        signal: controller.signal,
+      });
 
-    clearTimeout(timeout);
+      clearTimeout(timeout);
 
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => '');
-      return {
-        ok: false,
-        error: `EcoPos API fout (HTTP ${res.status}): ${errBody.slice(0, 200) || res.statusText}`,
-        products: [],
-      };
-    }
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '');
+        return {
+          ok: false,
+          error: `EcoPos API fout (HTTP ${res.status}): ${errBody.slice(0, 200) || res.statusText}`,
+          products: [],
+        };
+      }
 
-    const payload = await res.json();
-    const rawList: any[] = Array.isArray(payload)
-      ? payload
-      : Array.isArray(payload?.products)
-        ? payload.products
-        : Array.isArray(payload?.data)
-          ? payload.data
-          : [];
+      const payload = await res.json();
+      const rawList: any[] = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.products)
+          ? payload.products
+          : Array.isArray(payload?.data)
+            ? payload.data
+            : [];
 
-    for (const item of rawList) {
-      const norm = normalizeEcoPosProduct(item);
-      if (norm) {
-        if (
-          !options.articleNumbers?.length ||
-          options.articleNumbers.includes(norm.internalArticleNumber)
-        ) {
-          allNormalized.push(norm);
+      for (const item of rawList) {
+        const norm = normalizeEcoPosProduct(item);
+        if (norm) {
+          if (
+            !options.articleNumbers?.length ||
+            options.articleNumbers.includes(norm.internalArticleNumber)
+          ) {
+            allNormalized.push(norm);
+          }
         }
       }
-    }
 
-    const totalPages = payload?.meta?.totalPages ?? 1;
-    if (page >= totalPages || rawList.length < limit) {
-      break;
+      const totalPages = payload?.meta?.totalPages ?? 1;
+      if (page >= totalPages || rawList.length < limit) {
+        break;
+      }
+      page++;
     }
-    page++;
-  }
 
     return { ok: true, products: allNormalized };
-} catch (err: any) {
-  return {
-    ok: false,
-    error:
-      err?.name === 'AbortError'
-        ? 'Time-out bij ophalen van producten uit EcoPos.'
-        : `Verbindingsfout met EcoPos (${baseUrl}): ${err?.message || 'Onbekende fout'}`,
-    products: [],
-  };
-}
+  } catch (err: any) {
+    return {
+      ok: false,
+      error:
+        err?.name === 'AbortError'
+          ? 'Time-out bij ophalen van producten uit EcoPos.'
+          : `Verbindingsfout met EcoPos (${baseUrl}): ${err?.message || 'Onbekende fout'}`,
+      products: [],
+    };
+  }
 }
 
 export interface EcoPosPreviewResult {
@@ -489,10 +489,17 @@ export async function executeEcoPosSyncAction(options: {
     const existingCat = await prisma.category.findFirst({
       where: {
         name: { equals: name, mode: 'insensitive' },
-        ...(parentId !== undefined ? { parentId } : {}),
       },
     });
-    if (existingCat) return existingCat.id;
+    if (existingCat) {
+      if (parentId && existingCat.parentId !== parentId && existingCat.id !== parentId) {
+        await prisma.category.update({
+          where: { id: existingCat.id },
+          data: { parentId },
+        });
+      }
+      return existingCat.id;
+    }
     const createdCat = await prisma.category.create({
       data: { name, parentId: parentId ?? null },
     });
@@ -545,151 +552,159 @@ export async function executeEcoPosSyncAction(options: {
           },
         };
       } else if (ch.fieldKey === 'category' || ch.fieldKey === 'subcategory') {
-        const trimmedCat = ch.newValue !== null && ch.newValue !== undefined ? String(ch.newValue).trim() : '';
-        if (!trimmedCat) {
-          dataPayload.subcategory = { disconnect: true };
-          dataPayload.category = { disconnect: true };
+          const trimmedSub = ch.newValue !== null && ch.newValue !== undefined ? String(ch.newValue).trim() : '';
+          const parentCatName =
+            typeof ecoProd.values.category === 'string' && ecoProd.values.category.trim()
+              ? ecoProd.values.category.trim()
+              : null;
+          if (!trimmedSub) {
+            dataPayload.subcategory = { disconnect: true };
+            dataPayload.category = { disconnect: true };
+          } else {
+            let parentCatId: string | null = null;
+            if (parentCatName && parentCatName.toLowerCase() !== trimmedSub.toLowerCase()) {
+              parentCatId = await resolveCategoryId(parentCatName, null);
+            }
+            const subCatId = await resolveCategoryId(trimmedSub, parentCatId ?? undefined);
+            dataPayload.subcategory = { connect: { id: subCatId } };
+            dataPayload.category = { connect: { id: parentCatId ?? subCatId } };
+          }
+        } else if (ch.fieldKey === 'stockTotalAvailable') {
+          existingCustomData.ecoposStock = ch.newValue;
+          customDataModified = true;
+        } else if (ch.fieldKey === 'costPrice') {
+          existingCustomData.ecoposCostPrice = ch.newValue;
+          customDataModified = true;
+        } else if (ch.fieldKey === 'vatRate') {
+          existingCustomData.ecoposVatRate = Math.round(Number(ch.newValue));
+          customDataModified = true;
+        } else if (ch.fieldKey === 'customFields') {
+          existingCustomData.ecoposExtra = ch.newValue;
+          customDataModified = true;
         } else {
-          const catId = await resolveCategoryId(trimmedCat);
-          dataPayload.subcategory = { connect: { id: catId } };
-          dataPayload.category = { connect: { id: catId } };
+          dataPayload[ch.fieldKey] = ch.newValue;
         }
-      } else if (ch.fieldKey === 'stockTotalAvailable') {
-        existingCustomData.ecoposStock = ch.newValue;
-        customDataModified = true;
-      } else if (ch.fieldKey === 'costPrice') {
-        existingCustomData.ecoposCostPrice = ch.newValue;
-        customDataModified = true;
-      } else if (ch.fieldKey === 'vatRate') {
-        existingCustomData.ecoposVatRate = Math.round(Number(ch.newValue));
-        customDataModified = true;
-      } else if (ch.fieldKey === 'customFields') {
-        existingCustomData.ecoposExtra = ch.newValue;
-        customDataModified = true;
+      }
+
+      // Always stamp last EcoPos sync timestamp in customData when a product is touched
+      existingCustomData.ecoposLastSyncedAt = nowIso;
+      dataPayload.customData = existingCustomData;
+      if (userId) {
+        dataPayload.lastEditedByUserId = userId;
+      }
+
+      if (diff.isNew) {
+        await prisma.product.create({
+          data: {
+            internalArticleNumber: ecoProd.internalArticleNumber,
+            title: dataPayload.title || ecoProd.values.title || `Artikel ${ecoProd.internalArticleNumber}`,
+            status: 'new',
+            ...dataPayload,
+          },
+        });
+        createdCount++;
+        totalFieldsChanged += diff.changes.length;
       } else {
-        dataPayload[ch.fieldKey] = ch.newValue;
+        await prisma.product.update({
+          where: { internalArticleNumber: ecoProd.internalArticleNumber },
+          data: dataPayload,
+        });
+        updatedCount++;
+        totalFieldsChanged += diff.changes.length;
+
+        // Record field history entries for auditability
+        if (diff.changes.length > 0) {
+          await prisma.productFieldHistory.createMany({
+            data: diff.changes.map((ch) => {
+              const def = ECOPOS_FIELDS.find((f) => f.key === ch.fieldKey);
+              return {
+                articleNumber: ecoProd.internalArticleNumber,
+                fieldKey: ch.fieldKey,
+                fieldLabel: ch.fieldLabel,
+                oldValue: formatEcoPosValue(ch.oldValue, def?.type, ch.fieldKey),
+                newValue: formatEcoPosValue(ch.newValue, def?.type, ch.fieldKey),
+                source: 'ECOPOS',
+                userId,
+                userEmail,
+              };
+            }),
+          });
+        }
       }
     }
 
-    // Always stamp last EcoPos sync timestamp in customData when a product is touched
-    existingCustomData.ecoposLastSyncedAt = nowIso;
-    dataPayload.customData = existingCustomData;
-    if (userId) {
-      dataPayload.lastEditedByUserId = userId;
-    }
+    const summaryText = `${updatedCount} bijgewerkt, ${createdCount} nieuw aangemaakt (${totalFieldsChanged} veld${totalFieldsChanged === 1 ? '' : 'en'} gewijzigd)`;
+    const updatedSettings: EcoPosSettings = {
+      ...savedSettings,
+      lastSyncAt: nowIso,
+      lastSyncStatus: 'success',
+      lastSyncSummary: summaryText,
+    };
 
-    if (diff.isNew) {
-      await prisma.product.create({
-        data: {
-          internalArticleNumber: ecoProd.internalArticleNumber,
-          title: dataPayload.title || ecoProd.values.title || `Artikel ${ecoProd.internalArticleNumber}`,
-          status: 'new',
-          ...dataPayload,
+    await prisma.systemSetting.upsert({
+      where: { key: ECOPOS_SETTINGS_KEY },
+      create: { key: ECOPOS_SETTINGS_KEY, value: JSON.stringify(updatedSettings) },
+      update: { value: JSON.stringify(updatedSettings) },
+    });
+
+    revalidatePath('/products');
+
+    let updatedProducts: any[] | undefined;
+    if (options.articleNumbers && options.articleNumbers.length > 0 && options.articleNumbers.length <= 10) {
+      updatedProducts = await prisma.product.findMany({
+        where: { internalArticleNumber: { in: options.articleNumbers } },
+        include: {
+          brand: true,
+          supplier: true,
+          category: true,
+          subcategory: true,
+          assignedUser: true,
+          lastEditedByUser: true,
         },
       });
-      createdCount++;
-      totalFieldsChanged += diff.changes.length;
-    } else {
-      await prisma.product.update({
-        where: { internalArticleNumber: ecoProd.internalArticleNumber },
-        data: dataPayload,
-      });
-      updatedCount++;
-      totalFieldsChanged += diff.changes.length;
+    }
 
-      // Record field history entries for auditability
-      if (diff.changes.length > 0) {
-        await prisma.productFieldHistory.createMany({
-          data: diff.changes.map((ch) => {
-            const def = ECOPOS_FIELDS.find((f) => f.key === ch.fieldKey);
-            return {
-              articleNumber: ecoProd.internalArticleNumber,
-              fieldKey: ch.fieldKey,
-              fieldLabel: ch.fieldLabel,
-              oldValue: formatEcoPosValue(ch.oldValue, def?.type, ch.fieldKey),
-              newValue: formatEcoPosValue(ch.newValue, def?.type, ch.fieldKey),
-              source: 'ECOPOS',
-              userId,
-              userEmail,
-            };
-          }),
-        });
+    return {
+      ok: true,
+      updatedCount,
+      createdCount,
+      unchangedCount,
+      skippedNewCount,
+      totalFieldsChanged,
+      syncedAt: nowIso,
+      updatedProducts,
+    };
+  }
+
+  /**
+   * Checks if periodic background sync is enabled and due; if so, runs it automatically.
+   */
+  export async function triggerAutoEcoPosSyncIfDueAction(): Promise<{
+    triggered: boolean;
+    result?: EcoPosExecuteResult;
+  }> {
+    try {
+      const settings = await getEcoPosSettingsAction();
+      if (!settings.enabled || !settings.autoSyncEnabled || !settings.baseUrl) {
+        return { triggered: false };
       }
-    }
-  }
 
-  const summaryText = `${updatedCount} bijgewerkt, ${createdCount} nieuw aangemaakt (${totalFieldsChanged} veld${totalFieldsChanged === 1 ? '' : 'en'} gewijzigd)`;
-  const updatedSettings: EcoPosSettings = {
-    ...savedSettings,
-    lastSyncAt: nowIso,
-    lastSyncStatus: 'success',
-    lastSyncSummary: summaryText,
-  };
+      const intervalMs = Math.max(5, settings.autoSyncIntervalMinutes) * 60 * 1000;
+      const lastSyncMs = settings.lastSyncAt ? new Date(settings.lastSyncAt).getTime() : 0;
 
-  await prisma.systemSetting.upsert({
-    where: { key: ECOPOS_SETTINGS_KEY },
-    create: { key: ECOPOS_SETTINGS_KEY, value: JSON.stringify(updatedSettings) },
-    update: { value: JSON.stringify(updatedSettings) },
-  });
+      if (Date.now() - lastSyncMs < intervalMs) {
+        return { triggered: false };
+      }
 
-  revalidatePath('/products');
+      const result = await executeEcoPosSyncAction({
+        fieldModes: settings.fieldModes,
+        createNewProducts: settings.createNewProducts,
+        onlyActiveInSystem: settings.onlyActiveInSystem,
+        isAutoSync: true,
+      });
 
-  let updatedProducts: any[] | undefined;
-  if (options.articleNumbers && options.articleNumbers.length > 0 && options.articleNumbers.length <= 10) {
-    updatedProducts = await prisma.product.findMany({
-      where: { internalArticleNumber: { in: options.articleNumbers } },
-      include: {
-        brand: true,
-        supplier: true,
-        category: true,
-        subcategory: true,
-        assignedUser: true,
-        lastEditedByUser: true,
-      },
-    });
-  }
-
-  return {
-    ok: true,
-    updatedCount,
-    createdCount,
-    unchangedCount,
-    skippedNewCount,
-    totalFieldsChanged,
-    syncedAt: nowIso,
-    updatedProducts,
-  };
-}
-
-/**
- * Checks if periodic background sync is enabled and due; if so, runs it automatically.
- */
-export async function triggerAutoEcoPosSyncIfDueAction(): Promise<{
-  triggered: boolean;
-  result?: EcoPosExecuteResult;
-}> {
-  try {
-    const settings = await getEcoPosSettingsAction();
-    if (!settings.enabled || !settings.autoSyncEnabled || !settings.baseUrl) {
+      return { triggered: true, result };
+    } catch {
       return { triggered: false };
     }
-
-    const intervalMs = Math.max(5, settings.autoSyncIntervalMinutes) * 60 * 1000;
-    const lastSyncMs = settings.lastSyncAt ? new Date(settings.lastSyncAt).getTime() : 0;
-
-    if (Date.now() - lastSyncMs < intervalMs) {
-      return { triggered: false };
-    }
-
-    const result = await executeEcoPosSyncAction({
-      fieldModes: settings.fieldModes,
-      createNewProducts: settings.createNewProducts,
-      onlyActiveInSystem: settings.onlyActiveInSystem,
-      isAutoSync: true,
-    });
-
-    return { triggered: true, result };
-  } catch {
-    return { triggered: false };
   }
-}

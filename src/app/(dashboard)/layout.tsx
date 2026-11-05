@@ -17,14 +17,14 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   }
   const roles = (session?.user as any)?.roles || [];
   const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
-  
+
   const userId = (session?.user as any)?.id as string | undefined;
-  const currentUser = userId ? await prisma.user.findUnique({ 
-    where: { id: userId }, 
-    select: { email: true, chatColor: true } 
+  const currentUser = userId ? await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, chatColor: true }
   }) : null;
-  
-  // Fetch active menu permissions purely for non-admins 
+
+  // Fetch active menu permissions purely for non-admins
   let allowedMenus = new Set<string>();
   if (!isAdmin && roles.length > 0) {
     const permissions = await prisma.rolePermission.findMany({
@@ -40,8 +40,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   // Initial unread count for the Berichten badge
   const unreadCount = userId
     ? await prisma.messageRecipient.count({
-        where: { toUserId: userId, readAt: null, deletedByRecipient: false },
-      })
+      where: { toUserId: userId, readAt: null, deletedByRecipient: false },
+    })
     : 0;
 
   // Helper function to ascertain access
@@ -50,9 +50,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: 'var(--background)' }}>
       {/* Sidebar */}
-      <aside className="glass" style={{ 
-        width: '260px', 
-        display: 'flex', 
+      <aside className="glass" style={{
+        width: '260px',
+        display: 'flex',
         flexDirection: 'column',
         borderRight: '1px solid var(--border)',
         borderTop: 'none',
@@ -65,7 +65,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         <div style={{ padding: '2.5rem 1.5rem', display: 'flex', justifyContent: 'center', borderBottom: '1px solid rgba(0,0,0,0.03)' }}>
           <Logo size={64} />
         </div>
-        
+
         <nav style={{ padding: '2rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
           {canAccess('MENU:dashboard') && (
             <Link href="/" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', backgroundColor: 'transparent', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Dashboard</Link>
@@ -80,7 +80,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
             <Link href="/ai" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>🤖 AI Assistent</Link>
           )}
           {canAccess('MENU:categories') && (
-            <Link href="/" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Categorieën</Link>
+            <Link href="/categories" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Categorieën</Link>
           )}
           {canAccess('MENU:assignments') && (
             <Link href="/assignments" style={{ padding: '0.75rem 1rem', borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontWeight: 500, transition: 'all 0.2s', display: 'block' }}>Toewijzingen</Link>
@@ -122,12 +122,12 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
             {currentUser && (
-              <Link 
-                href="/profile" 
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '0.75rem', 
+              <Link
+                href="/profile"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
                   textDecoration: 'none',
                   padding: '0.4rem 0.8rem',
                   borderRadius: 'var(--radius)',
