@@ -2,7 +2,7 @@ param (
     [int]$WaitSeconds = 3
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host " E-Co Store : Background Auto-Updater" -ForegroundColor Cyan
@@ -18,67 +18,96 @@ $tcpConnections = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyCon
 if ($tcpConnections) {
     foreach ($conn in $tcpConnections) {
         $pidToKill = $conn.OwningProcess
-        if ($pidToKill -gt 0) {
-            Write-Host "Killing process ID $pidToKill (using port $port)..." -ForegroundColor Yellow
-            Stop-Process -Id $pidToKill -Force -ErrorAction SilentlyContinue
+            if ($pidToKill -gt 0 -and $pidToKill -ne $PID) {
+                Write-Host "Killing process ID $pidToKill (using port $port)..." -ForegroundColor Yellow
+                Stop-Process -Id $pidToKill -Force -ErrorAction SilentlyContinue
+            }
         }
+        Start-Sleep -Seconds 2
     }
-    Start-Sleep -Seconds 2
-} else {
-    Write-Host "Port $port is already free." -ForegroundColor Green
-}
+    else {
+        Write-Host "Port $port is already free." -ForegroundColor Green
+    }
 
-# 1. Pull Latest Source Code
-Write-Host "`n[1/5] Syncing latest code from GitHub..." -ForegroundColor Yellow
-git pull origin master
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "CRITICAL ERROR: Git pull failed! Exiting..." -ForegroundColor Red
-    exit 1
-}
+    # Preserve any runtime-uploaded images BEFORE building (since next build wipes .next)
+    $standaloneUploads = ".next/standalone/public/uploads"
+    $backupUploads = "_uploads_backup_temp"
 
-# 2. Install Dependencies
-Write-Host "`n[2/5] Checking Node Dependencies..." -ForegroundColor Yellow
-$env:NODE_ENV = "development"
-npm install
+    if (Test-Path $standaloneUploads) {
+        Write-Host "Backing up runtime uploads..." -ForegroundColor DarkYellow
+        if (Test-Path $backupUploads) { Remove-Item -Path $backupUploads -Recurse -Force -ErrorAction SilentlyContinue }
+        Copy-Item -Path $standaloneUploads -Destination $backupUploads -Recurse -Force
+    }
 
-# 3. Synchronize Database & Generate Client
-Write-Host "`n[3/5] Synchronizing PostgreSQL Database Schema & Prisma Client..." -ForegroundColor Yellow
-npx prisma db push
-npx prisma generate
+    # 1. Pull Latest Source Code
+    Write-Host "`n[1/5] Syncing latest code from GitHub..." -ForegroundColor Yellow
+    git pull origin master
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "CRITICAL ERROR: Git pull failed! Exiting..." -ForegroundColor Red
+        exit 1
+    }
 
-# 4. Compile Standalone Server
-Write-Host "`n[4/5] Compiling Next.js Standalone Production Build..." -ForegroundColor Yellow
-$env:NODE_ENV = "production"
-npm run build
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "CRITICAL ERROR: Next.js build failed! Exiting..." -ForegroundColor Red
-    exit 1
-}
+    # 2. Install Dependencies
+    Write-Host "`n[2/5] Checking Node Dependencies..." -ForegroundColor Yellow
+    $env:NODE_ENV = "development"
+    npm install
 
-# 5. Prepare Standalone Assets
-Write-Host "`n[5/6] Linking Static Assets..." -ForegroundColor Yellow
-if (Test-Path "public") {
-    if (Test-Path ".next/standalone/public") { cmd /c "rmdir /s /q .next\standalone\public" }
-    Copy-Item -Path "public" -Destination ".next/standalone/" -Recurse -Force
-}
-if (Test-Path ".next/static") {
-    $destStatic = ".next/standalone/.next/static"
-    if (Test-Path $destStatic) { cmd /c "rmdir /s /q .next\standalone\.next\static" }
-    $destBase = ".next/standalone/.next"
-    if (-Not (Test-Path $destBase)) { New-Item -ItemType Directory -Force -Path $destBase | Out-Null }
-    Copy-Item -Path ".next/static" -Destination $destBase -Recurse -Force
-}
+    # 3. Synchronize Database & Generate Client
+    Write-Host "`n[3/5] Synchronizing PostgreSQL Database Schema & Prisma Client..." -ForegroundColor Yellow
+    npx prisma db push
+    npx prisma generate
 
-# 6. Signal the server watchdog to restart
-Write-Host "`n[6/6] Update complete — signalling server watchdog to restart..." -ForegroundColor Green
+    # Clean .next/node_modules junction points before building on Windows
+    if (Test-Path ".next/node_modules") {
+        cmd /c "rmdir /s /q .next\node_modules" 2>$null
+    }
 
-$FlagFile = Join-Path $PSScriptRoot "update_done.flag"
-Set-Content -Path $FlagFile -Value (Get-Date -Format "o")
+    # 4. Compile Standalone Server
+    Write-Host "`n[4/5] Compiling Next.js Standalone Production Build..." -ForegroundColor Yellow
+    $env:NODE_ENV = "production"
+    npm run build
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "CRITICAL ERROR: Next.js build failed! Exiting..." -ForegroundColor Red
+        exit 1
+    }
 
-Write-Host ""
-Write-Host "==========================================" -ForegroundColor Magenta
-Write-Host "  update_done.flag written successfully.  " -ForegroundColor Magenta
-Write-Host "  start_server.ps1 will reboot the app.  " -ForegroundColor Magenta
-Write-Host "==========================================" -ForegroundColor Magenta
-Write-Host ""
-Write-Host "This updater window can now be closed." -ForegroundColor DarkGray
+    # 5. Prepare Standalone Assets
+    Write-Host "`n[5/6] Linking Static Assets..." -ForegroundColor Yellow
+    if (Test-Path "public") {
+        if (Test-Path ".next/standalone/public") { cmd /c "rmdir /s /q .next\standalone\public" }
+        Copy-Item -Path "public" -Destination ".next/standalone/" -Recurse -Force
+    }
+
+    # Restore runtime uploads if backed up
+    if (Test-Path $backupUploads) {
+        Write-Host "Restoring runtime uploads..." -ForegroundColor DarkYellow
+        $restoreDest = ".next/standalone/public/uploads"
+        if (-Not (Test-Path $restoreDest)) { New-Item -ItemType Directory -Force -Path $restoreDest | Out-Null }
+        Get-ChildItem -Path $backupUploads | ForEach-Object {
+            $dest = Join-Path $restoreDest $_.Name
+            Copy-Item -Path $_.FullName -Destination $dest -Recurse -Force
+        }
+        Remove-Item -Path $backupUploads -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    if (Test-Path ".next/static") {
+        $destStatic = ".next/standalone/.next/static"
+        if (Test-Path $destStatic) { cmd /c "rmdir /s /q .next\standalone\.next\static" }
+        $destBase = ".next/standalone/.next"
+        if (-Not (Test-Path $destBase)) { New-Item -ItemType Directory -Force -Path $destBase | Out-Null }
+        Copy-Item -Path ".next/static" -Destination $destBase -Recurse -Force
+    }
+
+    # 6. Signal the server watchdog to restart
+    Write-Host "`n[6/6] Update complete — signalling server watchdog to restart..." -ForegroundColor Green
+
+    $FlagFile = Join-Path $PSScriptRoot "update_done.flag"
+    Set-Content -Path $FlagFile -Value (Get-Date -Format "o")
+
+    Write-Host ""
+    Write-Host "==========================================" -ForegroundColor Magenta
+    Write-Host "  update_done.flag written successfully.  " -ForegroundColor Magenta
+    Write-Host "  start_server.ps1 will reboot the app.  " -ForegroundColor Magenta
+    Write-Host "==========================================" -ForegroundColor Magenta
+    Write-Host ""
+    Write-Host "This updater window can now be closed." -ForegroundColor DarkGray

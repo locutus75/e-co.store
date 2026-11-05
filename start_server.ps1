@@ -11,13 +11,14 @@
 # =========================================================
 
 $ErrorActionPreference = "Continue"
-$ProjectRoot        = $PSScriptRoot
-$FlagFile           = Join-Path $ProjectRoot "update_done.flag"
-$UpdateRequestFlag  = Join-Path $ProjectRoot "update_requested.flag"
-$UpdateScript       = Join-Path $ProjectRoot "apply_update.ps1"
+$ProjectRoot = $PSScriptRoot
+$FlagFile = Join-Path $ProjectRoot "update_done.flag"
+$UpdateRequestFlag = Join-Path $ProjectRoot "update_requested.flag"
+$UpdateScript = Join-Path $ProjectRoot "apply_update.ps1"
+$StandaloneServer = Join-Path $ProjectRoot ".next\standalone\server.js"
 
 # Remove any stale flags from a previous cycle
-if (Test-Path $FlagFile)          { Remove-Item $FlagFile          -Force }
+if (Test-Path $FlagFile) { Remove-Item $FlagFile          -Force }
 if (Test-Path $UpdateRequestFlag) { Remove-Item $UpdateRequestFlag -Force }
 
 function Stop-Port4000 {
@@ -41,14 +42,29 @@ while ($true) {
     # Ensure port 4000 is clean before starting
     Stop-Port4000
 
-    $env:NODE_ENV  = "production"
-    $env:PORT      = "4000"
+    Set-Location $ProjectRoot
+
+    # Self-heal if .next\standalone\server.js is missing (e.g. after a failed build)
+    if (-not (Test-Path $StandaloneServer)) {
+        Write-Host "WAARSCHUWING: '$StandaloneServer' ontbreekt!" -ForegroundColor Yellow
+        Write-Host "Automatisch apply_update.ps1 uitvoeren om laatste versie op te halen en te bouwen..." -ForegroundColor Cyan
+        & $UpdateScript -WaitSeconds 0
+        if (Test-Path $FlagFile) { Remove-Item $FlagFile -Force }
+
+        if (-not (Test-Path $StandaloneServer)) {
+            Write-Host "FOUT: Build nog steeds niet geslaagd (.next\standalone\server.js ontbreekt). Opnieuw proberen over 15 seconden..." -ForegroundColor Red
+            Start-Sleep -Seconds 15
+            continue
+        }
+    }
+
+    $env:NODE_ENV = "production"
+    $env:PORT = "4000"
     # APP_ROOT tells the Next.js route handlers where the project root is.
     # Next.js standalone server.js calls process.chdir(__dirname) internally,
     # which changes process.cwd() to .next/standalone — so we must pass the
     # real root explicitly via env var.
-    $env:APP_ROOT  = $ProjectRoot
-    Set-Location $ProjectRoot
+    $env:APP_ROOT = $ProjectRoot
 
     # -------------------------------------------------------
     # Start the Next.js standalone server as a background job
@@ -57,9 +73,9 @@ while ($true) {
     $serverJob = Start-Job -ScriptBlock {
         param($root)
         Set-Location $root
-        $env:NODE_ENV  = "production"
-        $env:PORT      = "4000"
-        $env:APP_ROOT  = $root
+        $env:NODE_ENV = "production"
+        $env:PORT = "4000"
+        $env:APP_ROOT = $root
         node .next/standalone/server.js
     } -ArgumentList $ProjectRoot
 
@@ -97,6 +113,7 @@ while ($true) {
             Write-Host ""
             Write-Host "apply_update.ps1 starten..." -ForegroundColor Cyan
             & $UpdateScript -WaitSeconds 0
+            if (Test-Path $FlagFile) { Remove-Item $FlagFile -Force }
 
             Write-Host ""
             Write-Host "==========================================" -ForegroundColor Green
