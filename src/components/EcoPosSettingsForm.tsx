@@ -11,7 +11,9 @@ import {
   EcoPosSettings,
 } from '@/lib/ecopos';
 import {
+  EcoPosArticleInspectionResult,
   getEcoPosSettingsAction,
+  inspectEcoPosArticleAction,
   saveEcoPosSettingsAction,
   testEcoPosConnectionAction,
 } from '@/app/actions/ecopos';
@@ -27,7 +29,7 @@ export default function EcoPosSettingsForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [activeTab, setActiveTab] = useState<'connection' | 'fields' | 'autosync'>('connection');
+  const [activeTab, setActiveTab] = useState<'connection' | 'fields' | 'autosync' | 'preview'>('connection');
   const [msg, setMsg] = useState<{ text: string; type: 'success' | 'error' | '' }>({ text: '', type: '' });
   const [testResult, setTestResult] = useState<{
     ok: boolean;
@@ -37,6 +39,24 @@ export default function EcoPosSettingsForm() {
     totalProducts?: number | null;
     latencyMs?: number;
   } | null>(null);
+
+  const [previewArticleNum, setPreviewArticleNum] = useState('');
+  const [inspectingArticle, setInspectingArticle] = useState(false);
+  const [inspectionResult, setInspectionResult] = useState<EcoPosArticleInspectionResult | null>(null);
+  const [showRawJson, setShowRawJson] = useState(false);
+
+  const handleInspectArticle = async () => {
+    if (!previewArticleNum.trim()) return;
+    setInspectingArticle(true);
+    setInspectionResult(null);
+    setShowRawJson(false);
+    try {
+      const res = await inspectEcoPosArticleAction(previewArticleNum.trim(), settings.fieldModes);
+      setInspectionResult(res);
+    } finally {
+      setInspectingArticle(false);
+    }
+  };
 
   useEffect(() => {
     getEcoPosSettingsAction()
@@ -156,6 +176,7 @@ export default function EcoPosSettingsForm() {
           { id: 'connection' as const, label: '🔌 Verbinding & API' },
           { id: 'fields' as const, label: `🎛️ Standaard Veldkiezer (${activeFieldCount}/${ECOPOS_FIELDS.length})` },
           { id: 'autosync' as const, label: '⏱️ Automatische Sync' },
+          { id: 'preview' as const, label: '🔍 Artikel Preview & Test' },
         ].map((t) => (
           <button
             key={t.id}
@@ -519,6 +540,216 @@ export default function EcoPosSettingsForm() {
                 <strong>Laatste synchronisatie:</strong>{' '}
                 {new Date(settings.lastSyncAt).toLocaleString('nl-NL')} —{' '}
                 <span>{settings.lastSyncSummary || 'Voltooid'}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'preview' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div
+              style={{
+                padding: '1.25rem',
+                borderRadius: 'var(--radius)',
+                backgroundColor: 'var(--background)',
+                border: '1px solid var(--border)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.85rem',
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>
+                  🔎 Test een specifiek artikelnummer vanuit EcoPos
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                  Geef een artikelnummer op (bijv. <code>15504</code> of <code>16966</code>) om live te controleren hoe PCM het <strong>Leverancier</strong>-veld (zonder nummer tussen haakjes zoals <code>(67)</code>) en <strong>Bontekst vs. Omschrijving</strong> verwerkt.
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', maxWidth: '520px' }}>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Artikelnummer (bijv. 15504)..."
+                  value={previewArticleNum}
+                  onChange={(e) => setPreviewArticleNum(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleInspectArticle();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={!previewArticleNum.trim() || inspectingArticle}
+                  onClick={handleInspectArticle}
+                  style={{ whiteSpace: 'nowrap', fontWeight: 700, padding: '0.55rem 1.2rem' }}
+                >
+                  {inspectingArticle ? '⏳ Ophalen…' : '🔍 Artikel Previewen'}
+                </button>
+              </div>
+            </div>
+
+            {inspectionResult && !inspectionResult.ok && (
+              <div
+                style={{
+                  padding: '0.9rem 1.15rem',
+                  borderRadius: '10px',
+                  backgroundColor: 'rgba(239,68,68,0.1)',
+                  border: '1px solid #fecaca',
+                  color: '#991b1b',
+                  fontWeight: 600,
+                  fontSize: '0.88rem',
+                }}
+              >
+                ✕ {inspectionResult.error}
+              </div>
+            )}
+
+            {inspectionResult && inspectionResult.ok && (
+              <div
+                style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: '12px',
+                  backgroundColor: 'var(--background)',
+                  padding: '1.25rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '1rem',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>
+                      Artikel #{inspectionResult.articleNumber}{' '}
+                      <span style={{ fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                        — {inspectionResult.effectiveTitle || inspectionResult.pcmTitle || 'Onbekend'}
+                      </span>
+                    </h3>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                      Status in PCM:{' '}
+                      <strong style={{ color: inspectionResult.existsInPcm ? '#15803d' : '#d97706' }}>
+                        {inspectionResult.existsInPcm ? 'Bestaand product in PCM' : 'Nog niet aanwezig in PCM'}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => setShowRawJson((v) => !v)}
+                    style={{
+                      fontSize: '0.78rem',
+                      padding: '0.35rem 0.75rem',
+                      backgroundColor: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {showRawJson ? '▲ Ruwe JSON verbergen' : '{ } Ruwe EcoPos JSON bekijken'}
+                  </button>
+                </div>
+
+                {/* Highlight cards for Leverancier and Bontekst/Omschrijving */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0.85rem' }}>
+                  <div style={{ padding: '0.85rem 1rem', borderRadius: '10px', backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                      🏢 Leverancier verwerking
+                    </div>
+                    <div style={{ fontSize: '0.85rem', marginTop: '0.35rem' }}>
+                      <div>
+                        Ruw uit MplusKassa: <strong>{inspectionResult.rawSupplier || '—'}</strong>
+                      </div>
+                      <div style={{ marginTop: '0.2rem' }}>
+                        Opgeschoond voor PCM:{' '}
+                        <strong style={{ color: '#0284c7' }}>{inspectionResult.cleanedSupplier || '—'}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ padding: '0.85rem 1rem', borderRadius: '10px', backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                      📝 Titel (Bontekst vs. Omschrijving)
+                    </div>
+                    <div style={{ fontSize: '0.85rem', marginTop: '0.35rem' }}>
+                      <div>
+                        Bontekst: <strong>{inspectionResult.rawBontekst || '— (niet apart meegegeven / leeg)'}</strong>
+                      </div>
+                      <div style={{ marginTop: '0.15rem' }}>
+                        Omschrijving: <strong>{inspectionResult.rawOmschrijving || '—'}</strong>
+                      </div>
+                      <div style={{ marginTop: '0.25rem', color: '#0284c7', fontWeight: 700 }}>
+                        Leidende titel in PCM: {inspectionResult.effectiveTitle || '—'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {showRawJson && (
+                  <pre
+                    style={{
+                      margin: 0,
+                      padding: '1rem',
+                      borderRadius: '10px',
+                      backgroundColor: '#0f172a',
+                      color: '#e2e8f0',
+                      fontSize: '0.78rem',
+                      maxHeight: '280px',
+                      overflow: 'auto',
+                    }}
+                  >
+                    {JSON.stringify(inspectionResult.rawJson, null, 2)}
+                  </pre>
+                )}
+
+                <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', backgroundColor: 'var(--surface)' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: 'var(--background)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+                        <th style={{ padding: '0.6rem 0.85rem' }}>Veld</th>
+                        <th style={{ padding: '0.6rem 0.85rem' }}>Waarde uit EcoPos (verwerkt)</th>
+                        <th style={{ padding: '0.6rem 0.85rem' }}>Huidig in PCM</th>
+                        <th style={{ padding: '0.6rem 0.85rem' }}>Actie bij Sync</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inspectionResult.rows.map((r) => (
+                        <tr key={r.fieldKey} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '0.55rem 0.85rem' }}>
+                            <div style={{ fontWeight: 600 }}>{r.fieldLabel}</div>
+                            {r.rawDetail && (
+                              <div style={{ fontSize: '0.72rem', color: '#0369a1', marginTop: '0.1rem' }}>
+                                ℹ️ {r.rawDetail}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.55rem 0.85rem', fontWeight: 700, color: '#0284c7' }}>
+                            {r.ecoPosFormatted}
+                          </td>
+                          <td style={{ padding: '0.55rem 0.85rem', color: 'var(--text-muted)' }}>
+                            {r.pcmFormatted}
+                          </td>
+                          <td style={{ padding: '0.55rem 0.85rem' }}>
+                            {r.wouldApply ? (
+                              <span style={{ padding: '0.2rem 0.55rem', borderRadius: '999px', backgroundColor: '#dcfce7', color: '#15803d', fontWeight: 700, fontSize: '0.74rem' }}>
+                                Wordt overgenomen
+                              </span>
+                            ) : r.isDifferent ? (
+                              <span style={{ padding: '0.2rem 0.55rem', borderRadius: '999px', backgroundColor: '#fef9c3', color: '#854d0e', fontWeight: 600, fontSize: '0.74rem' }}>
+                                Afwijkend ({r.configuredMode === 'ignore' ? 'uitgeschakeld' : 'alleen indien leeg'})
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Gelijk</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>

@@ -102,11 +102,11 @@ export const ECOPOS_FIELDS: EcoPosFieldDef[] = [
   // ── 3. Basisgegevens ──────────────────────────────────────────────────────
   {
     key: 'title',
-    label: 'Omschrijving (Titel / Naam)',
+    label: 'Omschrijving / Bontekst (Titel)',
     category: 'basic',
     type: 'string',
     defaultMode: 'fill_empty',
-    description: 'Productnaam uit MplusKassa (advies: alleen invullen indien leeg in PCM)',
+    description: 'Bontekst uit MplusKassa (leidend indien ingevuld), anders de artikelomschrijving',
     prismaTarget: 'title',
   },
   {
@@ -124,7 +124,7 @@ export const ECOPOS_FIELDS: EcoPosFieldDef[] = [
     category: 'basic',
     type: 'relation',
     defaultMode: 'fill_empty',
-    description: 'Leverancier van het product',
+    description: 'Leveranciersnaam (achtervoegsel zoals " (67)" uit MplusKassa wordt automatisch gestript)',
     prismaTarget: 'supplier',
   },
   {
@@ -275,6 +275,65 @@ export interface NormalizedEcoPosProduct {
   rawStockLocations?: Array<{ name: string; quantity: number }>;
   rawCustomFields?: Record<string, any>;
   sourceUpdatedAt?: string | null;
+  rawMeta?: {
+    rawSupplier?: string | null;
+    bontekst?: string | null;
+    omschrijving?: string | null;
+  };
+}
+
+/**
+ * Strips trailing MplusKassa supplier number in parentheses, e.g. "Dopper (67)" -> "Dopper".
+ */
+export function cleanSupplierName(rawSupplier?: string | null): string | undefined {
+  if (rawSupplier === undefined || rawSupplier === null) return undefined;
+  const cleaned = String(rawSupplier).replace(/\s+\(\d+\)\s*$/, '').trim();
+  return cleaned === '' ? undefined : cleaned;
+}
+
+/**
+ * Resolves the leading product title from an EcoPos payload:
+ * If `bontekst` / `receiptText` is present and non-empty, it takes precedence over `omschrijving` / `title`.
+ */
+export function resolveEcoPosTitle(raw: any): {
+  effectiveTitle?: string;
+  bontekst?: string;
+  omschrijving?: string;
+} {
+  if (!raw || typeof raw !== 'object') return {};
+  const basic = raw.basic && typeof raw.basic === 'object' ? raw.basic : {};
+  const customFields = raw.customFields && typeof raw.customFields === 'object' ? raw.customFields : {};
+
+  const bontekst = parseStr(
+    basic.bontekst ??
+    basic.bonTekst ??
+    basic.receiptText ??
+    basic.ticketText ??
+    raw.bontekst ??
+    raw.bonTekst ??
+    raw.receiptText ??
+    raw.ticketText ??
+    customFields.bontekst ??
+    customFields.bonTekst ??
+    customFields.receiptText ??
+    customFields.ticketText
+  );
+
+  const omschrijving = parseStr(
+    basic.omschrijving ??
+    basic.description ??
+    basic.title ??
+    raw.omschrijving ??
+    raw.description ??
+    raw.title ??
+    raw.name
+  );
+
+  return {
+    effectiveTitle: bontekst ?? omschrijving,
+    bontekst,
+    omschrijving,
+  };
 }
 
 function parseBool(val: any): boolean | undefined {
@@ -334,20 +393,21 @@ export function normalizeEcoPosProduct(raw: any): NormalizedEcoPosProduct | null
   const ean = parseStr(raw.ean ?? pricing.ean ?? basic.ean ?? raw.barcode);
   if (ean !== undefined) values.ean = ean;
 
-  // Basic
-  const title = parseStr(basic.title ?? raw.title ?? raw.name ?? raw.description ?? raw.omschrijving);
-  if (title !== undefined) values.title = title;
+  // Basic: Bontekst is leading when non-empty; otherwise fallback to Omschrijving / Title
+  const { effectiveTitle, bontekst, omschrijving } = resolveEcoPosTitle(raw);
+  if (effectiveTitle !== undefined) values.title = effectiveTitle;
 
   const brand = parseStr(
     typeof basic.brand === 'string' ? basic.brand : basic.brand?.name ?? raw.brand?.name ?? raw.brand
   );
   if (brand !== undefined) values.brand = brand;
 
-  const supplier = parseStr(
+  const rawSupplier = parseStr(
     typeof basic.supplier === 'string'
       ? basic.supplier
       : basic.supplier?.name ?? raw.supplier?.name ?? raw.supplier
   );
+  const supplier = cleanSupplierName(rawSupplier);
   if (supplier !== undefined) values.supplier = supplier;
 
   const isIgnoredRootCat = (name?: string) => !name || name.trim().toLowerCase() === 'mpluswebshops';
@@ -384,10 +444,10 @@ export function normalizeEcoPosProduct(raw: any): NormalizedEcoPosProduct | null
     values.subcategory = groupNames.length > 0 ? groupNames.join(', ') : null;
   } else {
     const rawSubcategory = parseStr(
-          typeof basic.subcategory === 'string'
-            ? basic.subcategory
-            : basic.subcategory?.name ?? raw.subcategory?.name ?? raw.subcategory
-        );
+      typeof basic.subcategory === 'string'
+        ? basic.subcategory
+        : basic.subcategory?.name ?? raw.subcategory?.name ?? raw.subcategory
+    );
 
     if (rawSubcategory && !isIgnoredRootCat(rawSubcategory)) {
       values.subcategory = rawSubcategory;
@@ -455,6 +515,11 @@ export function normalizeEcoPosProduct(raw: any): NormalizedEcoPosProduct | null
     rawStockLocations: Array.isArray(stock.locations) ? stock.locations : undefined,
     rawCustomFields: raw.customFields,
     sourceUpdatedAt: raw.sourceUpdatedAt ?? raw.updatedAt ?? null,
+    rawMeta: {
+      rawSupplier: rawSupplier ?? null,
+      bontekst: bontekst ?? null,
+      omschrijving: omschrijving ?? null,
+    },
   };
 }
 
