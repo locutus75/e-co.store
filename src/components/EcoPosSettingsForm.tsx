@@ -9,9 +9,12 @@ import {
   EcoPosCategoryKey,
   EcoPosFieldMode,
   EcoPosSettings,
+  EcoPosUitlopendFilterOption,
+  EcoPosWebshopFilterOption,
 } from '@/lib/ecopos';
 import {
   EcoPosArticleInspectionResult,
+  getAvailableUitlopendReasonsAction,
   getEcoPosSettingsAction,
   inspectEcoPosArticleAction,
   saveEcoPosSettingsAction,
@@ -44,6 +47,8 @@ export default function EcoPosSettingsForm() {
   const [inspectingArticle, setInspectingArticle] = useState(false);
   const [inspectionResult, setInspectionResult] = useState<EcoPosArticleInspectionResult | null>(null);
   const [showRawJson, setShowRawJson] = useState(false);
+  const [availableReasons, setAvailableReasons] = useState<string[]>([]);
+  const [customReasonInput, setCustomReasonInput] = useState('');
 
   const handleInspectArticle = async () => {
     if (!previewArticleNum.trim()) return;
@@ -59,8 +64,11 @@ export default function EcoPosSettingsForm() {
   };
 
   useEffect(() => {
-    getEcoPosSettingsAction()
-      .then((s) => setSettings(s))
+    Promise.all([getEcoPosSettingsAction(), getAvailableUitlopendReasonsAction()])
+      .then(([s, reasons]) => {
+        setSettings(s);
+        setAvailableReasons(reasons || []);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -524,6 +532,290 @@ export default function EcoPosSettingsForm() {
                   />
                   <span>Alleen artikelen ophalen die actief zijn in het kassasysteem</span>
                 </label>
+              </div>
+            </div>
+
+            {/* Standaard Productselectie & Voorwaarden (Webshop / Uitlopend / Reden) */}
+            <div
+              style={{
+                padding: '1.2rem',
+                borderRadius: 'var(--radius)',
+                backgroundColor: 'var(--background)',
+                border: '1px solid var(--border)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.9rem',
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>
+                  🎯 Standaard Productvoorwaarden (Filters voor Sync)
+                </div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                  Geef aan waar producten standaard aan moeten voldoen bij een bulk-synchronisatie of automatische achtergrond-sync.
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
+                {/* Webshop Filter: Leeg / Nee / Ja */}
+                <div style={{ padding: '0.85rem 1rem', borderRadius: '10px', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700 }}>🌐 Webshop (Leeg / Nee / Ja)</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      {settings.webshopFilter.length === 3 ? 'Alle 3 actief' : `${settings.webshopFilter.length} gekozen`}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    {(
+                      [
+                        { key: 'LEEG' as EcoPosWebshopFilterOption, label: 'Leeg' },
+                        { key: 'NEE' as EcoPosWebshopFilterOption, label: 'Nee' },
+                        { key: 'JA' as EcoPosWebshopFilterOption, label: 'Ja' },
+                      ]
+                    ).map((opt) => {
+                      const active = settings.webshopFilter.includes(opt.key);
+                      return (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => {
+                            const curr = settings.webshopFilter;
+                            if (curr.includes(opt.key)) {
+                              if (curr.length === 1) return;
+                              setSettings({ ...settings, webshopFilter: curr.filter((x) => x !== opt.key) });
+                            } else {
+                              setSettings({ ...settings, webshopFilter: [...curr, opt.key] });
+                            }
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '0.4rem 0.55rem',
+                            borderRadius: '8px',
+                            border: active ? '1.5px solid #0284c7' : '1px solid var(--border)',
+                            backgroundColor: active ? 'rgba(2, 132, 199, 0.1)' : 'var(--background)',
+                            color: active ? '#0369a1' : 'var(--text-muted)',
+                            fontWeight: active ? 700 : 600,
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {active ? '☑ ' : '☐ '}
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Uitlopend Filter: Alle / Nee / Ja */}
+                <div style={{ padding: '0.85rem 1rem', borderRadius: '10px', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700 }}>📉 Uitlopend (Ja / Nee)</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      {settings.uitlopendFilter === 'ALL'
+                        ? 'Alle artikelen'
+                        : settings.uitlopendFilter === 'JA'
+                          ? 'Alleen uitlopend'
+                          : 'Alleen niet-uitlopend'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    {(
+                      [
+                        { key: 'ALL' as EcoPosUitlopendFilterOption, label: 'Alle' },
+                        { key: 'NEE' as EcoPosUitlopendFilterOption, label: 'Nee' },
+                        { key: 'JA' as EcoPosUitlopendFilterOption, label: 'Ja' },
+                      ]
+                    ).map((opt) => {
+                      const active = settings.uitlopendFilter === opt.key;
+                      return (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => setSettings({ ...settings, uitlopendFilter: opt.key })}
+                          style={{
+                            flex: 1,
+                            padding: '0.4rem 0.55rem',
+                            borderRadius: '8px',
+                            border: active ? '1.5px solid #0284c7' : '1px solid var(--border)',
+                            backgroundColor: active ? '#0284c7' : 'var(--background)',
+                            color: active ? 'white' : 'var(--text-muted)',
+                            fontWeight: active ? 700 : 600,
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Reden / uitlopend Filter */}
+              <div style={{ padding: '0.85rem 1rem', borderRadius: '10px', backgroundColor: 'var(--surface)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700 }}>🏷️ Reden / uitlopend selectie</span>
+                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, uitlopendReasonsFilter: [] })}
+                      style={{
+                        padding: '0.25rem 0.6rem',
+                        borderRadius: '6px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        border: settings.uitlopendReasonsFilter.length === 0 ? '1.5px solid #0284c7' : '1px solid var(--border)',
+                        backgroundColor: settings.uitlopendReasonsFilter.length === 0 ? 'rgba(2, 132, 199, 0.1)' : 'var(--background)',
+                        color: settings.uitlopendReasonsFilter.length === 0 ? '#0369a1' : 'var(--text-muted)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Alle (geen filter)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, uitlopendReasonsFilter: ['__NON_EMPTY__'] })}
+                      style={{
+                        padding: '0.25rem 0.6rem',
+                        borderRadius: '6px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        border: settings.uitlopendReasonsFilter.includes('__NON_EMPTY__') ? '1.5px solid #0284c7' : '1px solid var(--border)',
+                        backgroundColor: settings.uitlopendReasonsFilter.includes('__NON_EMPTY__') ? 'rgba(2, 132, 199, 0.1)' : 'var(--background)',
+                        color: settings.uitlopendReasonsFilter.includes('__NON_EMPTY__') ? '#0369a1' : 'var(--text-muted)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Met reden ingevuld
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, uitlopendReasonsFilter: ['__EMPTY__'] })}
+                      style={{
+                        padding: '0.25rem 0.6rem',
+                        borderRadius: '6px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        border: settings.uitlopendReasonsFilter.includes('__EMPTY__') ? '1.5px solid #0284c7' : '1px solid var(--border)',
+                        backgroundColor: settings.uitlopendReasonsFilter.includes('__EMPTY__') ? 'rgba(2, 132, 199, 0.1)' : 'var(--background)',
+                        color: settings.uitlopendReasonsFilter.includes('__EMPTY__') ? '#0369a1' : 'var(--text-muted)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Zonder reden (Leeg)
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {availableReasons.length > 0 && (
+                    <select
+                      className="input"
+                      value=""
+                      onChange={(e) => {
+                        const val = e.target.value.trim();
+                        if (!val) return;
+                        const cleaned = settings.uitlopendReasonsFilter.filter((r) => r !== '__EMPTY__' && r !== '__NON_EMPTY__');
+                        if (!cleaned.some((r) => r.toLowerCase() === val.toLowerCase())) {
+                          setSettings({ ...settings, uitlopendReasonsFilter: [...cleaned, val] });
+                        }
+                      }}
+                      style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem', width: 'auto', minWidth: '220px' }}
+                    >
+                      <option value="">+ Kies bekende Reden/uitlopend…</option>
+                      {availableReasons.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <div style={{ display: 'flex', gap: '0.4rem', flex: '1 1 240px' }}>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="Specifieke Reden/uitlopend typen…"
+                      value={customReasonInput}
+                      onChange={(e) => setCustomReasonInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && customReasonInput.trim()) {
+                          e.preventDefault();
+                          const val = customReasonInput.trim();
+                          const cleaned = settings.uitlopendReasonsFilter.filter((r) => r !== '__EMPTY__' && r !== '__NON_EMPTY__');
+                          if (!cleaned.some((r) => r.toLowerCase() === val.toLowerCase())) {
+                            setSettings({ ...settings, uitlopendReasonsFilter: [...cleaned, val] });
+                          }
+                          setCustomReasonInput('');
+                        }
+                      }}
+                      style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem', flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={!customReasonInput.trim()}
+                      onClick={() => {
+                        const val = customReasonInput.trim();
+                        if (!val) return;
+                        const cleaned = settings.uitlopendReasonsFilter.filter((r) => r !== '__EMPTY__' && r !== '__NON_EMPTY__');
+                        if (!cleaned.some((r) => r.toLowerCase() === val.toLowerCase())) {
+                          setSettings({ ...settings, uitlopendReasonsFilter: [...cleaned, val] });
+                        }
+                        setCustomReasonInput('');
+                      }}
+                      style={{
+                        padding: '0.35rem 0.75rem',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        backgroundColor: customReasonInput.trim() ? '#0284c7' : '#e2e8f0',
+                        color: customReasonInput.trim() ? 'white' : '#64748b',
+                        border: 'none',
+                      }}
+                    >
+                      + Toevoegen
+                    </button>
+                  </div>
+                </div>
+
+                {settings.uitlopendReasonsFilter.filter((r) => r !== '__EMPTY__' && r !== '__NON_EMPTY__').length > 0 && (
+                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.15rem' }}>
+                    {settings.uitlopendReasonsFilter
+                      .filter((r) => r !== '__EMPTY__' && r !== '__NON_EMPTY__')
+                      .map((reason) => (
+                        <span
+                          key={reason}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            padding: '0.2rem 0.6rem',
+                            borderRadius: '999px',
+                            backgroundColor: '#e0f2fe',
+                            border: '1px solid #7dd3fc',
+                            color: '#0369a1',
+                            fontSize: '0.76rem',
+                            fontWeight: 700,
+                          }}
+                        >
+                          <span>{reason}</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSettings({
+                                ...settings,
+                                uitlopendReasonsFilter: settings.uitlopendReasonsFilter.filter((x) => x !== reason),
+                              })
+                            }
+                            style={{ border: 'none', background: 'none', color: '#0369a1', cursor: 'pointer', fontWeight: 800, padding: 0 }}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                  </div>
+                )}
               </div>
             </div>
 

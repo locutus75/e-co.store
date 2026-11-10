@@ -8,6 +8,8 @@ import {
   EcoPosCategoryKey,
   EcoPosFieldMode,
   EcoPosProductDiff,
+  EcoPosUitlopendFilterOption,
+  EcoPosWebshopFilterOption,
   formatEcoPosValue,
 } from '@/lib/ecopos';
 import {
@@ -15,6 +17,7 @@ import {
   EcoPosExecuteResult,
   EcoPosPreviewResult,
   executeEcoPosSyncAction,
+  getAvailableUitlopendReasonsAction,
   getEcoPosSettingsAction,
   inspectEcoPosArticleAction,
   previewEcoPosSyncAction,
@@ -45,6 +48,11 @@ export default function EcoPosSyncModal({
   });
   const [createNewProducts, setCreateNewProducts] = useState(false);
   const [onlyActiveInSystem, setOnlyActiveInSystem] = useState(false);
+  const [webshopFilter, setWebshopFilter] = useState<EcoPosWebshopFilterOption[]>(['JA', 'NEE', 'LEEG']);
+  const [uitlopendFilter, setUitlopendFilter] = useState<EcoPosUitlopendFilterOption>('ALL');
+  const [uitlopendReasonsFilter, setUitlopendReasonsFilter] = useState<string[]>([]);
+  const [availableReasons, setAvailableReasons] = useState<string[]>([]);
+  const [customReasonInput, setCustomReasonInput] = useState('');
   const [expandedCategory, setExpandedCategory] = useState<EcoPosCategoryKey | null>('status');
 
   const [customArticleInput, setCustomArticleInput] = useState('');
@@ -88,56 +96,67 @@ export default function EcoPosSyncModal({
     setShowRawInspectionJson(false);
 
     setLoadingSettings(true);
-    getEcoPosSettingsAction()
-      .then(async (s) => {
-        setFieldModes(s.fieldModes || { ...DEFAULT_ECOPOS_FIELD_MODES });
-        setCreateNewProducts(s.createNewProducts ?? false);
-        setOnlyActiveInSystem(s.onlyActiveInSystem ?? false);
+        Promise.all([getEcoPosSettingsAction(), getAvailableUitlopendReasonsAction()])
+          .then(async ([s, reasons]) => {
+            setFieldModes(s.fieldModes || { ...DEFAULT_ECOPOS_FIELD_MODES });
+            setCreateNewProducts(s.createNewProducts ?? false);
+            setOnlyActiveInSystem(s.onlyActiveInSystem ?? false);
+            setWebshopFilter(
+              Array.isArray(s.webshopFilter) && s.webshopFilter.length > 0
+                ? s.webshopFilter
+                : ['JA', 'NEE', 'LEEG']
+            );
+            setUitlopendFilter(s.uitlopendFilter ?? 'ALL');
+            setUitlopendReasonsFilter(Array.isArray(s.uitlopendReasonsFilter) ? s.uitlopendReasonsFilter : []);
+            setAvailableReasons(reasons || []);
 
-        if (singleProductMode && targetArticles && targetArticles.length === 1) {
-          // In single product mode, immediately fetch all available EcoPos fields so user can pick
-          setStep('preview');
-          setLoadingPreview(true);
-          const allOverwriteModes: Record<string, EcoPosFieldMode> = Object.fromEntries(
-            ECOPOS_FIELDS.map((f) => [f.key, 'overwrite'])
-          );
-          const [res, inspectRes] = await Promise.all([
-            previewEcoPosSyncAction({
-              articleNumbers: targetArticles,
-              fieldModes: allOverwriteModes,
-              createNewProducts: false,
-              onlyActiveInSystem: false,
-            }),
-            inspectEcoPosArticleAction(targetArticles[0], s.fieldModes || { ...DEFAULT_ECOPOS_FIELD_MODES }),
-          ]);
-          setLoadingPreview(false);
-          if (inspectRes.ok) {
-            setArticleInspection(inspectRes);
-          }
-          if (!res.ok) {
-            setError(res.error || 'Kon gegevens niet ophalen uit EcoPos.');
-          } else {
-            setPreviewData(res);
-            const firstDiff = res.changedProducts[0];
-            if (firstDiff) {
-              // Pre-select fields that are configured as non-ignore AND have a difference
-              const preselected = new Set<string>();
-              for (const ch of firstDiff.changes) {
-                if ((s.fieldModes?.[ch.fieldKey] ?? 'overwrite') !== 'ignore') {
-                  preselected.add(ch.fieldKey);
+            if (singleProductMode && targetArticles && targetArticles.length === 1) {
+              // In single product mode, immediately fetch all available EcoPos fields so user can pick
+              setStep('preview');
+              setLoadingPreview(true);
+              const allOverwriteModes: Record<string, EcoPosFieldMode> = Object.fromEntries(
+                ECOPOS_FIELDS.map((f) => [f.key, 'overwrite'])
+              );
+              const [res, inspectRes] = await Promise.all([
+                previewEcoPosSyncAction({
+                  articleNumbers: targetArticles,
+                  fieldModes: allOverwriteModes,
+                  createNewProducts: false,
+                  onlyActiveInSystem: false,
+                  webshopFilter: ['JA', 'NEE', 'LEEG'],
+                  uitlopendFilter: 'ALL',
+                  uitlopendReasonsFilter: [],
+                }),
+                inspectEcoPosArticleAction(targetArticles[0], s.fieldModes || { ...DEFAULT_ECOPOS_FIELD_MODES }),
+              ]);
+              setLoadingPreview(false);
+              if (inspectRes.ok) {
+                setArticleInspection(inspectRes);
+              }
+              if (!res.ok) {
+                setError(res.error || 'Kon gegevens niet ophalen uit EcoPos.');
+              } else {
+                setPreviewData(res);
+                const firstDiff = res.changedProducts[0];
+                if (firstDiff) {
+                  // Pre-select fields that are configured as non-ignore AND have a difference
+                  const preselected = new Set<string>();
+                  for (const ch of firstDiff.changes) {
+                    if ((s.fieldModes?.[ch.fieldKey] ?? 'overwrite') !== 'ignore') {
+                      preselected.add(ch.fieldKey);
+                    }
+                  }
+                  setSelectedSingleFields(preselected);
                 }
               }
-              setSelectedSingleFields(preselected);
+            } else {
+              setStep('config');
             }
-          }
-        } else {
-          setStep('config');
-        }
-      })
-      .finally(() => setLoadingSettings(false));
-  }, [isOpen, singleProductMode, articleNumbersKey]);
+          })
+          .finally(() => setLoadingSettings(false));
+      }, [isOpen, singleProductMode, articleNumbersKey]);
 
-  if (!isOpen) return null;
+    if (!isOpen) return null;
 
     const parsedCustomArticles = customArticleInput
       .split(/[\s,;]+/)
@@ -147,8 +166,33 @@ export default function EcoPosSyncModal({
     const effectiveTargetArticles =
       parsedCustomArticles.length > 0 ? parsedCustomArticles : articleNumbers;
 
+    const isSingleTestArticle = parsedCustomArticles.length === 1;
+
+    const toggleWebshopOption = (opt: EcoPosWebshopFilterOption) => {
+      setWebshopFilter((prev) => {
+        if (prev.includes(opt)) {
+          // Prevent deselecting all 3 options
+          if (prev.length === 1) return prev;
+          return prev.filter((x) => x !== opt);
+        }
+        return [...prev, opt];
+      });
+    };
+
+    const addReasonFilter = (reason: string) => {
+      const trimmed = reason.trim();
+      if (!trimmed) return;
+      setUitlopendReasonsFilter((prev) => {
+        const cleaned = prev.filter((r) => r !== '__EMPTY__' && r !== '__NON_EMPTY__');
+        if (cleaned.some((r) => r.toLowerCase() === trimmed.toLowerCase())) return cleaned;
+        return [...cleaned, trimmed];
+      });
+      setCustomReasonInput('');
+    };
+
     const handleRunPreview = async (overrideArticles?: string[]) => {
       const targetList = overrideArticles ?? effectiveTargetArticles;
+      const isTestingSpecific = Boolean(overrideArticles && overrideArticles.length > 0);
       setLoadingPreview(true);
       setError(null);
       setArticleInspection(null);
@@ -159,7 +203,10 @@ export default function EcoPosSyncModal({
             articleNumbers: targetList,
             fieldModes,
             createNewProducts,
-            onlyActiveInSystem: targetList && targetList.length > 0 ? false : onlyActiveInSystem,
+            onlyActiveInSystem: isTestingSpecific ? false : onlyActiveInSystem,
+            webshopFilter: isTestingSpecific ? ['JA', 'NEE', 'LEEG'] : webshopFilter,
+            uitlopendFilter: isTestingSpecific ? 'ALL' : uitlopendFilter,
+            uitlopendReasonsFilter: isTestingSpecific ? [] : uitlopendReasonsFilter,
           }),
           targetList && targetList.length === 1
             ? inspectEcoPosArticleAction(targetList[0], fieldModes)
@@ -192,6 +239,9 @@ export default function EcoPosSyncModal({
             articleNumbers,
             allowedFieldKeys: Array.from(selectedSingleFields),
             createNewProducts: false,
+            webshopFilter: ['JA', 'NEE', 'LEEG'],
+            uitlopendFilter: 'ALL',
+            uitlopendReasonsFilter: [],
           });
           if (!res.ok) {
             setError(res.error || 'Synchronisatie mislukt.');
@@ -207,7 +257,10 @@ export default function EcoPosSyncModal({
           articleNumbers: effectiveTargetArticles,
           fieldModes,
           createNewProducts,
-          onlyActiveInSystem: effectiveTargetArticles && effectiveTargetArticles.length > 0 ? false : onlyActiveInSystem,
+          onlyActiveInSystem: isSingleTestArticle ? false : onlyActiveInSystem,
+          webshopFilter: isSingleTestArticle ? ['JA', 'NEE', 'LEEG'] : webshopFilter,
+          uitlopendFilter: isSingleTestArticle ? 'ALL' : uitlopendFilter,
+          uitlopendReasonsFilter: isSingleTestArticle ? [] : uitlopendReasonsFilter,
           selectedArticlesToApply: Array.from(selectedArticles),
         });
         if (!res.ok) {
@@ -392,6 +445,360 @@ export default function EcoPosSyncModal({
                   </div>
                 </div>
 
+                {/* Product Selection Conditions / Filters ("Waar moeten producten aan voldoen?") */}
+                <div
+                  style={{
+                    padding: '1rem 1.2rem',
+                    borderRadius: '12px',
+                    backgroundColor: 'var(--background)',
+                    border: '1px solid var(--border)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.85rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                        <span>🎯</span>
+                        <span>Waar moeten producten aan voldoen? (Selectievoorwaarden)</span>
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                        Filter vooraf welke artikelen uit EcoPos/MplusKassa worden meegenomen in de synchronisatie.
+                      </div>
+                    </div>
+                    {(webshopFilter.length < 3 ||
+                      uitlopendFilter !== 'ALL' ||
+                      uitlopendReasonsFilter.length > 0 ||
+                      onlyActiveInSystem) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setWebshopFilter(['JA', 'NEE', 'LEEG']);
+                            setUitlopendFilter('ALL');
+                            setUitlopendReasonsFilter([]);
+                            setOnlyActiveInSystem(false);
+                          }}
+                          style={{
+                            fontSize: '0.74rem',
+                            padding: '0.25rem 0.65rem',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border)',
+                            backgroundColor: 'var(--surface)',
+                            color: 'var(--text-muted)',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          ↺ Filters wissen
+                        </button>
+                      )}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0.85rem' }}>
+                    {/* 1. Webshop Filter (Leeg / Nee / Ja) */}
+                    <div
+                      style={{
+                        padding: '0.75rem 0.9rem',
+                        borderRadius: '10px',
+                        backgroundColor: 'var(--surface)',
+                        border: '1px solid var(--border)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.45rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text)' }}>
+                          🌐 Webshop status (MplusKassa)
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                          {webshopFilter.length === 3 ? 'Alle 3 actief' : `${webshopFilter.length} van 3 gekozen`}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.4rem' }}>
+                        {(
+                          [
+                            { key: 'LEEG' as EcoPosWebshopFilterOption, label: 'Leeg' },
+                            { key: 'NEE' as EcoPosWebshopFilterOption, label: 'Nee' },
+                            { key: 'JA' as EcoPosWebshopFilterOption, label: 'Ja' },
+                          ]
+                        ).map((opt) => {
+                          const active = webshopFilter.includes(opt.key);
+                          return (
+                            <button
+                              key={opt.key}
+                              type="button"
+                              onClick={() => toggleWebshopOption(opt.key)}
+                              style={{
+                                flex: 1,
+                                padding: '0.4rem 0.5rem',
+                                borderRadius: '8px',
+                                border: active ? '1.5px solid #0284c7' : '1px solid var(--border)',
+                                backgroundColor: active ? 'rgba(2, 132, 199, 0.1)' : 'var(--background)',
+                                color: active ? '#0369a1' : 'var(--text-muted)',
+                                fontWeight: active ? 700 : 600,
+                                fontSize: '0.78rem',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.3rem',
+                              }}
+                            >
+                              <span>{active ? '☑' : '☐'}</span>
+                              <span>{opt.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* 2. Uitlopend Filter (Alle / Nee / Ja) */}
+                    <div
+                      style={{
+                        padding: '0.75rem 0.9rem',
+                        borderRadius: '10px',
+                        backgroundColor: 'var(--surface)',
+                        border: '1px solid var(--border)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.45rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text)' }}>
+                          📉 Uitlopend (Ja / Nee)
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                          {uitlopendFilter === 'ALL'
+                            ? 'Alle artikelen'
+                            : uitlopendFilter === 'JA'
+                              ? 'Alleen uitlopend'
+                              : 'Alleen niet-uitlopend'}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.4rem' }}>
+                        {(
+                          [
+                            { key: 'ALL' as EcoPosUitlopendFilterOption, label: 'Alle' },
+                            { key: 'NEE' as EcoPosUitlopendFilterOption, label: 'Nee' },
+                            { key: 'JA' as EcoPosUitlopendFilterOption, label: 'Ja' },
+                          ]
+                        ).map((opt) => {
+                          const active = uitlopendFilter === opt.key;
+                          return (
+                            <button
+                              key={opt.key}
+                              type="button"
+                              onClick={() => setUitlopendFilter(opt.key)}
+                              style={{
+                                flex: 1,
+                                padding: '0.4rem 0.5rem',
+                                borderRadius: '8px',
+                                border: active ? '1.5px solid #0284c7' : '1px solid var(--border)',
+                                backgroundColor: active ? '#0284c7' : 'var(--background)',
+                                color: active ? 'white' : 'var(--text-muted)',
+                                fontWeight: active ? 700 : 600,
+                                fontSize: '0.78rem',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Reden / uitlopend selector */}
+                  <div
+                    style={{
+                      padding: '0.75rem 0.9rem',
+                      borderRadius: '10px',
+                      backgroundColor: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text)' }}>
+                        🏷️ Reden / uitlopend filteren
+                      </span>
+                      <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => setUitlopendReasonsFilter([])}
+                          style={{
+                            padding: '0.2rem 0.55rem',
+                            borderRadius: '6px',
+                            fontSize: '0.73rem',
+                            fontWeight: 600,
+                            border: uitlopendReasonsFilter.length === 0 ? '1.5px solid #0284c7' : '1px solid var(--border)',
+                            backgroundColor: uitlopendReasonsFilter.length === 0 ? 'rgba(2, 132, 199, 0.1)' : 'var(--background)',
+                            color: uitlopendReasonsFilter.length === 0 ? '#0369a1' : 'var(--text-muted)',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Alle (geen filter)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setUitlopendReasonsFilter(['__NON_EMPTY__'])}
+                          style={{
+                            padding: '0.2rem 0.55rem',
+                            borderRadius: '6px',
+                            fontSize: '0.73rem',
+                            fontWeight: 600,
+                            border: uitlopendReasonsFilter.includes('__NON_EMPTY__') ? '1.5px solid #0284c7' : '1px solid var(--border)',
+                            backgroundColor: uitlopendReasonsFilter.includes('__NON_EMPTY__') ? 'rgba(2, 132, 199, 0.1)' : 'var(--background)',
+                            color: uitlopendReasonsFilter.includes('__NON_EMPTY__') ? '#0369a1' : 'var(--text-muted)',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Met reden ingevuld
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setUitlopendReasonsFilter(['__EMPTY__'])}
+                          style={{
+                            padding: '0.2rem 0.55rem',
+                            borderRadius: '6px',
+                            fontSize: '0.73rem',
+                            fontWeight: 600,
+                            border: uitlopendReasonsFilter.includes('__EMPTY__') ? '1.5px solid #0284c7' : '1px solid var(--border)',
+                            backgroundColor: uitlopendReasonsFilter.includes('__EMPTY__') ? 'rgba(2, 132, 199, 0.1)' : 'var(--background)',
+                            color: uitlopendReasonsFilter.includes('__EMPTY__') ? '#0369a1' : 'var(--text-muted)',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Zonder reden (Leeg)
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                      {availableReasons.length > 0 && (
+                        <select
+                          className="input"
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value) addReasonFilter(e.target.value);
+                          }}
+                          style={{ fontSize: '0.78rem', padding: '0.35rem 0.6rem', width: 'auto', minWidth: '210px' }}
+                        >
+                          <option value="">+ Kies bekende Reden/uitlopend…</option>
+                          {availableReasons.map((r) => (
+                            <option key={r} value={r}>
+                              {r}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <div style={{ display: 'flex', gap: '0.35rem', flex: '1 1 220px' }}>
+                        <input
+                          type="text"
+                          className="input"
+                          placeholder="Specifieke Reden/uitlopend typen (bijv. Uit collectie)…"
+                          value={customReasonInput}
+                          onChange={(e) => setCustomReasonInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && customReasonInput.trim()) {
+                              e.preventDefault();
+                              addReasonFilter(customReasonInput);
+                            }
+                          }}
+                          style={{ fontSize: '0.78rem', padding: '0.35rem 0.65rem', flex: 1 }}
+                        />
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={!customReasonInput.trim()}
+                          onClick={() => addReasonFilter(customReasonInput)}
+                          style={{
+                            padding: '0.35rem 0.7rem',
+                            fontSize: '0.76rem',
+                            fontWeight: 700,
+                            backgroundColor: customReasonInput.trim() ? '#0284c7' : '#e2e8f0',
+                            color: customReasonInput.trim() ? 'white' : '#64748b',
+                            border: 'none',
+                          }}
+                        >
+                          + Toevoegen
+                        </button>
+                      </div>
+                    </div>
+
+                    {uitlopendReasonsFilter.filter((r) => r !== '__EMPTY__' && r !== '__NON_EMPTY__').length > 0 && (
+                      <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.1rem' }}>
+                        {uitlopendReasonsFilter
+                          .filter((r) => r !== '__EMPTY__' && r !== '__NON_EMPTY__')
+                          .map((reason) => (
+                            <span
+                              key={reason}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                                padding: '0.2rem 0.55rem',
+                                borderRadius: '999px',
+                                backgroundColor: '#e0f2fe',
+                                border: '1px solid #7dd3fc',
+                                color: '#0369a1',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                              }}
+                            >
+                              <span>{reason}</span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setUitlopendReasonsFilter((prev) => prev.filter((x) => x !== reason))
+                                }
+                                style={{
+                                  border: 'none',
+                                  background: 'none',
+                                  color: '#0369a1',
+                                  cursor: 'pointer',
+                                  fontWeight: 800,
+                                  padding: 0,
+                                  fontSize: '0.75rem',
+                                }}
+                              >
+                                ✕
+                              </button>
+                            </span>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 4. Systeemstatus & Nieuwe Artikelen */}
+                  <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', paddingTop: '0.15rem' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
+                      <input
+                        type="checkbox"
+                        checked={onlyActiveInSystem}
+                        onChange={(e) => setOnlyActiveInSystem(e.target.checked)}
+                      />
+                      <span>🚦 Alleen systeem-actieve artikelen (`Actief in systeem = Ja`)</span>
+                    </label>
+                    {(!articleNumbers || articleNumbers.length === 0) && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
+                        <input
+                          type="checkbox"
+                          checked={createNewProducts}
+                          onChange={(e) => setCreateNewProducts(e.target.checked)}
+                        />
+                        <span>➕ Nieuwe artikelen uit EcoPos ook aanmaken in PCM</span>
+                      </label>
+                    )}
+                  </div>
+                </div>
+
                 {/* Quick Presets */}
                 <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>Snelkeuze profiel:</span>
@@ -541,38 +948,6 @@ export default function EcoPosSyncModal({
                     );
                   })}
                 </div>
-
-                {/* Extra Sync Options */}
-                {(!articleNumbers || articleNumbers.length === 0) && (
-                  <div
-                    style={{
-                      padding: '1rem 1.25rem',
-                      borderRadius: '12px',
-                      backgroundColor: 'var(--background)',
-                      border: '1px solid var(--border)',
-                      display: 'flex',
-                      gap: '1.5rem',
-                      flexWrap: 'wrap',
-                    }}
-                  >
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
-                      <input
-                        type="checkbox"
-                        checked={createNewProducts}
-                        onChange={(e) => setCreateNewProducts(e.target.checked)}
-                      />
-                      <span>➕ Nieuwe artikelen uit EcoPos ook aanmaken in PCM</span>
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
-                      <input
-                        type="checkbox"
-                        checked={onlyActiveInSystem}
-                        onChange={(e) => setOnlyActiveInSystem(e.target.checked)}
-                      />
-                      <span>🚦 Alleen systeem-actieve artikelen uit EcoPos ophalen</span>
-                    </label>
-                  </div>
-                )}
               </>
             ) : step === 'preview' && previewData ? (
               singleProductMode ? (
@@ -680,8 +1055,13 @@ export default function EcoPosSyncModal({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.85rem' }}>
                     <div style={{ padding: '0.85rem 1rem', borderRadius: '10px', backgroundColor: 'var(--background)', border: '1px solid var(--border)' }}>
-                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600 }}>Opgehaald uit EcoPos</div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600 }}>Voldoet aan voorwaarden</div>
                       <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>{previewData.totalFetched}</div>
+                      {typeof previewData.filteredOutCount === 'number' && previewData.filteredOutCount > 0 && (
+                        <div style={{ fontSize: '0.69rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                          ({previewData.filteredOutCount} uitgefilterd van {previewData.rawTotalFetched})
+                        </div>
+                      )}
                     </div>
                     <div style={{ padding: '0.85rem 1rem', borderRadius: '10px', backgroundColor: '#f0f9ff', border: '1px solid #bae6fd' }}>
                       <div style={{ fontSize: '0.74rem', color: '#0369a1', fontWeight: 600 }}>Te updaten producten</div>

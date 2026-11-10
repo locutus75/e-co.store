@@ -78,6 +78,15 @@ export const ECOPOS_FIELDS: EcoPosFieldDef[] = [
     description: 'Of het artikel als uitlopend is gemarkeerd',
     prismaTarget: 'uitlopend',
   },
+  {
+    key: 'uitlopendReason',
+    label: 'Reden / uitlopend',
+    category: 'status',
+    type: 'string',
+    defaultMode: 'overwrite',
+    description: 'Reden waarom het artikel uitlopend is in MplusKassa (indien ingevuld)',
+    prismaTarget: 'customData.ecoposUitlopendReason',
+  },
 
   // ── 2. Prijs & Identificatie ──────────────────────────────────────────────
   {
@@ -236,6 +245,9 @@ export const DEFAULT_ECOPOS_FIELD_MODES: Record<string, EcoPosFieldMode> = Objec
   ECOPOS_FIELDS.map((f) => [f.key, f.defaultMode])
 );
 
+export type EcoPosWebshopFilterOption = 'JA' | 'NEE' | 'LEEG';
+export type EcoPosUitlopendFilterOption = 'ALL' | 'JA' | 'NEE';
+
 export interface EcoPosSettings {
   enabled: boolean;
   baseUrl: string;
@@ -243,6 +255,9 @@ export interface EcoPosSettings {
   fieldModes: Record<string, EcoPosFieldMode>;
   createNewProducts: boolean;
   onlyActiveInSystem: boolean;
+  webshopFilter: EcoPosWebshopFilterOption[];
+  uitlopendFilter: EcoPosUitlopendFilterOption;
+  uitlopendReasonsFilter: string[];
   autoSyncEnabled: boolean;
   autoSyncIntervalMinutes: number;
   lastSyncAt?: string | null;
@@ -257,6 +272,9 @@ export const DEFAULT_ECOPOS_SETTINGS: EcoPosSettings = {
   fieldModes: { ...DEFAULT_ECOPOS_FIELD_MODES },
   createNewProducts: false,
   onlyActiveInSystem: false,
+  webshopFilter: ['JA', 'NEE', 'LEEG'],
+  uitlopendFilter: 'ALL',
+  uitlopendReasonsFilter: [],
   autoSyncEnabled: false,
   autoSyncIntervalMinutes: 60,
   lastSyncAt: null,
@@ -279,6 +297,8 @@ export interface NormalizedEcoPosProduct {
     rawSupplier?: string | null;
     bontekst?: string | null;
     omschrijving?: string | null;
+    webshopState?: EcoPosWebshopFilterOption;
+    uitlopendReason?: string | null;
   };
 }
 
@@ -380,11 +400,51 @@ export function normalizeEcoPosProduct(raw: any): NormalizedEcoPosProduct | null
   const sysActive = parseBool(status.systemActive ?? raw.systemActive ?? raw.active);
   if (sysActive !== undefined) values.systemActive = sysActive;
 
-  const webActive = parseBool(status.webshopActive ?? raw.webshopActive ?? raw.webshop);
-  if (webActive !== undefined) values.webshopActive = webActive;
+  const rawWebshopVal =
+    status.webshopState ??
+    status.webshop ??
+    raw.webshopState ??
+    raw.webshop ??
+    status.webshopActive ??
+    raw.webshopActive;
+
+  let webshopState: EcoPosWebshopFilterOption = 'LEEG';
+  if (rawWebshopVal === null || rawWebshopVal === undefined || String(rawWebshopVal).trim() === '' || String(rawWebshopVal).trim().toUpperCase() === 'LEEG') {
+    webshopState = 'LEEG';
+  } else {
+    const parsedWeb = parseBool(rawWebshopVal);
+    if (parsedWeb === true) {
+      webshopState = 'JA';
+      values.webshopActive = true;
+    } else if (parsedWeb === false) {
+      webshopState = 'NEE';
+      values.webshopActive = false;
+    }
+  }
 
   const uitl = parseBool(status.uitlopend ?? raw.uitlopend ?? raw.discontinued);
   if (uitl !== undefined) values.uitlopend = uitl;
+
+  const customFieldsForStatus = raw.customFields && typeof raw.customFields === 'object' ? raw.customFields : {};
+  const rawUitlopendReason = parseStr(
+    status.uitlopendReason ??
+    status.redenUitlopend ??
+    status.discontinuedReason ??
+    raw.uitlopendReason ??
+    raw.redenUitlopend ??
+    customFieldsForStatus.uitlopendReason ??
+    customFieldsForStatus.redenUitlopend
+  );
+  if (rawUitlopendReason !== undefined) {
+    values.uitlopendReason = rawUitlopendReason;
+  } else if (
+    'uitlopendReason' in status ||
+    'redenUitlopend' in status ||
+    'uitlopendReason' in raw ||
+    'redenUitlopend' in raw
+  ) {
+    values.uitlopendReason = null;
+  }
 
   // Pricing & ID
   const basePrice = parseNum(pricing.basePrice ?? raw.basePrice ?? raw.price ?? raw.verkoopprijs, true);
@@ -519,8 +579,81 @@ export function normalizeEcoPosProduct(raw: any): NormalizedEcoPosProduct | null
       rawSupplier: rawSupplier ?? null,
       bontekst: bontekst ?? null,
       omschrijving: omschrijving ?? null,
+      webshopState,
+      uitlopendReason: rawUitlopendReason ?? null,
     },
   };
+}
+
+export interface EcoPosProductFilterCriteria {
+  onlyActiveInSystem?: boolean;
+  webshopFilter?: EcoPosWebshopFilterOption[];
+  uitlopendFilter?: EcoPosUitlopendFilterOption;
+  uitlopendReasonsFilter?: string[];
+}
+
+/**
+ * Evaluates whether a normalized EcoPos product matches the configured selection conditions
+ * (Actief in systeem, Webshop: Leeg/Nee/Ja, Uitlopend: Alle/Ja/Nee, Reden/uitlopend).
+ */
+export function matchesEcoPosProductFilters(
+  product: NormalizedEcoPosProduct,
+  filters: EcoPosProductFilterCriteria
+): boolean {
+  // 1. Actief in Systeem
+  if (filters.onlyActiveInSystem) {
+    if (product.values.systemActive === false) return false;
+  }
+
+  // 2. Webshop filter (JA / NEE / LEEG)
+  if (Array.isArray(filters.webshopFilter) && filters.webshopFilter.length > 0 && filters.webshopFilter.length < 3) {
+    const prodWebshopState: EcoPosWebshopFilterOption =
+      product.rawMeta?.webshopState ??
+      (product.values.webshopActive === true
+        ? 'JA'
+        : product.values.webshopActive === false
+          ? 'NEE'
+          : 'LEEG');
+    if (!filters.webshopFilter.includes(prodWebshopState)) {
+      return false;
+    }
+  }
+
+  // 3. Uitlopend filter (ALL / JA / NEE)
+  if (filters.uitlopendFilter === 'JA') {
+    if (product.values.uitlopend !== true) return false;
+  } else if (filters.uitlopendFilter === 'NEE') {
+    if (product.values.uitlopend === true) return false;
+  }
+
+  // 4. Reden / uitlopend filter
+  if (Array.isArray(filters.uitlopendReasonsFilter) && filters.uitlopendReasonsFilter.length > 0) {
+    const rawReason = (product.values.uitlopendReason ?? product.rawMeta?.uitlopendReason ?? '')
+      .toString()
+      .trim();
+    const hasReason = rawReason.length > 0;
+
+    let matchedReason = false;
+    for (const filterVal of filters.uitlopendReasonsFilter) {
+      if (filterVal === '__EMPTY__') {
+        if (!hasReason) {
+          matchedReason = true;
+          break;
+        }
+      } else if (filterVal === '__NON_EMPTY__') {
+        if (hasReason) {
+          matchedReason = true;
+          break;
+        }
+      } else if (rawReason.toLowerCase() === filterVal.trim().toLowerCase()) {
+        matchedReason = true;
+        break;
+      }
+    }
+    if (!matchedReason) return false;
+  }
+
+  return true;
 }
 
 export interface EcoPosFieldChange {
@@ -559,6 +692,8 @@ export function getCurrentPcmFieldValue(product: any, fieldKey: string): any {
       if (catName && catName.trim().toLowerCase() !== 'mpluswebshops') return catName;
       return null;
     }
+    case 'uitlopendReason':
+      return product.customData?.ecoposUitlopendReason ?? null;
     case 'stockTotalAvailable':
       return product.customData?.ecoposStock ?? null;
     case 'costPrice':
@@ -613,7 +748,10 @@ export function computeEcoPosProductDiff(
 
     const incomingVal = ecoProduct.values[fieldDef.key];
     const allowNullClear =
-      fieldDef.key === 'subcategory' && incomingVal === null && mode === 'overwrite' && !isNew;
+    (fieldDef.key === 'subcategory' || fieldDef.key === 'uitlopendReason') &&
+      incomingVal === null &&
+      mode === 'overwrite' &&
+      !isNew;
     if (isValueEmpty(incomingVal) && !allowNullClear) continue;
 
     if (isNew) {
