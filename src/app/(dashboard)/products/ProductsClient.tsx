@@ -430,226 +430,225 @@ export default function ProductsClient({
   // Reset page to 1 when filters or search query change
   useEffect(() => {
     setCurrentPage(1);
-}, [searchQuery, supplierFilter, brandFilter, categoryFilter, statusFilter, webshopActiveFilter, webshopReadyFilter, assignedUserFilter, aiScoreFilter, unreadFilter, empcoFilter]);
+  }, [searchQuery, supplierFilter, brandFilter, categoryFilter, statusFilter, webshopActiveFilter, webshopReadyFilter, assignedUserFilter, aiScoreFilter, unreadFilter, empcoFilter]);
 
-// Multi-select State
-const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Multi-select State
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-// Extract subcategory/group names for a product (ignoring MplusWebshops root)
-const getProductSubcategoryNames = useCallback((p: any): string[] => {
-  const rawSub = p.subcategory?.name?.trim() || '';
-  const rawCat = p.category?.name?.trim() || '';
-  const effective = (rawSub && rawSub.toLowerCase() !== 'mpluswebshops')
-    ? rawSub
-    : (rawCat && rawCat.toLowerCase() !== 'mpluswebshops' ? rawCat : '');
-  if (!effective) return [];
-  return effective.split(',').map((s: string) => s.trim()).filter(Boolean);
-}, []);
+  // Extract subcategory/group names for a product (ignoring MplusWebshops root)
+  const getProductSubcategoryNames = useCallback((p: any): string[] => {
+    const rawSub = p.subcategory?.name?.trim() || '';
+    const rawCat = p.category?.name?.trim() || '';
+    const effective = (rawSub && rawSub.toLowerCase() !== 'mpluswebshops')
+      ? rawSub
+      : (rawCat && rawCat.toLowerCase() !== 'mpluswebshops' ? rawCat : '');
+    if (!effective) return [];
+    return effective.split(',').map((s: string) => s.trim()).filter(Boolean);
+  }, []);
 
-// Unique Lists for Dropdowns
-// Helper match functions for each filter (reused for dynamic option filtering)
-const matchSearch = useCallback((p: any) => searchQuery === '' ||
-  p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-  p.internalArticleNumber.toLowerCase().includes(searchQuery.toLowerCase()), [searchQuery]);
+  // Unique Lists for Dropdowns
+  // Helper match functions for each filter (reused for dynamic option filtering)
+  const matchSearch = useCallback((p: any) => searchQuery === '' ||
+    p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    p.internalArticleNumber.toLowerCase().includes(searchQuery.toLowerCase()), [searchQuery]);
 
-const matchSupplier = useCallback((p: any) => supplierFilter === '' || p.supplier?.name === supplierFilter, [supplierFilter]);
-const matchBrand = useCallback((p: any) => brandFilter === '' || p.brand?.name === brandFilter, [brandFilter]);
-const matchCategory = useCallback((p: any) => {
-  if (categoryFilter === '') return true;
-  const names = getProductSubcategoryNames(p);
-  if (categoryFilter === 'UNCATEGORIZED') return names.length === 0;
-  return names.includes(categoryFilter) || p.category?.name === categoryFilter;
-}, [categoryFilter, getProductSubcategoryNames]);
-const matchStatus = useCallback((p: any) => statusFilter === '' || (p.status || 'NEW').toUpperCase() === statusFilter, [statusFilter]);
-const matchWebshopActive = useCallback((p: any) => {
-  if (webshopActiveFilter === '') return true;
-  return webshopActiveFilter === 'JA' ? Boolean(p.webshopActive) : !p.webshopActive;
-}, [webshopActiveFilter]);
-const matchReady = useCallback((p: any) => webshopReadyFilter === '' || (p.readyForImport || 'NEE').toUpperCase() === webshopReadyFilter, [webshopReadyFilter]);
-const matchAssigned = useCallback((p: any) => assignedUserFilter === '' || (assignedUserFilter === 'UNASSIGNED' ? !p.assignedUserId : p.assignedUserId === assignedUserFilter), [assignedUserFilter]);
-const matchScore = useCallback((p: any) => aiScoreFilter === '' || (aiScoreFilter === 'WITH_SCORE' ? aiScoreMap[p.internalArticleNumber] != null : aiScoreMap[p.internalArticleNumber] == null), [aiScoreFilter, aiScoreMap]);
-const matchUnread = useCallback((p: any) => unreadFilter === '' || (unreadFilter === 'UNREAD' ? unreadProducts.has(p.internalArticleNumber) : !unreadProducts.has(p.internalArticleNumber)), [unreadFilter, unreadProducts]);
-const empcoStateOf = useCallback((p: any): string => {
-  const e = liveEmpcoMap[p.internalArticleNumber];
-  if (!e) return 'NONE';
-  return e.stale ? 'STALE' : e.status;
-}, [liveEmpcoMap]);
-const matchEmpco = useCallback((p: any) => {
-  if (empcoFilter === '') return true;
-  const s = empcoStateOf(p);
-  if (empcoFilter === 'TODO') return s === 'NONE' || s === 'STALE'; // needs (re)check
-  if (empcoFilter === 'ISSUES') return s === 'FAIL' || s === 'WARNING';
-  return s === empcoFilter;
-}, [empcoFilter, empcoStateOf]);
-
-// Unique Lists for Dropdowns based on "all other filters except itself" (faceted search)
-const uniqueSuppliers = useMemo(() => {
-  const subset = initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchBrand(p) &&
-    matchStatus(p) &&
-    matchReady(p) &&
-    matchAssigned(p) &&
-    matchScore(p) &&
-    matchUnread(p)
-  );
-  const names = subset.map(p => p.supplier?.name).filter(Boolean);
-  return Array.from(new Set(names)).sort();
-}, [initialProducts, matchSearch, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread]);
-
-const uniqueBrands = useMemo(() => {
-  const subset = initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchSupplier(p) &&
-    matchStatus(p) &&
-    matchReady(p) &&
-    matchAssigned(p) &&
-    matchScore(p) &&
-    matchUnread(p)
-  );
-  const names = subset.map(p => p.brand?.name).filter(Boolean);
-  return Array.from(new Set(names)).sort();
-}, [initialProducts, matchSearch, matchSupplier, matchStatus, matchReady, matchAssigned, matchScore, matchUnread]);
-
-const availableStatuses = useMemo(() => {
-  const subset = initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchSupplier(p) &&
-    matchBrand(p) &&
-    matchReady(p) &&
-    matchAssigned(p) &&
-    matchScore(p) &&
-    matchUnread(p)
-  );
-  const statuses = subset.map(p => (p.status || 'NEW').toUpperCase());
-  return Array.from(new Set(statuses));
-}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchReady, matchAssigned, matchScore, matchUnread]);
-
-const availableReadiness = useMemo(() => {
-  const subset = initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchSupplier(p) &&
-    matchBrand(p) &&
-    matchStatus(p) &&
-    matchAssigned(p) &&
-    matchScore(p) &&
-    matchUnread(p)
-  );
-  const readyValues = subset.map(p => (p.readyForImport || 'NEE').toUpperCase());
-  return Array.from(new Set(readyValues));
-}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchAssigned, matchScore, matchUnread]);
-
-const availableAiScores = useMemo(() => {
-  const subset = initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchSupplier(p) &&
-    matchBrand(p) &&
-    matchStatus(p) &&
-    matchReady(p) &&
-    matchAssigned(p) &&
-    matchUnread(p)
-  );
-  const scores = new Set<string>();
-  subset.forEach(p => {
-    if (aiScoreMap[p.internalArticleNumber] != null) {
-      scores.add('WITH_SCORE');
-    } else {
-      scores.add('WITHOUT_SCORE');
-    }
-  });
-  return Array.from(scores);
-}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchUnread, aiScoreMap]);
-
-const availableUnreadFilters = useMemo(() => {
-  const subset = initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchSupplier(p) &&
-    matchBrand(p) &&
-    matchStatus(p) &&
-    matchReady(p) &&
-    matchAssigned(p) &&
-    matchScore(p)
-  );
-  const unreadOpts = new Set<string>();
-  subset.forEach(p => {
-    if (unreadProducts.has(p.internalArticleNumber)) {
-      unreadOpts.add('UNREAD');
-    } else {
-      unreadOpts.add('READ');
-    }
-  });
-  return Array.from(unreadOpts);
-}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, unreadProducts]);
-
-const availableAssignedUsers = useMemo(() => {
-  const subset = initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchSupplier(p) &&
-    matchBrand(p) &&
-    matchStatus(p) &&
-    matchReady(p) &&
-    matchScore(p) &&
-    matchUnread(p)
-  );
-  const userIds = new Set<string>();
-  let hasUnassigned = false;
-  subset.forEach(p => {
-    if (p.assignedUserId) {
-      userIds.add(p.assignedUserId);
-    } else {
-      hasUnassigned = true;
-    }
-  });
-  return {
-    userIds: Array.from(userIds),
-    hasUnassigned
-  };
-}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchScore, matchUnread]);
-
-const uniqueCategories = useMemo(() => {
-  const subset = initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchSupplier(p) &&
-    matchBrand(p) &&
-    matchStatus(p) &&
-    matchReady(p) &&
-    matchAssigned(p) &&
-    matchScore(p) &&
-    matchUnread(p)
-  );
-  const catSet = new Set<string>();
-  let hasUncategorized = false;
-  subset.forEach(p => {
+  const matchSupplier = useCallback((p: any) => supplierFilter === '' || p.supplier?.name === supplierFilter, [supplierFilter]);
+  const matchBrand = useCallback((p: any) => brandFilter === '' || p.brand?.name === brandFilter, [brandFilter]);
+  const matchCategory = useCallback((p: any) => {
+    if (categoryFilter === '') return true;
     const names = getProductSubcategoryNames(p);
-    if (names.length === 0) {
-      hasUncategorized = true;
-    } else {
-      names.forEach(n => catSet.add(n));
-    }
-  });
-  return {
-    names: Array.from(catSet).sort((a, b) => a.localeCompare(b, 'nl')),
-    hasUncategorized,
-  };
-}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread, getProductSubcategoryNames]);
+    if (categoryFilter === 'UNCATEGORIZED') return names.length === 0;
+    return names.includes(categoryFilter) || p.category?.name === categoryFilter;
+  }, [categoryFilter, getProductSubcategoryNames]);
+  const matchStatus = useCallback((p: any) => statusFilter === '' || (p.status || 'NEW').toUpperCase() === statusFilter, [statusFilter]);
+  const matchWebshopActive = useCallback((p: any) => {
+    if (webshopActiveFilter === '') return true;
+    return webshopActiveFilter === 'JA' ? Boolean(p.webshopActive) : !p.webshopActive;
+  }, [webshopActiveFilter]);
+  const matchReady = useCallback((p: any) => webshopReadyFilter === '' || (p.readyForImport || 'NEE').toUpperCase() === webshopReadyFilter, [webshopReadyFilter]);
+  const matchAssigned = useCallback((p: any) => assignedUserFilter === '' || (assignedUserFilter === 'UNASSIGNED' ? !p.assignedUserId : p.assignedUserId === assignedUserFilter), [assignedUserFilter]);
+  const matchScore = useCallback((p: any) => aiScoreFilter === '' || (aiScoreFilter === 'WITH_SCORE' ? aiScoreMap[p.internalArticleNumber] != null : aiScoreMap[p.internalArticleNumber] == null), [aiScoreFilter, aiScoreMap]);
+  const matchUnread = useCallback((p: any) => unreadFilter === '' || (unreadFilter === 'UNREAD' ? unreadProducts.has(p.internalArticleNumber) : !unreadProducts.has(p.internalArticleNumber)), [unreadFilter, unreadProducts]);
+  const empcoStateOf = useCallback((p: any): string => {
+    const e = liveEmpcoMap[p.internalArticleNumber];
+    if (!e) return 'NONE';
+    return e.stale ? 'STALE' : e.status;
+  }, [liveEmpcoMap]);
+  const matchEmpco = useCallback((p: any) => {
+    if (empcoFilter === '') return true;
+    const s = empcoStateOf(p);
+    if (empcoFilter === 'TODO') return s === 'NONE' || s === 'STALE'; // needs (re)check
+    if (empcoFilter === 'ISSUES') return s === 'FAIL' || s === 'WARNING';
+    return s === empcoFilter;
+  }, [empcoFilter, empcoStateOf]);
 
-// Filtered resulting list (uses all filters)
-const filteredProducts = useMemo(() => {
-  return initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchSupplier(p) &&
-    matchBrand(p) &&
-    matchCategory(p) &&
-    matchStatus(p) &&
-    matchWebshopActive(p) &&
-    matchReady(p) &&
-    matchAssigned(p) &&
-    matchScore(p) &&
-    matchUnread(p) &&
-    matchEmpco(p)
-  );
-}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchCategory, matchStatus, matchReady, matchAssigned, matchScore, matchUnread, matchEmpco]);
-  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchCategory, matchStatus, matchWebshopActive, matchReady, matchAssigned, matchScore, matchUnread, matchEmpco]);
+  // Unique Lists for Dropdowns based on "all other filters except itself" (faceted search)
+  const uniqueSuppliers = useMemo(() => {
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchScore(p) &&
+      matchUnread(p)
+    );
+    const names = subset.map(p => p.supplier?.name).filter(Boolean);
+    return Array.from(new Set(names)).sort();
+  }, [initialProducts, matchSearch, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread]);
+
+  const uniqueBrands = useMemo(() => {
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchScore(p) &&
+      matchUnread(p)
+    );
+    const names = subset.map(p => p.brand?.name).filter(Boolean);
+    return Array.from(new Set(names)).sort();
+  }, [initialProducts, matchSearch, matchSupplier, matchStatus, matchReady, matchAssigned, matchScore, matchUnread]);
+
+  const availableStatuses = useMemo(() => {
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchScore(p) &&
+      matchUnread(p)
+    );
+    const statuses = subset.map(p => (p.status || 'NEW').toUpperCase());
+    return Array.from(new Set(statuses));
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchReady, matchAssigned, matchScore, matchUnread]);
+
+  const availableReadiness = useMemo(() => {
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchAssigned(p) &&
+      matchScore(p) &&
+      matchUnread(p)
+    );
+    const readyValues = subset.map(p => (p.readyForImport || 'NEE').toUpperCase());
+    return Array.from(new Set(readyValues));
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchAssigned, matchScore, matchUnread]);
+
+  const availableAiScores = useMemo(() => {
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchUnread(p)
+    );
+    const scores = new Set<string>();
+    subset.forEach(p => {
+      if (aiScoreMap[p.internalArticleNumber] != null) {
+        scores.add('WITH_SCORE');
+      } else {
+        scores.add('WITHOUT_SCORE');
+      }
+    });
+    return Array.from(scores);
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchUnread, aiScoreMap]);
+
+  const availableUnreadFilters = useMemo(() => {
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchScore(p)
+    );
+    const unreadOpts = new Set<string>();
+    subset.forEach(p => {
+      if (unreadProducts.has(p.internalArticleNumber)) {
+        unreadOpts.add('UNREAD');
+      } else {
+        unreadOpts.add('READ');
+      }
+    });
+    return Array.from(unreadOpts);
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, unreadProducts]);
+
+  const availableAssignedUsers = useMemo(() => {
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchScore(p) &&
+      matchUnread(p)
+    );
+    const userIds = new Set<string>();
+    let hasUnassigned = false;
+    subset.forEach(p => {
+      if (p.assignedUserId) {
+        userIds.add(p.assignedUserId);
+      } else {
+        hasUnassigned = true;
+      }
+    });
+    return {
+      userIds: Array.from(userIds),
+      hasUnassigned
+    };
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchScore, matchUnread]);
+
+  const uniqueCategories = useMemo(() => {
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchScore(p) &&
+      matchUnread(p)
+    );
+    const catSet = new Set<string>();
+    let hasUncategorized = false;
+    subset.forEach(p => {
+      const names = getProductSubcategoryNames(p);
+      if (names.length === 0) {
+        hasUncategorized = true;
+      } else {
+        names.forEach(n => catSet.add(n));
+      }
+    });
+    return {
+      names: Array.from(catSet).sort((a, b) => a.localeCompare(b, 'nl')),
+      hasUncategorized,
+    };
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread, getProductSubcategoryNames]);
+
+  // Filtered resulting list (uses all filters)
+  const filteredProducts = useMemo(() => {
+    return initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchCategory(p) &&
+      matchStatus(p) &&
+      matchWebshopActive(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchScore(p) &&
+      matchUnread(p) &&
+      matchEmpco(p)
+    );
+}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchCategory, matchStatus, matchWebshopActive, matchReady, matchAssigned, matchScore, matchUnread, matchEmpco]);
 
 // EmpCo filter option counts (based on all other filters)
 const empcoCounts = useMemo(() => {
