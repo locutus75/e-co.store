@@ -833,7 +833,20 @@ export default function EcoPosSyncModal({
                     onClick={() => setFieldModes({ ...DEFAULT_ECOPOS_FIELD_MODES })}
                     style={{ padding: '0.35rem 0.75rem', borderRadius: '999px', border: '1px solid var(--border)', backgroundColor: 'var(--background)', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}
                   >
-                    ⭐ Aanbevolen Mix (Status/Prijs overschrijven + Basis aanvullen)
+                    ⭐ Aanbevolen Mix (Status/Prijs overschrijven + Rest aanvullen)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const m: Record<string, EcoPosFieldMode> = {};
+                      ECOPOS_FIELDS.forEach((f) => {
+                        m[f.key] = 'overwrite';
+                      });
+                      setFieldModes(m);
+                    }}
+                    style={{ padding: '0.35rem 0.75rem', borderRadius: '999px', border: '1px solid #86efac', backgroundColor: '#dcfce7', color: '#15803d', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    🔄 Alles Overschrijven ({ECOPOS_FIELDS.length} velden)
                   </button>
                 </div>
 
@@ -1216,7 +1229,7 @@ export default function EcoPosSyncModal({
                             🔎 Volledige Artikel-inspectie — Artikel #{articleInspection.articleNumber}
                           </div>
                           <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                            Alle 19 velden uit EcoPos vergeleken met PCM (inclusief gelijke en genegeerde velden).
+                            Alle {ECOPOS_FIELDS.length} velden uit EcoPos vergeleken met PCM (inclusief gelijke en genegeerde velden).
                           </div>
                         </div>
                         <button

@@ -35,6 +35,32 @@ Write-Host "`n[3/5] Synchronizing PostgreSQL Database Schema & Client..." -Foreg
 npx prisma db push
 npx prisma generate
 
+# 3.5 Clean up any leftover temporary backup folders or nested duplicate upload folders before building
+$standaloneUploads = ".next/standalone/public/uploads"
+$rootUploads = "public/uploads"
+foreach ($dupPath in @(
+    "$standaloneUploads/products/products",
+    "$standaloneUploads/uploads",
+    "$rootUploads/products/products",
+    "$rootUploads/uploads",
+    "_uploads_backup_temp",
+    ".next/_uploads_backup"
+)) {
+    if (Test-Path $dupPath) {
+        Write-Host "  Oude/dubbele backup-map opruimen: $dupPath..." -ForegroundColor DarkYellow
+        $resolvedDup = (Resolve-Path $dupPath).Path
+        cmd /c "rmdir /s /q `"$resolvedDup`"" 2>$null
+    }
+}
+
+if (Test-Path $standaloneUploads) {
+    Write-Host "  Synchroniseren van eventuele nieuwe uploads naar $rootUploads..." -ForegroundColor DarkYellow
+    if (-Not (Test-Path $rootUploads)) { New-Item -ItemType Directory -Force -Path $rootUploads | Out-Null }
+    robocopy $standaloneUploads $rootUploads /E /XO /XD "products\products" "uploads" /NFL /NDL /NJH /NJS /R:1 /W:1 | Out-Null
+    $resolvedStandaloneUploads = (Resolve-Path $standaloneUploads).Path
+    cmd /c "rmdir /s /q `"$resolvedStandaloneUploads`"" 2>$null
+}
+
 # 4. Compile Standalone Server
 Write-Host "`n[4/5] Compiling Next.js Standalone Production Build..." -ForegroundColor Yellow
 $env:NODE_ENV = "production"
@@ -44,45 +70,18 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# 5. Prepare Standalone Assets
+# 5. Prepare Standalone Assets (excluding public/uploads which lives permanently in $APP_ROOT/public/uploads)
 Write-Host "`n[5/6] Linking Static Assets..." -ForegroundColor Yellow
 
-# Preserve any runtime-uploaded images so they survive the update.
-# (public/uploads is gitignored; without this step they'd be deleted by the copy below)
-$standalonePublic  = ".next/standalone/public"
-$standaloneUploads = ".next/standalone/public/uploads"
-$backupUploads     = ".next/_uploads_backup"
-
-if (Test-Path $standaloneUploads) {
-    Write-Host "  Backing up runtime uploads..." -ForegroundColor DarkYellow
-    if (Test-Path $backupUploads) { Remove-Item -Path $backupUploads -Recurse -Force }
-    Copy-Item -Path $standaloneUploads -Destination $backupUploads -Recurse -Force
-}
-
+$standalonePublic = ".next/standalone/public"
 if (Test-Path "public") {
-    if (Test-Path $standalonePublic) { Remove-Item -Path $standalonePublic -Recurse -Force }
-    Copy-Item -Path "public" -Destination ".next/standalone/" -Recurse -Force
-}
-
-# Restore uploads on top of the fresh public copy
-if (Test-Path $backupUploads) {
-    Write-Host "  Restoring runtime uploads..." -ForegroundColor DarkYellow
-    $restoreDest = ".next/standalone/public/uploads"
-    if (-Not (Test-Path $restoreDest)) { New-Item -ItemType Directory -Force -Path $restoreDest | Out-Null }
-    # Merge: copy each backed-up article directory (don't overwrite with empty dirs)
-    Get-ChildItem -Path $backupUploads | ForEach-Object {
-        $dest = Join-Path $restoreDest $_.Name
-        Copy-Item -Path $_.FullName -Destination $dest -Recurse -Force
-    }
-    Remove-Item -Path $backupUploads -Recurse -Force
+    if (Test-Path $standalonePublic) { cmd /c "rmdir /s /q .next\standalone\public" 2>$null }
+    robocopy "public" $standalonePublic /E /XD "uploads" /NFL /NDL /NJH /NJS /R:1 /W:1 | Out-Null
 }
 
 if (Test-Path ".next/static") {
     $destStatic = ".next/standalone/.next/static"
-    if (Test-Path $destStatic) { Remove-Item -Path $destStatic -Recurse -Force }
-    $destBase = ".next/standalone/.next"
-    if (-Not (Test-Path $destBase)) { New-Item -ItemType Directory -Force -Path $destBase | Out-Null }
-    Copy-Item -Path ".next/static" -Destination $destBase -Recurse -Force
+    robocopy ".next/static" $destStatic /MIR /NFL /NDL /NJH /NJS /R:1 /W:1 | Out-Null
 }
 
 # 6. Boot Application

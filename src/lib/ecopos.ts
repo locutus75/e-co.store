@@ -5,7 +5,14 @@
 
 export type EcoPosFieldMode = 'ignore' | 'fill_empty' | 'overwrite';
 
-export type EcoPosCategoryKey = 'status' | 'pricing' | 'basic' | 'dimensions' | 'stock';
+export type EcoPosCategoryKey =
+  | 'status'
+  | 'pricing'
+  | 'basic'
+  | 'content'
+  | 'dimensions'
+  | 'sustainability'
+  | 'stock';
 
 export interface EcoPosFieldDef {
   key: string;
@@ -23,24 +30,34 @@ export const ECOPOS_CATEGORIES: Record<
   { label: string; icon: string; description: string }
 > = {
   status: {
-    label: 'Statusvelden',
+    label: 'Status & Beheer',
     icon: '🚦',
-    description: 'Actief in systeem, actief op webshop en uitlopend-status vanuit MplusKassa/EcoPos',
+    description: 'Systeemstatus, webshopstatus, uitlopend (+ reden), klaar voor import en kwaliteitsstatus',
   },
   pricing: {
     label: 'Prijs & Identificatie',
     icon: '💶',
-    description: 'Verkoopprijs (incl. BTW) en EAN/barcode',
+    description: 'Verkoopprijs (incl. BTW), EAN/barcode en webshop URL-slug',
   },
   basic: {
-    label: 'Basisgegevens',
+    label: 'Basisgegevens & Relaties',
     icon: '📦',
-    description: 'Omschrijving/titel, merk, leverancier, categorie en subcategorie',
+    description: 'Bontekst/omschrijving (titel), merk, leverancier en categorie',
+  },
+  content: {
+    label: 'Webshop Content & SEO',
+    icon: '📝',
+    description: 'Korte omschrijving, lange omschrijving, SEO-titel, SEO-beschrijving, tags en interne opmerkingen',
   },
   dimensions: {
-    label: 'Afmetingen & Inhoud',
+    label: 'Fysieke Eigenschappen & Samenstelling',
     icon: '📏',
-    description: 'Gewicht, lengte, breedte, hoogte en inhoud (ml/gr)',
+    description: 'Gewicht, afmetingen (L×B×H), inhoud (ml/gr), kleur, maat, materialen, ingrediënten en allergenen',
+  },
+  sustainability: {
+    label: 'Duurzaamheid: Mens, Dier, Milieu & Transport',
+    icon: '🌿',
+    description: 'Alle duurzaamheidscriteria (Mens, Dier, Milieu, Bewerking, Transport en Leverancier-verificatie)',
   },
   stock: {
     label: 'Voorraad & Kassa-data',
@@ -50,7 +67,7 @@ export const ECOPOS_CATEGORIES: Record<
 };
 
 export const ECOPOS_FIELDS: EcoPosFieldDef[] = [
-  // ── 1. Statusvelden ───────────────────────────────────────────────────────
+  // ── 1. Status & Beheer ────────────────────────────────────────────────────
   {
     key: 'systemActive',
     label: 'Actief in Systeem',
@@ -87,6 +104,42 @@ export const ECOPOS_FIELDS: EcoPosFieldDef[] = [
     description: 'Reden waarom het artikel uitlopend is in MplusKassa (indien ingevuld)',
     prismaTarget: 'customData.ecoposUitlopendReason',
   },
+  {
+    key: 'readyForImport',
+    label: 'Klaar voor Import (NEE / REVIEW / JA)',
+    category: 'status',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Webshop Ready status (NEE, REVIEW of JA)',
+    prismaTarget: 'readyForImport',
+  },
+  {
+    key: 'publicationReady',
+    label: 'Publicatierijp',
+    category: 'status',
+    type: 'boolean',
+    defaultMode: 'fill_empty',
+    description: 'Of het product klaar is voor publicatie',
+    prismaTarget: 'publicationReady',
+  },
+  {
+    key: 'qualityControlStatus',
+    label: 'Kwaliteitscontrole Status',
+    category: 'status',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Status van de kwaliteitscontrole',
+    prismaTarget: 'qualityControlStatus',
+  },
+  {
+    key: 'exportStatus',
+    label: 'Export Status',
+    category: 'status',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Status van de webshop-export',
+    prismaTarget: 'exportStatus',
+  },
 
   // ── 2. Prijs & Identificatie ──────────────────────────────────────────────
   {
@@ -107,8 +160,17 @@ export const ECOPOS_FIELDS: EcoPosFieldDef[] = [
     description: 'EAN-code van het product',
     prismaTarget: 'ean',
   },
+  {
+    key: 'webshopSlug',
+    label: 'Webshop Slug (URL)',
+    category: 'pricing',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Unieke URL-slug van het product op de webshop',
+    prismaTarget: 'webshopSlug',
+  },
 
-  // ── 3. Basisgegevens ──────────────────────────────────────────────────────
+  // ── 3. Basisgegevens & Relaties ───────────────────────────────────────────
   {
     key: 'title',
     label: 'Omschrijving / Bontekst (Titel)',
@@ -146,7 +208,72 @@ export const ECOPOS_FIELDS: EcoPosFieldDef[] = [
     prismaTarget: 'subcategory',
   },
 
-  // ── 4. Afmetingen & Inhoud ────────────────────────────────────────────────
+  // ── 4. Webshop Content & SEO ──────────────────────────────────────────────
+  {
+    key: 'seoTitle',
+    label: 'Korte omschrijving / SEO Titel',
+    category: 'content',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Korte webshop-omschrijving / SEO titel',
+    prismaTarget: 'seoTitle',
+  },
+  {
+    key: 'shortDescription',
+    label: 'Korte Omschrijving (veld shortDescription)',
+    category: 'content',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Samenvattende producttekst',
+    prismaTarget: 'shortDescription',
+  },
+  {
+    key: 'longDescription',
+    label: 'Lange Omschrijving (Web omschrijving)',
+    category: 'content',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Uitgebreide productomschrijving voor de webshop',
+    prismaTarget: 'longDescription',
+  },
+  {
+    key: 'seoMetaDescription',
+    label: 'SEO Meta Beschrijving',
+    category: 'content',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Meta description voor zoekmachines',
+    prismaTarget: 'seoMetaDescription',
+  },
+  {
+    key: 'tags',
+    label: 'Tags / Trefwoorden',
+    category: 'content',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Komma-gescheiden zoektermen en tags',
+    prismaTarget: 'tags',
+  },
+  {
+    key: 'internalRemarks',
+    label: 'Interne Communicatie / Opmerkingen',
+    category: 'content',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Interne opmerkingen bij het artikel',
+    prismaTarget: 'internalRemarks',
+  },
+  {
+    key: 'internalNotes',
+    label: 'Interne Notities',
+    category: 'content',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Aanvullende interne notities',
+    prismaTarget: 'internalNotes',
+  },
+
+  // ── 5. Fysieke Eigenschappen & Samenstelling ──────────────────────────────
   {
     key: 'weightGr',
     label: 'Gewicht (gr)',
@@ -201,8 +328,226 @@ export const ECOPOS_FIELDS: EcoPosFieldDef[] = [
     description: 'Netto inhoud in grammen',
     prismaTarget: 'volumeGr',
   },
+  {
+    key: 'color',
+    label: 'Kleur',
+    category: 'dimensions',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Kleur van het product',
+    prismaTarget: 'color',
+  },
+  {
+    key: 'size',
+    label: 'Maat / Formaat',
+    category: 'dimensions',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Maat of formaataanduiding',
+    prismaTarget: 'size',
+  },
+  {
+    key: 'mainMaterial',
+    label: 'Hoofdmateriaal',
+    category: 'dimensions',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Belangrijkste materiaal van het product',
+    prismaTarget: 'mainMaterial',
+  },
+  {
+    key: 'material',
+    label: 'Materiaal (overig)',
+    category: 'dimensions',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Aanvullende materiaalsamenstelling',
+    prismaTarget: 'material',
+  },
+  {
+    key: 'ingredients',
+    label: 'Ingrediënten',
+    category: 'dimensions',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Ingrediëntenlijst (INCI / voedingsingrediënten)',
+    prismaTarget: 'ingredients',
+  },
+  {
+    key: 'allergens',
+    label: 'Allergenen',
+    category: 'dimensions',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Allergeneninformatie',
+    prismaTarget: 'allergens',
+  },
 
-  // ── 5. Voorraad & Kassa-data ──────────────────────────────────────────────
+  // ── 6. Duurzaamheid: Mens, Dier, Milieu & Transport ───────────────────────
+  {
+    key: 'critMensSafeWork',
+    label: 'Mens: Veilige werkomgeving (Slaafvrij)',
+    category: 'sustainability',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Duurzaamheidscriterium Mens — Veilige werkomgeving (Ja / Nee / Leeg)',
+    prismaTarget: 'critMensSafeWork',
+  },
+  {
+    key: 'critMensFairWage',
+    label: 'Mens: Eerlijk loon',
+    category: 'sustainability',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Duurzaamheidscriterium Mens — Eerlijk loon (Ja / Nee / Leeg)',
+    prismaTarget: 'critMensFairWage',
+  },
+  {
+    key: 'critMensSocial',
+    label: 'Mens: Maatschappelijke betrokkenheid',
+    category: 'sustainability',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Duurzaamheidscriterium Mens — Maatschappelijke betrokkenheid (Ja / Nee / Leeg)',
+    prismaTarget: 'critMensSocial',
+  },
+  {
+    key: 'critDierCrueltyFree',
+    label: 'Dier: Diervrij (Veganistisch / Cruelty Free)',
+    category: 'sustainability',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Duurzaamheidscriterium Dier — Diervrij / Veganistisch (Ja / Nee / Leeg)',
+    prismaTarget: 'critDierCrueltyFree',
+  },
+  {
+    key: 'critDierFriendly',
+    label: 'Dier: Diervriendelijk',
+    category: 'sustainability',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Duurzaamheidscriterium Dier — Diervriendelijk (Ja / Nee / Leeg)',
+    prismaTarget: 'critDierFriendly',
+  },
+  {
+    key: 'supplierContacted',
+    label: 'Verificatie: Leverancier benaderd (Ja/Nee)',
+    category: 'sustainability',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Of de leverancier is benaderd over duurzaamheidscriteria',
+    prismaTarget: 'supplierContacted',
+  },
+  {
+    key: 'critMilieuPackagingFree',
+    label: 'Milieu: Verpakkingsvrij',
+    category: 'sustainability',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Duurzaamheidscriterium Milieu — Verpakkingsvrij (Ja / Nee / Leeg)',
+    prismaTarget: 'critMilieuPackagingFree',
+  },
+  {
+    key: 'critMilieuPlasticFree',
+    label: 'Milieu: Plastic vrij',
+    category: 'sustainability',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Duurzaamheidscriterium Milieu — Plastic vrij (Ja / Nee / Leeg)',
+    prismaTarget: 'critMilieuPlasticFree',
+  },
+  {
+    key: 'critMilieuRecyclable',
+    label: 'Milieu: Recyclebaar',
+    category: 'sustainability',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Duurzaamheidscriterium Milieu — Recyclebaar (Ja / Nee / Leeg)',
+    prismaTarget: 'critMilieuRecyclable',
+  },
+  {
+    key: 'critMilieuBiodegradable',
+    label: 'Milieu: Afbreekbaar (Biologisch)',
+    category: 'sustainability',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Duurzaamheidscriterium Milieu — Biologisch afbreekbaar (Ja / Nee / Leeg)',
+    prismaTarget: 'critMilieuBiodegradable',
+  },
+  {
+    key: 'critMilieuCompostable',
+    label: 'Milieu: Composteerbaar',
+    category: 'sustainability',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Duurzaamheidscriterium Milieu — Composteerbaar (Ja / Nee / Leeg)',
+    prismaTarget: 'critMilieuCompostable',
+  },
+  {
+    key: 'critMilieuCarbonCompensated',
+    label: 'Milieu: Uitstootcompensatie (CO₂)',
+    category: 'sustainability',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Duurzaamheidscriterium Milieu — CO₂ uitstootcompensatie (Ja / Nee / Leeg)',
+    prismaTarget: 'critMilieuCarbonCompensated',
+  },
+  {
+    key: 'critHandmade',
+    label: 'Bewerking: Handgemaakt',
+    category: 'sustainability',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Duurzaamheidscriterium Bewerking — Handgemaakt (Ja / Nee / Leeg)',
+    prismaTarget: 'critHandmade',
+  },
+  {
+    key: 'critNatural',
+    label: 'Bewerking: Natuurlijk (Natuurkracht)',
+    category: 'sustainability',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Duurzaamheidscriterium Bewerking — Natuurlijk (Ja / Nee / Leeg)',
+    prismaTarget: 'critNatural',
+  },
+  {
+    key: 'critCircular',
+    label: 'Bewerking: Hergebruik / Gerecycled (Circulair)',
+    category: 'sustainability',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Duurzaamheidscriterium Bewerking — Hergebruik / Gerecycled',
+    prismaTarget: 'critCircular',
+  },
+  {
+    key: 'critTransportDistance',
+    label: 'Transport: Afstand (km)',
+    category: 'sustainability',
+    type: 'number',
+    defaultMode: 'fill_empty',
+    description: 'Transportafstand in kilometers',
+    prismaTarget: 'critTransportDistance',
+  },
+  {
+    key: 'critTransportVehicle',
+    label: 'Transport: Vervoersmiddel',
+    category: 'sustainability',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Vervoersmiddel (bijv. Vrachtwagen, Bestelbus, Trein, Boot, Vliegtuig)',
+    prismaTarget: 'critTransportVehicle',
+  },
+  {
+    key: 'critOther',
+    label: 'Transport & Overig: Overige vermelding',
+    category: 'sustainability',
+    type: 'string',
+    defaultMode: 'fill_empty',
+    description: 'Overige duurzaamheidsvermelding',
+    prismaTarget: 'critOther',
+  },
+
+  // ── 7. Voorraad & Kassa-data ──────────────────────────────────────────────
   {
     key: 'stockTotalAvailable',
     label: 'Voorraadstand (Totaal)',
@@ -380,6 +725,22 @@ function parseStr(val: any): string | undefined {
   return s === '' ? undefined : s;
 }
 
+/**
+ * Normalizes a 3-way criterion value (boolean or string) to 'Ja' | 'Nee' | string | undefined
+ * so that PCM's ThreeWayToggle displays it accurately.
+ */
+function parseCriterion(val: any): string | undefined {
+  if (val === undefined || val === null || val === '') return undefined;
+  if (typeof val === 'boolean') return val ? 'Ja' : 'Nee';
+  const s = String(val).trim();
+  if (!s) return undefined;
+  const upper = s.toUpperCase();
+  if (['JA', 'TRUE', '1', 'Y', 'J'].includes(upper)) return 'Ja';
+  if (['NEE', 'FALSE', '0', 'N'].includes(upper)) return 'Nee';
+  if (upper === 'LEEG') return undefined;
+  return s;
+}
+
 export function normalizeEcoPosProduct(raw: any): NormalizedEcoPosProduct | null {
   if (!raw || typeof raw !== 'object') return null;
 
@@ -391,12 +752,20 @@ export function normalizeEcoPosProduct(raw: any): NormalizedEcoPosProduct | null
   const status = raw.status && typeof raw.status === 'object' ? raw.status : {};
   const pricing = raw.pricing && typeof raw.pricing === 'object' ? raw.pricing : {};
   const basic = raw.basic && typeof raw.basic === 'object' ? raw.basic : {};
+  const content = raw.content && typeof raw.content === 'object' ? raw.content : {};
   const dimensions = raw.dimensions && typeof raw.dimensions === 'object' ? raw.dimensions : {};
+  const sustainability =
+    raw.sustainability && typeof raw.sustainability === 'object'
+      ? raw.sustainability
+      : raw.criteria && typeof raw.criteria === 'object'
+        ? raw.criteria
+        : {};
   const stock = raw.stock && typeof raw.stock === 'object' ? raw.stock : {};
+  const customFieldsObj = raw.customFields && typeof raw.customFields === 'object' ? raw.customFields : {};
 
   const values: Record<string, any> = {};
 
-  // Status
+  // ── 1. Status & Beheer ────────────────────────────────────────────────────
   const sysActive = parseBool(status.systemActive ?? raw.systemActive ?? raw.active);
   if (sysActive !== undefined) values.systemActive = sysActive;
 
@@ -409,7 +778,12 @@ export function normalizeEcoPosProduct(raw: any): NormalizedEcoPosProduct | null
     raw.webshopActive;
 
   let webshopState: EcoPosWebshopFilterOption = 'LEEG';
-  if (rawWebshopVal === null || rawWebshopVal === undefined || String(rawWebshopVal).trim() === '' || String(rawWebshopVal).trim().toUpperCase() === 'LEEG') {
+  if (
+    rawWebshopVal === null ||
+    rawWebshopVal === undefined ||
+    String(rawWebshopVal).trim() === '' ||
+    String(rawWebshopVal).trim().toUpperCase() === 'LEEG'
+  ) {
     webshopState = 'LEEG';
   } else {
     const parsedWeb = parseBool(rawWebshopVal);
@@ -425,15 +799,14 @@ export function normalizeEcoPosProduct(raw: any): NormalizedEcoPosProduct | null
   const uitl = parseBool(status.uitlopend ?? raw.uitlopend ?? raw.discontinued);
   if (uitl !== undefined) values.uitlopend = uitl;
 
-  const customFieldsForStatus = raw.customFields && typeof raw.customFields === 'object' ? raw.customFields : {};
   const rawUitlopendReason = parseStr(
     status.uitlopendReason ??
     status.redenUitlopend ??
     status.discontinuedReason ??
     raw.uitlopendReason ??
     raw.redenUitlopend ??
-    customFieldsForStatus.uitlopendReason ??
-    customFieldsForStatus.redenUitlopend
+    customFieldsObj.uitlopendReason ??
+    customFieldsObj.redenUitlopend
   );
   if (rawUitlopendReason !== undefined) {
     values.uitlopendReason = rawUitlopendReason;
@@ -446,14 +819,33 @@ export function normalizeEcoPosProduct(raw: any): NormalizedEcoPosProduct | null
     values.uitlopendReason = null;
   }
 
-  // Pricing & ID
+  const rawReady = parseStr(status.readyForImport ?? raw.readyForImport ?? customFieldsObj.readyForImport);
+  if (rawReady !== undefined) {
+    const up = rawReady.toUpperCase();
+    values.readyForImport = up === 'TRUE' || up === '1' || up === 'Y' ? 'JA' : up === 'FALSE' || up === '0' || up === 'N' ? 'NEE' : up;
+  }
+
+  const pubReady = parseBool(status.publicationReady ?? raw.publicationReady ?? customFieldsObj.publicationReady);
+  if (pubReady !== undefined) values.publicationReady = pubReady;
+
+  const qcStatus = parseStr(status.qualityControlStatus ?? raw.qualityControlStatus ?? customFieldsObj.qualityControlStatus);
+  if (qcStatus !== undefined) values.qualityControlStatus = qcStatus;
+
+  const expStatus = parseStr(status.exportStatus ?? raw.exportStatus ?? customFieldsObj.exportStatus);
+  if (expStatus !== undefined) values.exportStatus = expStatus;
+
+  // ── 2. Prijs & Identificatie ──────────────────────────────────────────────
   const basePrice = parseNum(pricing.basePrice ?? raw.basePrice ?? raw.price ?? raw.verkoopprijs, true);
   if (basePrice !== undefined) values.basePrice = basePrice;
 
   const ean = parseStr(raw.ean ?? pricing.ean ?? basic.ean ?? raw.barcode);
   if (ean !== undefined) values.ean = ean;
 
-  // Basic: Bontekst is leading when non-empty; otherwise fallback to Omschrijving / Title
+  const webshopSlug = parseStr(pricing.webshopSlug ?? content.webshopSlug ?? basic.webshopSlug ?? raw.webshopSlug ?? raw.slug);
+  if (webshopSlug !== undefined) values.webshopSlug = webshopSlug;
+
+  // ── 3. Basisgegevens & Relaties ───────────────────────────────────────────
+  // Bontekst is leading when non-empty; otherwise fallback to Omschrijving / Title
   const { effectiveTitle, bontekst, omschrijving } = resolveEcoPosTitle(raw);
   if (effectiveTitle !== undefined) values.title = effectiveTitle;
 
@@ -523,7 +915,47 @@ export function normalizeEcoPosProduct(raw: any): NormalizedEcoPosProduct | null
     }
   }
 
-  // Dimensions
+  // ── 4. Webshop Content & SEO ──────────────────────────────────────────────
+  const seoTitle = parseStr(
+    content.seoTitle ?? basic.seoTitle ?? raw.seoTitle ?? customFieldsObj.seoTitle
+  );
+  if (seoTitle !== undefined) values.seoTitle = seoTitle;
+
+  const shortDescription = parseStr(
+    content.shortDescription ?? basic.shortDescription ?? raw.shortDescription ?? customFieldsObj.shortDescription
+  );
+  if (shortDescription !== undefined) values.shortDescription = shortDescription;
+
+  const longDescription = parseStr(
+    content.longDescription ??
+    content.webDescription ??
+    basic.longDescription ??
+    raw.longDescription ??
+    raw.webDescription ??
+    customFieldsObj.longDescription
+  );
+  if (longDescription !== undefined) values.longDescription = longDescription;
+
+  const seoMetaDescription = parseStr(
+    content.seoMetaDescription ?? basic.seoMetaDescription ?? raw.seoMetaDescription ?? customFieldsObj.seoMetaDescription
+  );
+  if (seoMetaDescription !== undefined) values.seoMetaDescription = seoMetaDescription;
+
+  const rawTags = content.tags ?? basic.tags ?? raw.tags ?? customFieldsObj.tags;
+  const tags = Array.isArray(rawTags) ? rawTags.map((t: any) => String(t).trim()).filter(Boolean).join(', ') : parseStr(rawTags);
+  if (tags !== undefined) values.tags = tags;
+
+  const internalRemarks = parseStr(
+    content.internalRemarks ?? status.internalRemarks ?? raw.internalRemarks ?? customFieldsObj.internalRemarks
+  );
+  if (internalRemarks !== undefined) values.internalRemarks = internalRemarks;
+
+  const internalNotes = parseStr(
+    content.internalNotes ?? status.internalNotes ?? raw.internalNotes ?? customFieldsObj.internalNotes
+  );
+  if (internalNotes !== undefined) values.internalNotes = internalNotes;
+
+  // ── 5. Fysieke Eigenschappen & Samenstelling ──────────────────────────────
   const weightGr = parseNum(dimensions.weightGr ?? raw.weightGr ?? raw.weight, false);
   if (weightGr !== undefined) values.weightGr = weightGr;
 
@@ -542,7 +974,100 @@ export function normalizeEcoPosProduct(raw: any): NormalizedEcoPosProduct | null
   const volumeGr = parseNum(dimensions.volumeGr ?? raw.volumeGr, false);
   if (volumeGr !== undefined) values.volumeGr = volumeGr;
 
-  // Stock & POS
+  const color = parseStr(
+    dimensions.color ?? basic.color ?? content.color ?? raw.color ?? raw.kleur ?? customFieldsObj.color
+  );
+  if (color !== undefined) values.color = color;
+
+  const size = parseStr(
+    dimensions.size ?? basic.size ?? content.size ?? raw.size ?? raw.maat ?? customFieldsObj.size
+  );
+  if (size !== undefined) values.size = size;
+
+  const mainMaterial = parseStr(
+    dimensions.mainMaterial ??
+    basic.mainMaterial ??
+    content.mainMaterial ??
+    raw.mainMaterial ??
+    raw.hoofdmateriaal ??
+    customFieldsObj.mainMaterial
+  );
+  if (mainMaterial !== undefined) values.mainMaterial = mainMaterial;
+
+  const material = parseStr(
+    dimensions.material ?? basic.material ?? content.material ?? raw.material ?? raw.materiaal ?? customFieldsObj.material
+  );
+  if (material !== undefined) values.material = material;
+
+  const ingredients = parseStr(
+    dimensions.ingredients ??
+    basic.ingredients ??
+    content.ingredients ??
+    raw.ingredients ??
+    raw.ingredienten ??
+    customFieldsObj.ingredients
+  );
+  if (ingredients !== undefined) values.ingredients = ingredients;
+
+  const allergens = parseStr(
+    dimensions.allergens ??
+    basic.allergens ??
+    content.allergens ??
+    raw.allergens ??
+    raw.allergenen ??
+    customFieldsObj.allergens
+  );
+  if (allergens !== undefined) values.allergens = allergens;
+
+  // ── 6. Duurzaamheid: Mens, Dier, Milieu & Transport ───────────────────────
+  const critKeys = [
+    'critMensSafeWork',
+    'critMensFairWage',
+    'critMensSocial',
+    'critDierCrueltyFree',
+    'critDierFriendly',
+    'critMilieuPackagingFree',
+    'critMilieuPlasticFree',
+    'critMilieuRecyclable',
+    'critMilieuBiodegradable',
+    'critMilieuCompostable',
+    'critMilieuCarbonCompensated',
+    'critHandmade',
+    'critNatural',
+  ] as const;
+
+  for (const ck of critKeys) {
+    const cVal = parseCriterion(sustainability[ck] ?? raw[ck] ?? customFieldsObj[ck]);
+    if (cVal !== undefined) values[ck] = cVal;
+  }
+
+  const supplierContacted = parseCriterion(
+    sustainability.supplierContacted ?? status.supplierContacted ?? raw.supplierContacted ?? customFieldsObj.supplierContacted
+  );
+  if (supplierContacted !== undefined) values.supplierContacted = supplierContacted;
+
+  const critCircular = parseStr(
+    sustainability.critCircular ?? raw.critCircular ?? customFieldsObj.critCircular
+  );
+  if (critCircular !== undefined) values.critCircular = critCircular;
+
+  const critTransportDistance = parseNum(
+    sustainability.critTransportDistance ?? raw.critTransportDistance ?? customFieldsObj.critTransportDistance,
+    false
+  );
+  if (critTransportDistance !== undefined) values.critTransportDistance = critTransportDistance;
+
+  const critTransportVehicle = parseStr(
+    sustainability.critTransportVehicle ?? raw.critTransportVehicle ?? customFieldsObj.critTransportVehicle
+  );
+  if (critTransportVehicle !== undefined) values.critTransportVehicle = critTransportVehicle;
+
+  const critOther = parseStr(
+    sustainability.critOther ?? raw.critOther ?? customFieldsObj.critOther
+  );
+  if (critOther !== undefined) values.critOther = critOther;
+
+  // ── 7. Voorraad & Kassa-data ──────────────────────────────────────────────
   const stockTotal = parseNum(
     stock.totalAvailable ?? stock.quantity ?? raw.stockTotalAvailable ?? raw.stockQuantity ?? (typeof raw.stock === 'number' ? raw.stock : undefined),
     false
