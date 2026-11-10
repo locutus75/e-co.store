@@ -719,10 +719,15 @@ function parseNum(val: any, isFloat: boolean): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
+function isMplusEmptyPlaceholder(s: string): boolean {
+  const upper = s.trim().toUpperCase();
+  return upper === '' || upper === 'LEEG' || upper === '(GEEN WAARDE)' || upper === 'GEEN WAARDE' || upper === 'NULL' || upper === 'NONE';
+}
+
 function parseStr(val: any): string | undefined {
   if (val === undefined || val === null) return undefined;
   const s = String(val).trim();
-  return s === '' ? undefined : s;
+  return isMplusEmptyPlaceholder(s) ? undefined : s;
 }
 
 /**
@@ -733,11 +738,10 @@ function parseCriterion(val: any): string | undefined {
   if (val === undefined || val === null || val === '') return undefined;
   if (typeof val === 'boolean') return val ? 'Ja' : 'Nee';
   const s = String(val).trim();
-  if (!s) return undefined;
+  if (isMplusEmptyPlaceholder(s)) return undefined;
   const upper = s.toUpperCase();
   if (['JA', 'TRUE', '1', 'Y', 'J'].includes(upper)) return 'Ja';
   if (['NEE', 'FALSE', '0', 'N'].includes(upper)) return 'Nee';
-  if (upper === 'LEEG') return undefined;
   return s;
 }
 
@@ -769,22 +773,30 @@ export function normalizeEcoPosProduct(raw: any): NormalizedEcoPosProduct | null
   const sysActive = parseBool(status.systemActive ?? raw.systemActive ?? raw.active);
   if (sysActive !== undefined) values.systemActive = sysActive;
 
-  const rawWebshopVal =
-    status.webshopState ??
-    status.webshop ??
-    raw.webshopState ??
-    raw.webshop ??
-    status.webshopActive ??
-    raw.webshopActive;
+  const hasExplicitWebshopState =
+    'webshopState' in status ||
+    'webshop' in status ||
+    'webshopState' in raw ||
+    'webshop' in raw;
+
+  const rawWebshopVal = hasExplicitWebshopState
+    ? (status.webshopState !== undefined
+      ? status.webshopState
+      : status.webshop !== undefined
+        ? status.webshop
+        : raw.webshopState !== undefined
+          ? raw.webshopState
+          : raw.webshop)
+    : (status.webshopActive ?? raw.webshopActive);
 
   let webshopState: EcoPosWebshopFilterOption = 'LEEG';
   if (
     rawWebshopVal === null ||
     rawWebshopVal === undefined ||
-    String(rawWebshopVal).trim() === '' ||
-    String(rawWebshopVal).trim().toUpperCase() === 'LEEG'
+    isMplusEmptyPlaceholder(String(rawWebshopVal))
   ) {
     webshopState = 'LEEG';
+    values.webshopActive = false;
   } else {
     const parsedWeb = parseBool(rawWebshopVal);
     if (parsedWeb === true) {
@@ -1273,7 +1285,7 @@ export function computeEcoPosProductDiff(
 
     const incomingVal = ecoProduct.values[fieldDef.key];
     const allowNullClear =
-    (fieldDef.key === 'subcategory' || fieldDef.key === 'uitlopendReason') &&
+      (fieldDef.key === 'subcategory' || fieldDef.key === 'uitlopendReason') &&
       incomingVal === null &&
       mode === 'overwrite' &&
       !isNew;

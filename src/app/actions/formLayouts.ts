@@ -38,9 +38,9 @@ const DEFAULT_PRODUCT_LAYOUT: FormSection[] = [
       { id: "FIELD:title", label: "Titel", type: "text", width: 11 },
       { id: "FIELD:seoTitle", label: "Korte omschrijving", type: "text", width: 11 },
       { id: "FIELD:description", label: "Lange Omschrijving", type: "textarea", width: 24 },
-      { id: "FIELD:webshopActive", label: "Webshop (Actief)", type: "checkbox", width: 4 },
-      { id: "FIELD:systemActive", label: "Actief (Systeem)", type: "checkbox", width: 4 },
-      { id: "FIELD:uitlopend", label: "Uitlopend (Uitl.)", type: "checkbox", width: 16 },
+      { id: "FIELD:webshopActive", label: "Op Webshop", type: "checkbox", width: 4 },
+      { id: "FIELD:systemActive", label: "Actief in Systeem", type: "checkbox", width: 4 },
+      { id: "FIELD:uitlopend", label: "Uitlopend", type: "checkbox", width: 16 },
       { id: "FIELD:media", label: "Product Afbeeldingen", type: "media", width: 7 },
       { id: "FIELD:price", label: "Basisprijs (€)", type: "number", width: 3 },
       { id: "FIELD:custom_ecoposVatRate", label: "BTW (%)", type: "number", width: 2 },
@@ -235,206 +235,206 @@ export async function getFormLayoutAction(): Promise<FormSection[]> {
       const isMedia = (f: FormField) => f.id === 'FIELD:media' || f.type === 'media';
       const isUitlopend = (f: FormField) => f.id === 'FIELD:uitlopend';
 
-          const findAcrossLayout = (pred: (f: FormField) => boolean): FormField | undefined => {
-            for (const s of layout!) {
-              const found = s.fields.find(pred);
-              if (found) return found;
-            }
-            return undefined;
-          };
+      const findAcrossLayout = (pred: (f: FormField) => boolean): FormField | undefined => {
+        for (const s of layout!) {
+          const found = s.fields.find(pred);
+          if (found) return found;
+        }
+        return undefined;
+      };
 
-          const existingMedia = findAcrossLayout(isMedia);
-          const existingPrice = findAcrossLayout(isPrice);
-          const existingVat = findAcrossLayout(isVat);
-          const existingStock = findAcrossLayout(isStock);
-          const existingEan = findAcrossLayout(isEan);
-          const existingCategory = findAcrossLayout(isCategory);
-          const existingUitlopend = findAcrossLayout(isUitlopend);
+      const existingMedia = findAcrossLayout(isMedia);
+      const existingPrice = findAcrossLayout(isPrice);
+      const existingVat = findAcrossLayout(isVat);
+      const existingStock = findAcrossLayout(isStock);
+      const existingEan = findAcrossLayout(isEan);
+      const existingCategory = findAcrossLayout(isCategory);
+      const existingUitlopend = findAcrossLayout(isUitlopend);
 
-          const mediaField: FormField = {
-            ...(existingMedia ?? { id: 'FIELD:media', label: 'Product Afbeeldingen', type: 'media' }),
-            width: 7,
-          };
-          const priceField: FormField = {
-            ...(existingPrice ?? { id: 'FIELD:price', label: 'Basisprijs (€)', type: 'number' }),
-            width: 3,
-          };
-          const vatField: FormField = {
-            ...(existingVat ?? { id: 'FIELD:custom_ecoposVatRate', label: 'BTW (%)', type: 'number' }),
-            width: 2,
-          };
-          const stockField: FormField = {
-            ...(existingStock ?? { id: 'FIELD:custom_ecoposStock', label: 'Voorraad', type: 'number' }),
-            width: 2,
-          };
-          const eanField: FormField = {
-            ...(existingEan ?? { id: 'FIELD:ean', label: 'EAN Code', type: 'text' }),
-            width: 4,
-          };
-          const categoryField: FormField = {
-            ...(existingCategory ?? { id: 'FIELD:category.name', label: 'Categorie', type: 'relation', relationPath: 'category.name' }),
-            width: 5,
-          };
-          const uitlopendField: FormField = {
-            ...(existingUitlopend ?? { id: 'FIELD:uitlopend', label: 'Uitlopend (Uitl.)', type: 'checkbox' }),
-            width: 16,
-          };
+      const mediaField: FormField = {
+        ...(existingMedia ?? { id: 'FIELD:media', label: 'Product Afbeeldingen', type: 'media' }),
+        width: 7,
+      };
+      const priceField: FormField = {
+        ...(existingPrice ?? { id: 'FIELD:price', label: 'Basisprijs (€)', type: 'number' }),
+        width: 3,
+      };
+      const vatField: FormField = {
+        ...(existingVat ?? { id: 'FIELD:custom_ecoposVatRate', label: 'BTW (%)', type: 'number' }),
+        width: 2,
+      };
+      const stockField: FormField = {
+        ...(existingStock ?? { id: 'FIELD:custom_ecoposStock', label: 'Voorraad', type: 'number' }),
+        width: 2,
+      };
+      const eanField: FormField = {
+        ...(existingEan ?? { id: 'FIELD:ean', label: 'EAN Code', type: 'text' }),
+        width: 4,
+      };
+      const categoryField: FormField = {
+        ...(existingCategory ?? { id: 'FIELD:category.name', label: 'Categorie', type: 'relation', relationPath: 'category.name' }),
+        width: 5,
+      };
+      const uitlopendField: FormField = {
+        ...(existingUitlopend ?? { id: 'FIELD:uitlopend', label: 'Uitlopend (Uitl.)', type: 'checkbox' }),
+        width: 16,
+      };
 
-          // Remove these fields from their old positions in targetSection so we can place them cleanly
-          const isMovedField = (f: FormField) =>
-            isMedia(f) || isPrice(f) || isVat(f) || isStock(f) || isEan(f) || isCategory(f) || isUitlopend(f);
+      // Remove these fields from their old positions in targetSection so we can place them cleanly
+      const isMovedField = (f: FormField) =>
+        isMedia(f) || isPrice(f) || isVat(f) || isStock(f) || isEan(f) || isCategory(f) || isUitlopend(f);
 
-          targetSection.fields = targetSection.fields.filter((f) => !isMovedField(f));
+      targetSection.fields = targetSection.fields.filter((f) => !isMovedField(f));
 
-          // Expand top row fields (e.g. Titel + Korte omschrijving) to fill the 24-column row now that Basisprijs moved down
-          const descIdx = targetSection.fields.findIndex(
-            (f) => f.id === 'FIELD:description' || f.id === 'FIELD:longDescription' || f.type === 'textarea'
+      // Expand top row fields (e.g. Titel + Korte omschrijving) to fill the 24-column row now that Basisprijs moved down
+      const descIdx = targetSection.fields.findIndex(
+        (f) => f.id === 'FIELD:description' || f.id === 'FIELD:longDescription' || f.type === 'textarea'
+      );
+      if (descIdx > 0) {
+        const topRowFields = targetSection.fields
+          .slice(0, descIdx)
+          .filter((f) => f.id !== 'FIELD:internalRemarks' && f.type !== 'chat');
+        const currentTopSum = topRowFields.reduce((sum, f) => sum + (Number(f.width) || 8), 0);
+        if (currentTopSum > 0 && currentTopSum < 24) {
+          const deficit = 24 - currentTopSum;
+          const titleField = topRowFields.find((f) => f.id === 'FIELD:title');
+          const secondTextField = topRowFields.find(
+            (f) => f.id !== 'FIELD:internalArticleNumber' && f.id !== 'FIELD:title'
           );
-          if (descIdx > 0) {
-            const topRowFields = targetSection.fields
-              .slice(0, descIdx)
-              .filter((f) => f.id !== 'FIELD:internalRemarks' && f.type !== 'chat');
-            const currentTopSum = topRowFields.reduce((sum, f) => sum + (Number(f.width) || 8), 0);
-            if (currentTopSum > 0 && currentTopSum < 24) {
-              const deficit = 24 - currentTopSum;
-              const titleField = topRowFields.find((f) => f.id === 'FIELD:title');
-              const secondTextField = topRowFields.find(
-                (f) => f.id !== 'FIELD:internalArticleNumber' && f.id !== 'FIELD:title'
-              );
-              if (titleField && secondTextField) {
-                const addTitle = Math.ceil(deficit / 2);
-                const addSecond = deficit - addTitle;
-                titleField.width = (Number(titleField.width) || 8) + addTitle;
-                secondTextField.width = (Number(secondTextField.width) || 8) + addSecond;
-              } else if (titleField) {
-                titleField.width = (Number(titleField.width) || 8) + deficit;
-              }
-            }
+          if (titleField && secondTextField) {
+            const addTitle = Math.ceil(deficit / 2);
+            const addSecond = deficit - addTitle;
+            titleField.width = (Number(titleField.width) || 8) + addTitle;
+            secondTextField.width = (Number(secondTextField.width) || 8) + addSecond;
+          } else if (titleField) {
+            titleField.width = (Number(titleField.width) || 8) + deficit;
           }
+        }
+      }
 
-              // Ensure Webshop + SystemActive + Uitlopend sit on one 24-column row
-              const webshopField = targetSection.fields.find((f) => f.id === 'FIELD:webshopActive');
-              const sysActiveField = targetSection.fields.find((f) => f.id === 'FIELD:systemActive');
-              const webshopW = Number(webshopField?.width) || 4;
-              const sysActiveW = Number(sysActiveField?.width) || 4;
-              if (webshopField) webshopField.width = webshopW;
-              if (sysActiveField) sysActiveField.width = sysActiveW;
-              uitlopendField.width = Math.max(4, 24 - webshopW - sysActiveW);
+      // Ensure Webshop + SystemActive + Uitlopend sit on one 24-column row
+      const webshopField = targetSection.fields.find((f) => f.id === 'FIELD:webshopActive');
+      const sysActiveField = targetSection.fields.find((f) => f.id === 'FIELD:systemActive');
+      const webshopW = Number(webshopField?.width) || 4;
+      const sysActiveW = Number(sysActiveField?.width) || 4;
+      if (webshopField) webshopField.width = webshopW;
+      if (sysActiveField) sysActiveField.width = sysActiveW;
+      uitlopendField.width = Math.max(4, 24 - webshopW - sysActiveW);
 
-              const sysActiveIdx = targetSection.fields.findIndex((f) => f.id === 'FIELD:systemActive');
-              const bottomGroup: FormField[] = [
-                uitlopendField,
-                mediaField,
-                priceField,
-                vatField,
-                stockField,
-                eanField,
-                categoryField,
-              ];
+      const sysActiveIdx = targetSection.fields.findIndex((f) => f.id === 'FIELD:systemActive');
+      const bottomGroup: FormField[] = [
+        uitlopendField,
+        mediaField,
+        priceField,
+        vatField,
+        stockField,
+        eanField,
+        categoryField,
+      ];
 
-              if (sysActiveIdx !== -1) {
-                targetSection.fields.splice(sysActiveIdx + 1, 0, ...bottomGroup);
-              } else {
-                // Place before trailing chat field if chat is at the end, otherwise at the end
-                const lastIdx = targetSection.fields.length - 1;
-                if (lastIdx >= 0 && targetSection.fields[lastIdx].type === 'chat') {
-                  targetSection.fields.splice(lastIdx, 0, ...bottomGroup);
-                } else {
-                  targetSection.fields.push(...bottomGroup);
-                }
-              }
+      if (sysActiveIdx !== -1) {
+        targetSection.fields.splice(sysActiveIdx + 1, 0, ...bottomGroup);
+      } else {
+        // Place before trailing chat field if chat is at the end, otherwise at the end
+        const lastIdx = targetSection.fields.length - 1;
+        if (lastIdx >= 0 && targetSection.fields[lastIdx].type === 'chat') {
+          targetSection.fields.splice(lastIdx, 0, ...bottomGroup);
+        } else {
+          targetSection.fields.push(...bottomGroup);
+        }
+      }
 
-              const updatedLayoutJson = JSON.stringify(layout);
-              await prisma.$executeRaw`
+      const updatedLayoutJson = JSON.stringify(layout);
+      await prisma.$executeRaw`
         INSERT INTO "SystemSetting" ("key", "value")
         VALUES ('product_form_layout', ${updatedLayoutJson})
         ON CONFLICT ("key")
         DO UPDATE SET "value" = ${updatedLayoutJson}
       `;
-              await prisma.$executeRaw`
+      await prisma.$executeRaw`
         INSERT INTO "SystemSetting" ("key", "value")
         VALUES ('migration_pos_readonly_fields_v2', 'true')
         ON CONFLICT ("key") DO NOTHING
       `;
-            }
-          } catch (e) {
-            console.warn('[getFormLayoutAction] POS fields v2 migration warning:', e);
-          }
+    }
+  } catch (e) {
+    console.warn('[getFormLayoutAction] POS fields v2 migration warning:', e);
+  }
 
-          return layout;
-        }
+  return layout;
+}
 
-        export async function saveFormLayoutAction(layout: FormSection[]) {
-          try {
-            const valueString = JSON.stringify(layout);
-            await prisma.$executeRaw`
+export async function saveFormLayoutAction(layout: FormSection[]) {
+  try {
+    const valueString = JSON.stringify(layout);
+    await prisma.$executeRaw`
       INSERT INTO "SystemSetting" ("key", "value")
       VALUES ('product_form_layout', ${valueString})
       ON CONFLICT ("key")
       DO UPDATE SET "value" = ${valueString}
     `;
-            revalidatePath("/roles");
-            revalidatePath("/products");
-            return { success: true };
-          } catch (e: any) {
-            return { success: false, error: e.message };
-          }
+    revalidatePath("/roles");
+    revalidatePath("/products");
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+/**
+ * Bulk-migrate legacy internalRemarks text for ALL products into the new
+ * ProductRemark chat table. Safe to call multiple times — skips products that
+ * already have remarks or have no internalRemarks text.
+ * Called when the user explicitly removes the old internalRemarks field from
+ * the form layout via the WYSIWYG builder.
+ */
+export async function bulkMigrateInternalRemarksAction(): Promise<{ success: boolean; migrated: number; error?: string }> {
+  try {
+    // Find a fallback admin user to attribute migrated remarks to
+    const fallbackUser = await prisma.user.findFirst({
+      where: { userRoles: { some: { role: { name: { equals: 'ADMIN', mode: 'insensitive' } } } } },
+      select: { id: true }
+    });
+
+    const products = await prisma.product.findMany({
+      where: { internalRemarks: { not: null } },
+      select: {
+        id: true,
+        internalRemarks: true,
+        assignedUserId: true,
+        remarks: { select: { id: true }, take: 1 }
+      }
+    });
+
+    let migrated = 0;
+    for (const product of products) {
+      // Skip products that already have chat remarks (lazy migration already ran)
+      if (product.remarks.length > 0) {
+        // Still clear the legacy field to keep DB tidy
+        await prisma.product.update({ where: { id: product.id }, data: { internalRemarks: null } });
+        continue;
+      }
+      const text = product.internalRemarks?.trim();
+      if (!text) continue;
+
+      const userId = product.assignedUserId || fallbackUser?.id;
+      if (!userId) continue;
+
+      await prisma.productRemark.create({
+        data: {
+          productId: product.id,
+          userId,
+          message: text
         }
+      });
+      await prisma.product.update({ where: { id: product.id }, data: { internalRemarks: null } });
+      migrated++;
+    }
 
-        /**
-         * Bulk-migrate legacy internalRemarks text for ALL products into the new
-         * ProductRemark chat table. Safe to call multiple times — skips products that
-         * already have remarks or have no internalRemarks text.
-         * Called when the user explicitly removes the old internalRemarks field from
-         * the form layout via the WYSIWYG builder.
-         */
-        export async function bulkMigrateInternalRemarksAction(): Promise<{ success: boolean; migrated: number; error?: string }> {
-          try {
-            // Find a fallback admin user to attribute migrated remarks to
-            const fallbackUser = await prisma.user.findFirst({
-              where: { userRoles: { some: { role: { name: { equals: 'ADMIN', mode: 'insensitive' } } } } },
-              select: { id: true }
-            });
-
-            const products = await prisma.product.findMany({
-              where: { internalRemarks: { not: null } },
-              select: {
-                id: true,
-                internalRemarks: true,
-                assignedUserId: true,
-                remarks: { select: { id: true }, take: 1 }
-              }
-            });
-
-            let migrated = 0;
-            for (const product of products) {
-              // Skip products that already have chat remarks (lazy migration already ran)
-              if (product.remarks.length > 0) {
-                // Still clear the legacy field to keep DB tidy
-                await prisma.product.update({ where: { id: product.id }, data: { internalRemarks: null } });
-                continue;
-              }
-              const text = product.internalRemarks?.trim();
-              if (!text) continue;
-
-              const userId = product.assignedUserId || fallbackUser?.id;
-              if (!userId) continue;
-
-              await prisma.productRemark.create({
-                data: {
-                  productId: product.id,
-                  userId,
-                  message: text
-                }
-              });
-              await prisma.product.update({ where: { id: product.id }, data: { internalRemarks: null } });
-              migrated++;
-            }
-
-            revalidatePath('/products');
-            return { success: true, migrated };
-          } catch (e: any) {
-            console.error('bulkMigrateInternalRemarksAction error', e);
-            return { success: false, migrated: 0, error: e.message };
-          }
-        }
+    revalidatePath('/products');
+    return { success: true, migrated };
+  } catch (e: any) {
+    console.error('bulkMigrateInternalRemarksAction error', e);
+    return { success: false, migrated: 0, error: e.message };
+  }
+}
