@@ -532,6 +532,10 @@ export async function executeEcoPosSyncAction(options: {
 
   const userId = (session?.user as any)?.id ?? null;
   const userEmail = session?.user?.email ?? (options.isAutoSync ? 'EcoPos Auto-Sync' : 'EcoPos Sync');
+  const verifiedUser = userId
+    ? await prisma.user.findUnique({ where: { id: String(userId) }, select: { id: true } }).catch(() => null)
+    : null;
+  const verifiedUserId = verifiedUser?.id ?? null;
 
   const savedSettings = await getEcoPosSettingsAction();
   const baseModes = options.fieldModes ?? savedSettings.fieldModes;
@@ -675,12 +679,20 @@ export async function executeEcoPosSyncAction(options: {
       if (!fieldDef) continue;
 
       if (ch.fieldKey === 'brand') {
-        dataPayload.brand = {
-          connectOrCreate: {
-            where: { name: String(ch.newValue).trim() },
-            create: { name: String(ch.newValue).trim() },
-          },
-        };
+        const trimmedBrand = String(ch.newValue).trim();
+        const existingBrand = await prisma.brand.findFirst({
+          where: { name: { equals: trimmedBrand, mode: 'insensitive' } },
+        });
+        if (existingBrand) {
+          dataPayload.brand = { connect: { id: existingBrand.id } };
+        } else {
+          dataPayload.brand = {
+            connectOrCreate: {
+              where: { name: trimmedBrand },
+              create: { name: trimmedBrand },
+            },
+          };
+        }
       } else if (ch.fieldKey === 'supplier') {
         const cleanedSupp = cleanSupplierName(String(ch.newValue)) || String(ch.newValue).trim();
         const existingSupp = await prisma.supplier.findFirst({
@@ -737,46 +749,62 @@ export async function executeEcoPosSyncAction(options: {
     // Always stamp last EcoPos sync timestamp in customData when a product is touched
     existingCustomData.ecoposLastSyncedAt = nowIso;
     dataPayload.customData = existingCustomData;
-    if (userId) {
-      dataPayload.lastEditedByUserId = userId;
+    if (verifiedUserId) {
+      dataPayload.lastEditedByUser = { connect: { id: verifiedUserId } };
     }
 
-    if (diff.isNew) {
-      await prisma.product.create({
-        data: {
-          internalArticleNumber: ecoProd.internalArticleNumber,
-          title: dataPayload.title || ecoProd.values.title || `Artikel ${ecoProd.internalArticleNumber}`,
-          status: 'new',
-          ...dataPayload,
-        },
-      });
-      createdCount++;
-      totalFieldsChanged += diff.changes.length;
-    } else {
-      await prisma.product.update({
-        where: { internalArticleNumber: ecoProd.internalArticleNumber },
-        data: dataPayload,
-      });
-      updatedCount++;
-      totalFieldsChanged += diff.changes.length;
-
-      // Record field history entries for auditability
-      if (diff.changes.length > 0) {
-        await prisma.productFieldHistory.createMany({
-          data: diff.changes.map((ch) => {
-            const def = ECOPOS_FIELDS.find((f) => f.key === ch.fieldKey);
-            return {
-              articleNumber: ecoProd.internalArticleNumber,
-              fieldKey: ch.fieldKey,
-              fieldLabel: ch.fieldLabel,
-              oldValue: formatEcoPosValue(ch.oldValue, def?.type, ch.fieldKey),
-              newValue: formatEcoPosValue(ch.newValue, def?.type, ch.fieldKey),
-              source: 'ECOPOS',
-              userId,
-              userEmail,
-            };
-          }),
+    try {
+      if (diff.isNew) {
+        await prisma.product.create({
+          data: {
+            internalArticleNumber: ecoProd.internalArticleNumber,
+            title: dataPayload.title || ecoProd.values.title || `Artikel ${ecoProd.internalArticleNumber}`,
+            status: 'new',
+            ...dataPayload,
+          },
         });
+        createdCount++;
+        totalFieldsChanged += diff.changes.length;
+      } else {
+        await prisma.product.update({
+          where: { internalArticleNumber: ecoProd.internalArticleNumber },
+          data: dataPayload,
+        });
+        updatedCount++;
+        totalFieldsChanged += diff.changes.length;
+
+        // Record field history entries for auditability
+        if (diff.changes.length > 0) {
+          await prisma.productFieldHistory.createMany({
+            data: diff.changes.map((ch) => {
+              const def = ECOPOS_FIELDS.find((f) => f.key === ch.fieldKey);
+              return {
+                articleNumber: ecoProd.internalArticleNumber,
+                fieldKey: ch.fieldKey,
+                fieldLabel: ch.fieldLabel,
+                oldValue: formatEcoPosValue(ch.oldValue, def?.type, ch.fieldKey),
+                newValue: formatEcoPosValue(ch.newValue, def?.type, ch.fieldKey),
+                source: 'ECOPOS',
+                userId: verifiedUserId,
+                userEmail,
+              };
+            }),
+          });
+        }
+      }
+    } catch (prodErr: any) {
+      console.error(`Fout bij synchroniseren van artikel #${ecoProd.internalArticleNumber}:`, prodErr);
+      if (fetched.products.length === 1) {
+        return {
+          ok: false,
+          error: `Fout bij opslaan van artikel #${ecoProd.internalArticleNumber}: ${prodErr?.message || 'Database fout'}`,
+          updatedCount,
+          createdCount,
+          unchangedCount,
+          skippedNewCount,
+          totalFieldsChanged,
+          syncedAt: nowIso,
+        };
       }
     }
   }
