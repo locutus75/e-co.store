@@ -1517,7 +1517,6 @@ export default function ProductsClient({
                   </div>
                 </td>
                 <td style={{ padding: '1.25rem' }}>
-                  <InlineStatusToggle product={product} isAdmin={isAdmin} />
                   <InlineStatusToggle
                     product={product}
                     isAdmin={isAdmin}
