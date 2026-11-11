@@ -36,7 +36,7 @@ const DEFAULT_PRODUCT_LAYOUT: FormSection[] = [
       { id: "FIELD:internalRemarks", label: "Interne Communicatie", type: "chat", width: 24 },
       { id: "FIELD:internalArticleNumber", label: "Nummer", type: "text", width: 2 },
       { id: "FIELD:title", label: "Titel", type: "text", width: 11 },
-      { id: "FIELD:seoTitle", label: "Korte omschrijving", type: "text", width: 11 },
+      { id: "FIELD:shortDescription", label: "Korte omschrijving", type: "text", width: 11 },
       { id: "FIELD:description", label: "Lange Omschrijving", type: "textarea", width: 24 },
       { id: "FIELD:webshopActive", label: "Op Webshop", type: "checkbox", width: 4 },
       { id: "FIELD:systemActive", label: "Actief in Systeem", type: "checkbox", width: 4 },
@@ -216,6 +216,21 @@ export async function getFormLayoutAction(): Promise<FormSection[]> {
   // No internalRemarks field existed at all → prepend a fresh chat field
   if (!chatFieldFound && layout.length > 0) {
     layout[0].fields = [CHAT_FIELD, ...layout[0].fields];
+  }
+
+  // Normalize legacy "Korte omschrijving" field that was mistakenly given id="FIELD:seoTitle"
+  const hasExplicitShortDesc = layout.some((s) =>
+    s.fields.some((f) => f.id === 'FIELD:shortDescription')
+  );
+  if (!hasExplicitShortDesc) {
+    layout = layout.map((s) => ({
+      ...s,
+      fields: s.fields.map((f) =>
+        f.id === 'FIELD:seoTitle' && (f.label || '').trim().toLowerCase() === 'korte omschrijving'
+          ? { ...f, id: 'FIELD:shortDescription' }
+          : f
+      ),
+    }));
   }
 
   // ── Ensure POS / EcoPos read-only fields are grouped at the bottom with compact widths (v2) ──

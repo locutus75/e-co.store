@@ -550,6 +550,14 @@ export async function updateProductAction(internalId: string, formData: FormData
     }
   }
 
+  const empcoFallbackTextKeys = ['shortDescription', 'longDescription', 'seoTitle', 'seoMetaDescription', 'tags', 'mainMaterial', 'ingredients', 'allergens', 'color', 'critOther'];
+  for (const fbKey of empcoFallbackTextKeys) {
+    if (data[fbKey] === undefined && presentFields.includes(fbKey) && formData.has(fbKey)) {
+      const rawVal = formData.get(fbKey)?.toString() ?? '';
+      data[fbKey] = rawVal === '' ? null : rawVal;
+    }
+  }
+
   if (formData.has('supplierId')) {
     const sVal = formData.get('supplierId')?.toString();
     data.supplierId = (sVal === '' || sVal === 'NONE' || sVal === null) ? null : sVal;

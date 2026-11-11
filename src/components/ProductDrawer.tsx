@@ -485,10 +485,13 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
   const findFormField = (fieldKey: string) => {
     const form = formRef.current;
     if (!form) return null;
-    const q = (n: string) => form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${n}"]:not([type="hidden"])`);
+    const q = (n: string) =>
+      form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${n}"]:not([type="hidden"])`) ??
+      form.querySelector<HTMLInputElement>(`input[data-empco-fallback="true"][name="${n}"]`);
     let el = q(fieldKey);
     if (!el && fieldKey === 'longDescription') el = q('description');
     if (!el && fieldKey === 'description') el = q('longDescription');
+    if (!el && fieldKey === 'shortDescription') el = q('seoTitle');
     return el;
   };
 
@@ -510,14 +513,16 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     if (isGloballyLocked) return { ok: false, message: 'Product is vergrendeld' };
     const el = findFormField(fieldKey);
     if (!el || el.readOnly || el.disabled) return { ok: false, message: 'Veld niet bewerkbaar' };
-    const current = el.value ?? '';
+    const current = el.value || (localProductData?.[fieldKey] != null ? String(localProductData[fieldKey]) : '');
 
     const next = replaceEmpcoFragment(current, original, replacement);
     if (next === null) return { ok: false, message: 'Tekst niet (meer) gevonden — pas handmatig aan' };
 
     el.value = next;
+    const canonicalKey = fieldKey === 'description' ? 'longDescription' : fieldKey;
+    setLocalProductData((prev: any) => (prev ? { ...prev, [canonicalKey]: next } : prev));
     setIsDirty(true);
-    setEmpcoFields(prev => new Set(prev).add(fieldKey === 'description' ? 'longDescription' : fieldKey));
+    setEmpcoFields(prev => new Set(prev).add(canonicalKey));
     return { ok: true };
   };
 
@@ -829,6 +834,9 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
       }
     } else {
       val = localProductData?.[key];
+      if (key === 'shortDescription' && (val === null || val === undefined || val === '')) {
+        val = localProductData?.seoTitle;
+      }
     }
 
     let inputComponent;
@@ -977,6 +985,26 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
             {/* Marks fields changed via EmpCo / history-restore so the save action can label the history entries */}
             {Array.from(empcoFields).map(k => <input key={`empco_${k}`} type="hidden" name="_empco_fields" value={k} />)}
             {Array.from(restoreFields).map(k => <input key={`restore_${k}`} type="hidden" name="_restore_fields" value={k} />)}
+            {/* Fallback inputs for EmpCo-checked fields not currently placed in the visual layout */}
+            {(() => {
+              const layoutKeys = new Set<string>();
+              for (const sec of layout ?? []) {
+                for (const fld of sec?.fields ?? []) {
+                  let fk = String(fld.id ?? '').replace('FIELD:', '');
+                  if (fk === 'description') fk = 'longDescription';
+                  layoutKeys.add(fk);
+                }
+              }
+              const fallbackKeys = ['title', 'shortDescription', 'longDescription', 'seoTitle', 'seoMetaDescription', 'tags', 'mainMaterial', 'ingredients', 'allergens', 'color', 'critOther'];
+              return fallbackKeys
+                .filter(k => !layoutKeys.has(k))
+                .map(k => (
+                  <React.Fragment key={`empco_fb_${k}`}>
+                    <input type="hidden" name="_present_fields" value={k} />
+                    <input type="hidden" data-empco-fallback="true" name={k} defaultValue={localProductData?.[k] ?? ''} />
+                  </React.Fragment>
+                ));
+            })()}
             <div style={{ padding: '2rem 3rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, backgroundColor: 'rgba(255,255,255,0.95)', zIndex: 10, backdropFilter: 'blur(8px)' }}>
               <div>
                 <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text)' }}>Edit Product #{localProductData.internalArticleNumber}</h2>
