@@ -165,7 +165,7 @@ export const ECOPOS_FIELDS: EcoPosFieldDef[] = [
     label: 'Webshop Slug (URL)',
     category: 'pricing',
     type: 'string',
-    defaultMode: 'fill_empty',
+    defaultMode: 'ignore',
     description: 'Unieke URL-slug van het product op de webshop',
     prismaTarget: 'webshopSlug',
   },
@@ -211,11 +211,11 @@ export const ECOPOS_FIELDS: EcoPosFieldDef[] = [
   // ── 4. Webshop Content & SEO ──────────────────────────────────────────────
   {
     key: 'seoTitle',
-    label: 'Korte omschrijving / SEO Titel',
+    label: 'SEO Titel',
     category: 'content',
     type: 'string',
-    defaultMode: 'fill_empty',
-    description: 'Korte webshop-omschrijving / SEO titel',
+    defaultMode: 'ignore',
+    description: 'Korte webshop-omschrijving / SEO titel (standaard uitgeschakeld)',
     prismaTarget: 'seoTitle',
   },
   {
@@ -241,8 +241,8 @@ export const ECOPOS_FIELDS: EcoPosFieldDef[] = [
     label: 'SEO Meta Beschrijving',
     category: 'content',
     type: 'string',
-    defaultMode: 'fill_empty',
-    description: 'Meta description voor zoekmachines',
+    defaultMode: 'ignore',
+    description: 'Meta description voor zoekmachines (standaard uitgeschakeld)',
     prismaTarget: 'seoMetaDescription',
   },
   {
@@ -250,8 +250,8 @@ export const ECOPOS_FIELDS: EcoPosFieldDef[] = [
     label: 'Tags / Trefwoorden',
     category: 'content',
     type: 'string',
-    defaultMode: 'fill_empty',
-    description: 'Komma-gescheiden zoektermen en tags',
+    defaultMode: 'ignore',
+    description: 'Komma-gescheiden zoektermen en tags (standaard uitgeschakeld)',
     prismaTarget: 'tags',
   },
   {

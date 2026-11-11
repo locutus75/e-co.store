@@ -91,7 +91,7 @@ export function findMatchesInProduct(
     candidateKeys.add(preferredFieldKey);
   }
   // Standard text fields to inspect
-  ['longDescription', 'shortDescription', 'title', 'tags', 'seoTitle', 'seoMetaDescription'].forEach(k => candidateKeys.add(k));
+  ['longDescription', 'shortDescription', 'title'].forEach(k => candidateKeys.add(k));
 
   // Also include any other text fields from layout
   allFields.forEach((f: any) => {

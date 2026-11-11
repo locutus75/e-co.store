@@ -11,26 +11,23 @@ const PROVIDER_ICONS: Record<string, string> = { openai: '🟢', anthropic: '�
 const PROVIDER_LABELS: Record<string, string> = { openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Google Gemini' };
 
 const KNOWN_FIELDS = [
-  { id: '_title',              label: 'Omschrijving',       path: 'title' },
-  { id: '_shortDescription',  label: 'Korte omschrijving', path: 'shortDescription' },
-  { id: '_longDescription',   label: 'Lange omschrijving', path: 'longDescription' },
-  { id: '_ean',               label: 'EAN Code',           path: 'ean' },
-  { id: '_color',             label: 'Kleur',              path: 'color' },
-  { id: '_size',              label: 'Maat',               path: 'size' },
-  { id: '_material',          label: 'Materiaal',          path: 'material' },
-  { id: '_mainMaterial',      label: 'Hoofdmateriaal',     path: 'mainMaterial' },
-  { id: '_tags',              label: 'Tags',               path: 'tags' },
-  { id: '_ingredients',       label: 'Ingrediënten',       path: 'ingredients' },
-  { id: '_allergens',         label: 'Allergenen',         path: 'allergens' },
-  { id: '_seoTitle',          label: 'SEO Titel',          path: 'seoTitle' },
-  { id: '_seoMetaDescription',label: 'SEO Beschrijving',   path: 'seoMetaDescription' },
-  { id: '_basePrice',         label: 'Basisprijs',         path: 'basePrice' },
-  { id: '_internalNotes',     label: 'Interne notities',   path: 'internalNotes' },
-  { id: '_brand',             label: 'Merk',               path: 'brand.name' },
-  { id: '_supplier',          label: 'Leverancier',        path: 'supplier.name' },
-  { id: '_category',          label: 'Categorie',          path: 'category.name' },
-  { id: '_subcategory',       label: 'Subcategorie',       path: 'subcategory.name' },
-  { id: '_status',            label: 'Status',             path: 'status' },
+  { id: '_title', label: 'Omschrijving', path: 'title' },
+  { id: '_shortDescription', label: 'Korte omschrijving', path: 'shortDescription' },
+  { id: '_longDescription', label: 'Lange omschrijving', path: 'longDescription' },
+  { id: '_ean', label: 'EAN Code', path: 'ean' },
+  { id: '_color', label: 'Kleur', path: 'color' },
+  { id: '_size', label: 'Maat', path: 'size' },
+  { id: '_material', label: 'Materiaal', path: 'material' },
+  { id: '_mainMaterial', label: 'Hoofdmateriaal', path: 'mainMaterial' },
+  { id: '_ingredients', label: 'Ingrediënten', path: 'ingredients' },
+  { id: '_allergens', label: 'Allergenen', path: 'allergens' },
+  { id: '_basePrice', label: 'Basisprijs', path: 'basePrice' },
+  { id: '_internalNotes', label: 'Interne notities', path: 'internalNotes' },
+  { id: '_brand', label: 'Merk', path: 'brand.name' },
+  { id: '_supplier', label: 'Leverancier', path: 'supplier.name' },
+  { id: '_category', label: 'Categorie', path: 'category.name' },
+  { id: '_subcategory', label: 'Subcategorie', path: 'subcategory.name' },
+  { id: '_status', label: 'Status', path: 'status' },
 ];
 
 interface FieldEntry { id: string; label: string; value: string; }
@@ -68,32 +65,32 @@ function renderMarkdown(md: string): string {
   let inCode = false; let codeLines: string[] = [];
   let listItems: string[] = []; let listOrdered = false;
   const inline = (t: string) =>
-    t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-     .replace(/\*\*\*(.+?)\*\*\*/g,'<strong><em>$1</em></strong>')
-     .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
-     .replace(/\*(.+?)\*/g,'<em>$1</em>')
-     .replace(/`([^`]+)`/g,'<code class="mdc">$1</code>');
+    t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/`([^`]+)`/g, '<code class="mdc">$1</code>');
   const flushList = () => {
     if (!listItems.length) return;
-    out.push(`<${listOrdered?'ol':'ul'} class="mdl">${listItems.join('')}</${listOrdered?'ol':'ul'}>`);
+    out.push(`<${listOrdered ? 'ol' : 'ul'} class="mdl">${listItems.join('')}</${listOrdered ? 'ol' : 'ul'}>`);
     listItems = [];
   };
   for (const raw of lines) {
     const l = raw.trimEnd();
     if (l.startsWith('```')) {
       if (!inCode) { flushList(); inCode = true; codeLines = []; }
-      else { out.push(`<pre class="mdpre"><code>${codeLines.join('\n').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</code></pre>`); inCode = false; }
+      else { out.push(`<pre class="mdpre"><code>${codeLines.join('\n').replace(/&/g, '&amp;').replace(/</g, '&lt;')}</code></pre>`); inCode = false; }
       continue;
     }
     if (inCode) { codeLines.push(l); continue; }
     if (/^### /.test(l)) { flushList(); out.push(`<h3 class="mdh3">${inline(l.slice(4))}</h3>`); continue; }
-    if (/^## /.test(l))  { flushList(); out.push(`<h2 class="mdh2">${inline(l.slice(3))}</h2>`); continue; }
-    if (/^# /.test(l))   { flushList(); out.push(`<h1 class="mdh1">${inline(l.slice(2))}</h1>`); continue; }
-    if (/^---+$/.test(l)){ flushList(); out.push('<hr class="mdhr">'); continue; }
-    if (/^> /.test(l))   { flushList(); out.push(`<blockquote class="mdbq">${inline(l.slice(2))}</blockquote>`); continue; }
-    const ulM = l.match(/^[-*+] (.+)/); if (ulM) { if (listOrdered&&listItems.length) flushList(); listOrdered=false; listItems.push(`<li>${inline(ulM[1])}</li>`); continue; }
-    const olM = l.match(/^\d+\. (.+)/); if (olM) { if (!listOrdered&&listItems.length) flushList(); listOrdered=true; listItems.push(`<li>${inline(olM[1])}</li>`); continue; }
-    if (l.trim()==='') { flushList(); out.push('<div class="mdsp"></div>'); continue; }
+    if (/^## /.test(l)) { flushList(); out.push(`<h2 class="mdh2">${inline(l.slice(3))}</h2>`); continue; }
+    if (/^# /.test(l)) { flushList(); out.push(`<h1 class="mdh1">${inline(l.slice(2))}</h1>`); continue; }
+    if (/^---+$/.test(l)) { flushList(); out.push('<hr class="mdhr">'); continue; }
+    if (/^> /.test(l)) { flushList(); out.push(`<blockquote class="mdbq">${inline(l.slice(2))}</blockquote>`); continue; }
+    const ulM = l.match(/^[-*+] (.+)/); if (ulM) { if (listOrdered && listItems.length) flushList(); listOrdered = false; listItems.push(`<li>${inline(ulM[1])}</li>`); continue; }
+    const olM = l.match(/^\d+\. (.+)/); if (olM) { if (!listOrdered && listItems.length) flushList(); listOrdered = true; listItems.push(`<li>${inline(olM[1])}</li>`); continue; }
+    if (l.trim() === '') { flushList(); out.push('<div class="mdsp"></div>'); continue; }
     flushList(); out.push(`<p class="mdp">${inline(l)}</p>`);
   }
   flushList();
@@ -101,9 +98,9 @@ function renderMarkdown(md: string): string {
 }
 
 function scoreColor(s: number) {
-  if (s >= 75) return { bg:'#f0fdf4', bar:'#16a34a', text:'#14532d', badge:'#dcfce7', badgeText:'#16a34a', label:'Goed' };
-  if (s >= 50) return { bg:'#fefce8', bar:'#ca8a04', text:'#713f12', badge:'#fef9c3', badgeText:'#92400e', label:'Matig' };
-  return          { bg:'#fff1f2', bar:'#dc2626', text:'#7f1d1d', badge:'#fee2e2', badgeText:'#dc2626', label:'Onvolledig' };
+  if (s >= 75) return { bg: '#f0fdf4', bar: '#16a34a', text: '#14532d', badge: '#dcfce7', badgeText: '#16a34a', label: 'Goed' };
+  if (s >= 50) return { bg: '#fefce8', bar: '#ca8a04', text: '#713f12', badge: '#fef9c3', badgeText: '#92400e', label: 'Matig' };
+  return { bg: '#fff1f2', bar: '#dc2626', text: '#7f1d1d', badge: '#fee2e2', badgeText: '#dc2626', label: 'Onvolledig' };
 }
 
 const PREFS_KEY = 'ai_panel_prefs_v1';
@@ -164,9 +161,9 @@ function Scorecard({ s }: { s: StructuredAnalysis }) {
       {/* Three columns */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '0.85rem', marginTop: '1rem' }}>
         {[
-          { title: '✓ Sterktes',       color: '#16a34a', items: s.strengths,       empty: 'Geen' },
-          { title: '⚠ Ontbrekend',     color: '#dc2626', items: s.missing_fields,  empty: 'Niets' },
-          { title: '💡 Aanbevelingen', color: '#7c3aed', items: s.recommendations,  empty: 'Geen' },
+          { title: '✓ Sterktes', color: '#16a34a', items: s.strengths, empty: 'Geen' },
+          { title: '⚠ Ontbrekend', color: '#dc2626', items: s.missing_fields, empty: 'Niets' },
+          { title: '💡 Aanbevelingen', color: '#7c3aed', items: s.recommendations, empty: 'Geen' },
         ].map(col => (
           <div key={col.title} style={{ backgroundColor: 'rgba(255,255,255,0.65)', borderRadius: '8px', padding: '0.7rem 0.85rem' }}>
             <div style={{ fontSize: '0.68rem', fontWeight: 700, color: col.color, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>{col.title}</div>
@@ -187,30 +184,30 @@ function Scorecard({ s }: { s: StructuredAnalysis }) {
 // ── Main component ────────────────────────────────────────────────────────────
 export default function ProductAiPanel({ product, layout }: Props) {
   const { rate: usdToEur } = useExchangeRate();
-  const [open, setOpen]                         = useState(false);
-  const [mounted, setMounted]                   = useState(false);
-  const [providers, setProviders]               = useState<any[]>([]);
+  const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [providers, setProviders] = useState<any[]>([]);
   const [selectedProvider, setSelectedProvider] = useState('');
-  const [selectedModel, setSelectedModel]       = useState('');
-  const [selectedFields, setSelectedFields]     = useState<Set<string>>(new Set());
-  const [includeImages, setIncludeImages]       = useState(false);
-  const [customPrompt, setCustomPrompt]         = useState(DEFAULT_PROMPT);
-  const [imageList, setImageList]               = useState<string[]>([]);
-  const [isPending, startTransition]            = useTransition();
-  const [result, setResult]                     = useState<AnalysisResult | null>(null);
-  const [savedResult, setSavedResult]           = useState<AnalysisResult | null>(null);
-  const [showInputs, setShowInputs]             = useState(true);
-  const [saving, setSaving]                     = useState(false);
-  const [saved, setSaved]                       = useState(false);
-  const [error, setError]                       = useState('');
-  const [initialized, setInitialized]           = useState(false);
-  const [includeEmpco, setIncludeEmpco]         = useState(true);
-  const [empcoRun, setEmpcoRun]                 = useState<{ loading: boolean; check?: any; error?: string } | null>(null);
+  const [selectedModel, setSelectedModel] = useState('');
+  const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set());
+  const [includeImages, setIncludeImages] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState(DEFAULT_PROMPT);
+  const [imageList, setImageList] = useState<string[]>([]);
+  const [isPending, startTransition] = useTransition();
+  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [savedResult, setSavedResult] = useState<AnalysisResult | null>(null);
+  const [showInputs, setShowInputs] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+  const [initialized, setInitialized] = useState(false);
+  const [includeEmpco, setIncludeEmpco] = useState(true);
+  const [empcoRun, setEmpcoRun] = useState<{ loading: boolean; check?: any; error?: string } | null>(null);
 
   // Default for "include EmpCo check" comes from the admin EmpCo settings
   useEffect(() => {
     if (!open) return;
-    getEmpcoSettingsAction().then(s => setIncludeEmpco(s.includeInAnalysisByDefault)).catch(() => {});
+    getEmpcoSettingsAction().then(s => setIncludeEmpco(s.includeInAnalysisByDefault)).catch(() => { });
   }, [open]);
 
   const runEmpcoCheck = async () => {
@@ -246,16 +243,16 @@ export default function ProductAiPanel({ product, layout }: Props) {
   }
   for (const section of layout) {
     for (const field of (section.fields ?? [])) {
-      if (field.type==='chat'||field.type==='media'||fieldMap.has(field.id)) continue;
-      let value: string|null = null; let propPath: string;
-      if (field.relationPath) { propPath=field.relationPath; value=resolvePath(product,field.relationPath); }
+      if (field.type === 'chat' || field.type === 'media' || fieldMap.has(field.id)) continue;
+      let value: string | null = null; let propPath: string;
+      if (field.relationPath) { propPath = field.relationPath; value = resolvePath(product, field.relationPath); }
       else {
-        const key = field.id.replace('FIELD:','');
-        propPath = key.startsWith('custom_')?`customData.${key.replace('custom_','')}`:key;
-        value = key.startsWith('custom_')?(product.customData?.[key.replace('custom_','')]??null):(product[key]!=null?String(product[key]):null);
+        const key = field.id.replace('FIELD:', '');
+        propPath = key.startsWith('custom_') ? `customData.${key.replace('custom_', '')}` : key;
+        value = key.startsWith('custom_') ? (product.customData?.[key.replace('custom_', '')] ?? null) : (product[key] != null ? String(product[key]) : null);
       }
-      if (coveredPaths.has(propPath)||!value) continue;
-      fieldMap.set(field.id,{id:field.id,label:field.label,value}); coveredPaths.add(propPath);
+      if (coveredPaths.has(propPath) || !value) continue;
+      fieldMap.set(field.id, { id: field.id, label: field.label, value }); coveredPaths.add(propPath);
     }
   }
   const allFields = Array.from(fieldMap.values());
@@ -280,7 +277,7 @@ export default function ProductAiPanel({ product, layout }: Props) {
       if (prefs.provider) setSelectedProvider(prefs.provider);
       if (prefs.model) setSelectedModel(prefs.model);
     }
-    
+
     // Fetch global module defaults
     const modRes = await fetch('/api/ai/module-defaults').catch(() => null);
     let defaultProvider = '';
@@ -312,8 +309,8 @@ export default function ProductAiPanel({ product, layout }: Props) {
     savePrefs({ selectedFields: Array.from(selectedFields), customPrompt, includeImages, provider: selectedProvider, model: selectedModel });
   }, [selectedFields, customPrompt, includeImages, selectedProvider, selectedModel, open]);
 
-  const toggleField = (id: string) => setSelectedFields(prev => { const n=new Set(prev); n.has(id)?n.delete(id):n.add(id); return n; });
-  const selectAll  = () => setSelectedFields(new Set(allFields.map(f => f.id)));
+  const toggleField = (id: string) => setSelectedFields(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const selectAll = () => setSelectedFields(new Set(allFields.map(f => f.id)));
   const selectNone = () => setSelectedFields(new Set());
   const totalSelected = selectedFields.size + (includeImages && imageList.length > 0 ? 1 : 0);
 
@@ -321,7 +318,7 @@ export default function ProductAiPanel({ product, layout }: Props) {
     const lines = allFields.filter(f => selectedFields.has(f.id)).map(f => `${f.label}: ${f.value}`);
     if (includeImages && imageList.length > 0) {
       lines.push(`Foto's: ${imageList.length} afbeelding(en)`);
-      imageList.forEach((img, i) => lines.push(`  Foto ${i+1}: ${typeof window !== 'undefined' ? window.location.origin : ''}${img}`));
+      imageList.forEach((img, i) => lines.push(`  Foto ${i + 1}: ${typeof window !== 'undefined' ? window.location.origin : ''}${img}`));
     }
     return customPrompt + (lines.length > 0 ? `\n\n--- Productgegevens ---\n${lines.join('\n')}` : '');
   };
@@ -359,9 +356,9 @@ export default function ProductAiPanel({ product, layout }: Props) {
   // ── Trigger button ─────────────────────────────────────────────────────────
   const triggerBtn = (
     <button type="button" onClick={openPanel}
-      style={{ display:'inline-flex', alignItems:'center', gap:'0.4rem', padding:'0.4rem 0.85rem', borderRadius:'var(--radius)', border:'1px solid #c4b5fd', backgroundColor:'#f5f3ff', color:'#7c3aed', fontWeight:600, fontSize:'0.8rem', cursor:'pointer', transition:'all 0.15s', flexShrink:0 }}
-      onMouseEnter={e=>{e.currentTarget.style.backgroundColor='#ede9fe';}}
-      onMouseLeave={e=>{e.currentTarget.style.backgroundColor='#f5f3ff';}}>
+      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.85rem', borderRadius: 'var(--radius)', border: '1px solid #c4b5fd', backgroundColor: '#f5f3ff', color: '#7c3aed', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', transition: 'all 0.15s', flexShrink: 0 }}
+      onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#ede9fe'; }}
+      onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#f5f3ff'; }}>
       🤖 Analyseer
     </button>
   );
@@ -373,132 +370,132 @@ export default function ProductAiPanel({ product, layout }: Props) {
     <>
       {/* Backdrop */}
       <div onClick={() => setOpen(false)}
-        style={{ position:'fixed', inset:0, backgroundColor:'rgba(15,10,40,0.55)', zIndex:9000, backdropFilter:'blur(2px)' }} />
+        style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,10,40,0.55)', zIndex: 9000, backdropFilter: 'blur(2px)' }} />
 
       {/* Panel */}
       <div style={{
-        position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)',
-        width: 'min(92vw, 1080px)', maxHeight:'92vh',
-        backgroundColor:'white', borderRadius:'16px', overflow:'hidden',
-        boxShadow:'0 25px 60px rgba(0,0,0,0.35), 0 8px 20px rgba(0,0,0,0.2)',
-        zIndex:9001, display:'flex', flexDirection:'column',
+        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+        width: 'min(92vw, 1080px)', maxHeight: '92vh',
+        backgroundColor: 'white', borderRadius: '16px', overflow: 'hidden',
+        boxShadow: '0 25px 60px rgba(0,0,0,0.35), 0 8px 20px rgba(0,0,0,0.2)',
+        zIndex: 9001, display: 'flex', flexDirection: 'column',
       }}>
 
         {/* ── Modal header ── */}
-        <div style={{ display:'flex', alignItems:'center', gap:'0.75rem', padding:'0.9rem 1.25rem', backgroundColor:'#7c3aed', color:'white', flexShrink:0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.9rem 1.25rem', backgroundColor: '#7c3aed', color: 'white', flexShrink: 0 }}>
           <span style={{ fontWeight: 700, fontSize: '0.95rem', whiteSpace: 'nowrap' }}>📋 Product Analyse</span>
-          <span style={{ fontSize:'0.78rem', opacity:0.75, fontWeight:400 }}>— {product.title ?? `#${product.internalArticleNumber}`}</span>
-          <div style={{ flex:1 }} />
+          <span style={{ fontSize: '0.78rem', opacity: 0.75, fontWeight: 400 }}>— {product.title ?? `#${product.internalArticleNumber}`}</span>
+          <div style={{ flex: 1 }} />
           {/* Provider selector */}
-          <div style={{ display:'flex', gap:'0.4rem' }}>
+          <div style={{ display: 'flex', gap: '0.4rem' }}>
             {providers.map(p => (
               <button key={p.provider} type="button" onClick={() => { setSelectedProvider(p.provider); setSelectedModel(''); }}
-                style={{ padding:'0.22rem 0.65rem', borderRadius:'999px', fontSize:'0.75rem', fontWeight:600, cursor:'pointer', border:'1.5px solid', borderColor: selectedProvider===p.provider?'white':'rgba(255,255,255,0.35)', backgroundColor: selectedProvider===p.provider?'white':'transparent', color: selectedProvider===p.provider?'#7c3aed':'rgba(255,255,255,0.85)' }}>
+                style={{ padding: '0.22rem 0.65rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: '1.5px solid', borderColor: selectedProvider === p.provider ? 'white' : 'rgba(255,255,255,0.35)', backgroundColor: selectedProvider === p.provider ? 'white' : 'transparent', color: selectedProvider === p.provider ? '#7c3aed' : 'rgba(255,255,255,0.85)' }}>
                 {PROVIDER_ICONS[p.provider]} {PROVIDER_LABELS[p.provider]}
               </button>
             ))}
           </div>
-          <div style={{ display:'flex', gap:'0.4rem' }}>
+          <div style={{ display: 'flex', gap: '0.4rem' }}>
             {savedResult && !result && (
               <button type="button" onClick={loadSaved}
-                style={{ padding:'0.22rem 0.7rem', borderRadius:'999px', fontSize:'0.72rem', fontWeight:600, cursor:'pointer', border:'1px solid rgba(255,255,255,0.45)', backgroundColor:'rgba(255,255,255,0.12)', color:'white' }}>
+                style={{ padding: '0.22rem 0.7rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.45)', backgroundColor: 'rgba(255,255,255,0.12)', color: 'white' }}>
                 📂 Opgeslagen versie
               </button>
             )}
             {displayResult && (
-              <button type="button" onClick={() => setShowInputs(v=>!v)}
-                style={{ padding:'0.22rem 0.7rem', borderRadius:'999px', fontSize:'0.72rem', fontWeight:600, cursor:'pointer', border:'1px solid rgba(255,255,255,0.45)', backgroundColor:'rgba(255,255,255,0.12)', color:'white', whiteSpace:'nowrap' }}>
-                {showInputs?'▲ Verberg':'⚙ Aanpassen'}
+              <button type="button" onClick={() => setShowInputs(v => !v)}
+                style={{ padding: '0.22rem 0.7rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.45)', backgroundColor: 'rgba(255,255,255,0.12)', color: 'white', whiteSpace: 'nowrap' }}>
+                {showInputs ? '▲ Verberg' : '⚙ Aanpassen'}
               </button>
             )}
             <button onClick={() => setOpen(false)}
-              style={{ background:'none', border:'none', color:'rgba(255,255,255,0.8)', cursor:'pointer', fontSize:'1.3rem', lineHeight:1, padding:'0 0.25rem' }}>✕</button>
+              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.8)', cursor: 'pointer', fontSize: '1.3rem', lineHeight: 1, padding: '0 0.25rem' }}>✕</button>
           </div>
         </div>
 
         {/* ── Scrollable body ── */}
-        <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
 
           {/* Input controls (collapsible) */}
           {(showInputs || !displayResult) && (
-            <div style={{ padding:'1rem 1.25rem', display:'flex', flexDirection:'column', gap:'0.8rem', borderBottom: displayResult?'1.5px solid #e4d9f8':'none', backgroundColor:'#faf5ff' }}>
-              {providers.length === 0 && <p style={{ color:'#7c3aed', fontSize:'0.85rem' }}>⚙️ Geen providers geconfigureerd. Stel een API key in via Systeeminstellingen.</p>}
+            <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.8rem', borderBottom: displayResult ? '1.5px solid #e4d9f8' : 'none', backgroundColor: '#faf5ff' }}>
+              {providers.length === 0 && <p style={{ color: '#7c3aed', fontSize: '0.85rem' }}>⚙️ Geen providers geconfigureerd. Stel een API key in via Systeeminstellingen.</p>}
               {providers.length > 0 && (<>
                 {/* Field picker */}
                 <div>
-                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'0.4rem' }}>
-                    <label style={{ fontSize:'0.78rem', fontWeight:700, color:'#5b21b6' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#5b21b6' }}>
                       Velden meesturen als context
-                      {totalSelected > 0 && <span style={{ fontWeight:400, color:'#7c3aed', marginLeft:'0.4rem' }}>({totalSelected} geselecteerd)</span>}
+                      {totalSelected > 0 && <span style={{ fontWeight: 400, color: '#7c3aed', marginLeft: '0.4rem' }}>({totalSelected} geselecteerd)</span>}
                     </label>
-                    <div style={{ display:'flex', gap:'0.75rem' }}>
-                      <button type="button" onClick={selectAll}  style={{ fontSize:'0.7rem', color:'#7c3aed', background:'none', border:'none', cursor:'pointer', fontWeight:600 }}>Alles</button>
-                      <button type="button" onClick={selectNone} style={{ fontSize:'0.7rem', color:'#7c3aed', background:'none', border:'none', cursor:'pointer', fontWeight:600 }}>Geen</button>
+                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                      <button type="button" onClick={selectAll} style={{ fontSize: '0.7rem', color: '#7c3aed', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Alles</button>
+                      <button type="button" onClick={selectNone} style={{ fontSize: '0.7rem', color: '#7c3aed', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Geen</button>
                     </div>
                   </div>
-                  <div style={{ display:'flex', flexWrap:'wrap', gap:'0.3rem' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
                     {allFields.map(f => (
-                      <button key={f.id} type="button" onClick={() => toggleField(f.id)} title={f.value.length>60?f.value.slice(0,100)+'…':f.value}
-                        style={{ padding:'0.18rem 0.5rem', borderRadius:'999px', fontSize:'0.71rem', border: selectedFields.has(f.id)?'1px solid #7c3aed':'1px solid #ddd6fe', backgroundColor: selectedFields.has(f.id)?'#7c3aed':'white', color: selectedFields.has(f.id)?'white':'#5b21b6', cursor:'pointer', fontWeight: selectedFields.has(f.id)?600:400 }}>
+                      <button key={f.id} type="button" onClick={() => toggleField(f.id)} title={f.value.length > 60 ? f.value.slice(0, 100) + '…' : f.value}
+                        style={{ padding: '0.18rem 0.5rem', borderRadius: '999px', fontSize: '0.71rem', border: selectedFields.has(f.id) ? '1px solid #7c3aed' : '1px solid #ddd6fe', backgroundColor: selectedFields.has(f.id) ? '#7c3aed' : 'white', color: selectedFields.has(f.id) ? 'white' : '#5b21b6', cursor: 'pointer', fontWeight: selectedFields.has(f.id) ? 600 : 400 }}>
                         {f.label}
                       </button>
                     ))}
-                    <button type="button" onClick={() => setIncludeImages(v=>!v)}
-                      style={{ padding:'0.18rem 0.5rem', borderRadius:'999px', fontSize:'0.71rem', border: includeImages?'1px solid #7c3aed':'1px solid #ddd6fe', backgroundColor: includeImages?'#7c3aed':'white', color: includeImages?'white':'#5b21b6', cursor:'pointer', fontWeight: includeImages?600:400 }}>
+                    <button type="button" onClick={() => setIncludeImages(v => !v)}
+                      style={{ padding: '0.18rem 0.5rem', borderRadius: '999px', fontSize: '0.71rem', border: includeImages ? '1px solid #7c3aed' : '1px solid #ddd6fe', backgroundColor: includeImages ? '#7c3aed' : 'white', color: includeImages ? 'white' : '#5b21b6', cursor: 'pointer', fontWeight: includeImages ? 600 : 400 }}>
                       🖼 Foto's {imageList.length > 0 && `(${imageList.length})`}
                     </button>
                   </div>
                 </div>
 
                 {/* Prompt + analyse button on same row */}
-                <div style={{ display:'flex', gap:'0.75rem', alignItems:'flex-end' }}>
-                  <div style={{ flex:1 }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'0.3rem' }}>
-                      <label style={{ fontSize:'0.78rem', fontWeight:700, color:'#5b21b6' }}>Vraag / instructie</label>
-                      <span style={{ fontSize:'0.65rem', color:'#a78bfa' }}>💾 automatisch bewaard</span>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                      <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#5b21b6' }}>Vraag / instructie</label>
+                      <span style={{ fontSize: '0.65rem', color: '#a78bfa' }}>💾 automatisch bewaard</span>
                     </div>
                     <textarea value={customPrompt} onChange={e => setCustomPrompt(e.target.value)} rows={2}
-                      style={{ width:'100%', padding:'0.55rem', borderRadius:'var(--radius)', border:'1px solid #ddd6fe', backgroundColor:'white', fontSize:'0.82rem', resize:'vertical', color:'#1e1b4b', boxSizing:'border-box' }} />
+                      style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius)', border: '1px solid #ddd6fe', backgroundColor: 'white', fontSize: '0.82rem', resize: 'vertical', color: '#1e1b4b', boxSizing: 'border-box' }} />
                   </div>
-                  <button type="button" onClick={runAnalysis} disabled={isPending||totalSelected===0}
-                    style={{ padding:'0.6rem 1.4rem', borderRadius:'var(--radius)', backgroundColor: isPending||totalSelected===0?'#a78bfa':'#7c3aed', color:'white', border:'none', fontWeight:700, fontSize:'0.88rem', cursor: isPending||totalSelected===0?'not-allowed':'pointer', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:'0.4rem', flexShrink:0, marginBottom:'1px' }}>
+                  <button type="button" onClick={runAnalysis} disabled={isPending || totalSelected === 0}
+                    style={{ padding: '0.6rem 1.4rem', borderRadius: 'var(--radius)', backgroundColor: isPending || totalSelected === 0 ? '#a78bfa' : '#7c3aed', color: 'white', border: 'none', fontWeight: 700, fontSize: '0.88rem', cursor: isPending || totalSelected === 0 ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0, marginBottom: '1px' }}>
                     {isPending
-                      ? <><span style={{ display:'inline-block', width:'14px', height:'14px', border:'2px solid white', borderTopColor:'transparent', borderRadius:'50%', animation:'ai-spin 1s linear infinite' }} /> Analyseren…</>
+                      ? <><span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid white', borderTopColor: 'transparent', borderRadius: '50%', animation: 'ai-spin 1s linear infinite' }} /> Analyseren…</>
                       : '🤖 Analyseren'}
                   </button>
                 </div>
 
                 {/* EmpCo option */}
-                <label htmlFor="ai-include-empco" style={{ display:'flex', alignItems:'center', gap:'0.45rem', fontSize:'0.78rem', color:'#0f766e', fontWeight:600, cursor:'pointer' }}>
-                  <input id="ai-include-empco" type="checkbox" checked={includeEmpco} onChange={e => setIncludeEmpco(e.target.checked)} style={{ accentColor:'#0f766e' }} />
+                <label htmlFor="ai-include-empco" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.78rem', color: '#0f766e', fontWeight: 600, cursor: 'pointer' }}>
+                  <input id="ai-include-empco" type="checkbox" checked={includeEmpco} onChange={e => setIncludeEmpco(e.target.checked)} style={{ accentColor: '#0f766e' }} />
                   ⚖️ Inclusief EmpCo-check (groene claims, EU 2024/825)
                 </label>
 
-                {error && <div style={{ padding:'0.65rem 0.85rem', borderRadius:'var(--radius)', backgroundColor:'#fef2f2', border:'1px solid #fca5a5', color:'#dc2626', fontSize:'0.82rem' }}>❌ {error}</div>}
+                {error && <div style={{ padding: '0.65rem 0.85rem', borderRadius: 'var(--radius)', backgroundColor: '#fef2f2', border: '1px solid #fca5a5', color: '#dc2626', fontSize: '0.82rem' }}>❌ {error}</div>}
               </>)}
             </div>
           )}
 
           {/* ── Result area ── */}
           {displayResult && (
-            <div style={{ flex:1, display:'flex', flexDirection:'column' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
               {/* Scorecard */}
               {displayResult.structured && <Scorecard s={displayResult.structured} />}
 
               {/* EmpCo result (compact) */}
               {empcoRun && (
-                <div style={{ display:'flex', alignItems:'flex-start', gap:'0.75rem', padding:'0.65rem 1.25rem', backgroundColor:'#f0fdfa', borderBottom:'1px solid #99f6e4', flexShrink:0 }}>
-                  <span style={{ fontWeight:700, fontSize:'0.8rem', color:'#0f766e', whiteSpace:'nowrap', paddingTop:'0.1rem' }}>⚖️ EmpCo</span>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.65rem 1.25rem', backgroundColor: '#f0fdfa', borderBottom: '1px solid #99f6e4', flexShrink: 0 }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.8rem', color: '#0f766e', whiteSpace: 'nowrap', paddingTop: '0.1rem' }}>⚖️ EmpCo</span>
                   {empcoRun.loading ? (
-                    <span style={{ display:'flex', alignItems:'center', gap:'0.4rem', fontSize:'0.8rem', color:'#0f766e' }}><EmpcoSpinner /> Bezig met EmpCo-check…</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: '#0f766e' }}><EmpcoSpinner /> Bezig met EmpCo-check…</span>
                   ) : empcoRun.error ? (
-                    <span style={{ fontSize:'0.8rem', color:'#dc2626' }}>❌ {empcoRun.error}</span>
+                    <span style={{ fontSize: '0.8rem', color: '#dc2626' }}>❌ {empcoRun.error}</span>
                   ) : empcoRun.check ? (
-                    <div style={{ display:'flex', flexDirection:'column', gap:'0.25rem', flex:1 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1 }}>
                       <div><EmpcoBadge state={empcoBadgeState(empcoRun.check.status)} issueCount={empcoRun.check.issueCount} /></div>
-                      {empcoRun.check.summary && <span style={{ fontSize:'0.78rem', color:'#134e4a' }}>{empcoRun.check.summary}</span>}
+                      {empcoRun.check.summary && <span style={{ fontSize: '0.78rem', color: '#134e4a' }}>{empcoRun.check.summary}</span>}
                       {empcoRun.check.issueCount > 0 && (
-                        <span style={{ fontSize:'0.72rem', color:'#64748b' }}>Open het product en klik op <strong>⚖️ EmpCo</strong> om de suggesties direct over te nemen.</span>
+                        <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Open het product en klik op <strong>⚖️ EmpCo</strong> om de suggesties direct over te nemen.</span>
                       )}
                     </div>
                   ) : null}
@@ -506,12 +503,12 @@ export default function ProductAiPanel({ product, layout }: Props) {
               )}
 
               {/* Meta bar */}
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.5rem 1.25rem', backgroundColor:'#ede9fe', borderBottom:'1px solid #ddd6fe', flexShrink:0, flexWrap:'wrap', gap:'0.5rem' }}>
-                <div style={{ display:'flex', gap:'0.9rem', fontSize:'0.71rem', color:'#5b21b6', flexWrap:'wrap', alignItems:'center' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 1.25rem', backgroundColor: '#ede9fe', borderBottom: '1px solid #ddd6fe', flexShrink: 0, flexWrap: 'wrap', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', gap: '0.9rem', fontSize: '0.71rem', color: '#5b21b6', flexWrap: 'wrap', alignItems: 'center' }}>
                   <span>{PROVIDER_ICONS[displayResult.provider]} {displayResult.model}</span>
                   <span>📥 {displayResult.inputTokens.toLocaleString()} in</span>
                   <span>📤 {displayResult.outputTokens.toLocaleString()} out</span>
-                  {displayResult.durationMs && <span>⏱ {displayResult.durationMs<1000?`${displayResult.durationMs}ms`:`${(displayResult.durationMs/1000).toFixed(1)}s`}</span>}
+                  {displayResult.durationMs && <span>⏱ {displayResult.durationMs < 1000 ? `${displayResult.durationMs}ms` : `${(displayResult.durationMs / 1000).toFixed(1)}s`}</span>}
                   <span>
                     💰 {formatCostEur(
                       displayResult.costUsd > 0
@@ -521,19 +518,19 @@ export default function ProductAiPanel({ product, layout }: Props) {
                     )}
                   </span>
                   {displayResult.isFromDb && displayResult.savedAt && (
-                    <span style={{ color:'#059669', fontWeight:600 }}>💾 {new Date(displayResult.savedAt).toLocaleDateString('nl-NL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
+                    <span style={{ color: '#059669', fontWeight: 600 }}>💾 {new Date(displayResult.savedAt).toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                   )}
                 </div>
-                <div style={{ display:'flex', gap:'0.5rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
                   {result && (
                     <button type="button" onClick={saveAnalysis} disabled={saving}
-                      style={{ padding:'0.25rem 0.75rem', borderRadius:'var(--radius)', fontSize:'0.75rem', fontWeight:600, cursor:'pointer', border:'1px solid #7c3aed', backgroundColor:saved?'#dcfce7':'white', color:saved?'#16a34a':'#7c3aed', transition:'all 0.2s' }}>
-                      {saving?'Opslaan…':saved?'✓ Opgeslagen!':'💾 Opslaan'}
+                      style={{ padding: '0.25rem 0.75rem', borderRadius: 'var(--radius)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: '1px solid #7c3aed', backgroundColor: saved ? '#dcfce7' : 'white', color: saved ? '#16a34a' : '#7c3aed', transition: 'all 0.2s' }}>
+                      {saving ? 'Opslaan…' : saved ? '✓ Opgeslagen!' : '💾 Opslaan'}
                     </button>
                   )}
                   {savedResult && result && (
                     <button type="button" onClick={loadSaved}
-                      style={{ padding:'0.25rem 0.75rem', borderRadius:'var(--radius)', fontSize:'0.75rem', fontWeight:600, cursor:'pointer', border:'1px solid #ddd6fe', backgroundColor:'white', color:'#5b21b6' }}>
+                      style={{ padding: '0.25rem 0.75rem', borderRadius: 'var(--radius)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: '1px solid #ddd6fe', backgroundColor: 'white', color: '#5b21b6' }}>
                       📂 Opgeslagen
                     </button>
                   )}
@@ -541,7 +538,7 @@ export default function ProductAiPanel({ product, layout }: Props) {
               </div>
 
               {/* Markdown narrative */}
-              <div className="ai-md" style={{ flex:1, padding:'1.5rem 1.75rem', overflowY:'auto', backgroundColor:'white', lineHeight:1.7, fontSize:'0.9rem', color:'#1e1b4b' }}
+              <div className="ai-md" style={{ flex: 1, padding: '1.5rem 1.75rem', overflowY: 'auto', backgroundColor: 'white', lineHeight: 1.7, fontSize: '0.9rem', color: '#1e1b4b' }}
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(displayResult.narrative) }} />
             </div>
           )}

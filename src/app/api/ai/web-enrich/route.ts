@@ -28,9 +28,6 @@ Geef UITSLUITEND een geldig JSON object terug (geen extra tekst eromheen, geen m
   "material": "<aanvullende materialen>",
   "ingredients": "<volledige ingrediëntenlijst gescheiden door komma's of bullets>",
   "allergens": "<allergenen, of '-' indien diervrij/allergeenvrij>",
-  "tags": "<komma-gescheiden zoekwoorden/tags>",
-  "seoTitle": "<geoptimaliseerde SEO titel, max 60 tekens>",
-  "seoMetaDescription": "<wervende meta omschrijving, max 155 tekens>",
   "summary": "<1-2 zinnen toelichting over welke bronnen en specificaties online zijn gevonden>"
 }
 \`\`\``;

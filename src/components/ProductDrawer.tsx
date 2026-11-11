@@ -995,7 +995,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                   layoutKeys.add(fk);
                 }
               }
-              const fallbackKeys = ['title', 'shortDescription', 'longDescription', 'seoTitle', 'seoMetaDescription', 'tags', 'mainMaterial', 'ingredients', 'allergens', 'color', 'critOther'];
+              const fallbackKeys = ['title', 'shortDescription', 'longDescription', 'mainMaterial', 'ingredients', 'allergens', 'color', 'critOther'];
               return fallbackKeys
                 .filter(k => !layoutKeys.has(k))
                 .map(k => (

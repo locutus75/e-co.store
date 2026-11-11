@@ -100,13 +100,10 @@ Belangrijkste wetgevingsprincipes:
 5. Wettelijke minimumeisen mogen nooit als een onderscheidend 'duurzaam' voordeel worden gepresenteerd.`;
 
 export const EMPCO_AVAILABLE_FIELDS: EmpcoFieldOption[] = [
-  // Webshop & SEO Content
+  // Webshop Content
   { key: 'title', label: 'Titel / Omschrijving', category: 'content', defaultIncluded: true, description: 'De hoofdnaam/titel van het product' },
   { key: 'shortDescription', label: 'Korte omschrijving', category: 'content', defaultIncluded: true, description: 'Korte samenvatting op productoverzichten' },
   { key: 'longDescription', label: 'Lange omschrijving', category: 'content', defaultIncluded: true, description: 'Uitgebreide productbeschrijving' },
-  { key: 'seoTitle', label: 'SEO Titel', category: 'content', defaultIncluded: true, description: 'Paginatitel voor zoekmachines' },
-  { key: 'seoMetaDescription', label: 'SEO Beschrijving', category: 'content', defaultIncluded: true, description: 'Meta description in zoekresultaten' },
-  { key: 'tags', label: 'Tags / Zoekwoorden', category: 'content', defaultIncluded: true, description: 'Klantgerichte trefwoorden' },
 
   // Eigenschappen & Ingrediënten
   { key: 'mainMaterial', label: 'Hoofdmateriaal', category: 'properties', defaultIncluded: true, description: 'Materiaalspecificatie (bijv. biologisch katoen, gerecycled glas)' },
@@ -178,17 +175,19 @@ export function normalizeEmpcoSettings(raw: any): EmpcoSettings {
   const pol = (v: any, d: EmpcoPolicy): EmpcoPolicy => (v === 'none' || v === 'warn' || v === 'block' ? v : d);
   const links: EmpcoGuidelineLink[] = Array.isArray(raw?.guidelineLinks)
     ? raw.guidelineLinks.filter((l: any) => l && typeof l === 'object' && l.url).map((l: any) => ({
-        id: String(l.id || Math.random().toString(36).slice(2, 9)),
-        title: String(l.title || 'Wetgevingsbron'),
-        url: String(l.url || ''),
-        description: l.description ? String(l.description) : undefined,
-        category: l.category || 'other',
-      }))
+      id: String(l.id || Math.random().toString(36).slice(2, 9)),
+      title: String(l.title || 'Wetgevingsbron'),
+      url: String(l.url || ''),
+      description: l.description ? String(l.description) : undefined,
+      category: l.category || 'other',
+    }))
     : DEFAULT_EMPCO_GUIDELINE_LINKS;
 
-  const includedKeys: string[] = Array.isArray(raw?.includedFieldKeys) && raw.includedFieldKeys.length > 0
-    ? raw.includedFieldKeys.map(String)
+  const DEPRECATED_SEO_KEYS = new Set(['seoTitle', 'seoMetaDescription', 'tags']);
+  const rawIncluded: string[] = Array.isArray(raw?.includedFieldKeys) && raw.includedFieldKeys.length > 0
+    ? raw.includedFieldKeys.map(String).filter((k: string) => !DEPRECATED_SEO_KEYS.has(k))
     : DEFAULT_INCLUDED_EMPCO_FIELDS;
+  const includedKeys: string[] = rawIncluded.length > 0 ? rawIncluded : DEFAULT_INCLUDED_EMPCO_FIELDS;
 
   return {
     readyPolicyFail: pol(raw?.readyPolicyFail, DEFAULT_EMPCO_SETTINGS.readyPolicyFail),
@@ -205,15 +204,15 @@ export function normalizeEmpcoSettings(raw: any): EmpcoSettings {
 // ── Rules ─────────────────────────────────────────────────────────────────────
 
 export const EMPCO_RULES: Record<string, { label: string; description: string }> = {
-  GENERIC_CLAIM:        { label: 'Generieke milieuclaim',             description: 'Algemene claims zoals "eco", "groen", "duurzaam", "milieuvriendelijk", "natuurvriendelijk", "klimaatvriendelijk", "bewust" zonder aantoonbare, erkende uitmuntende milieuprestatie.' },
-  OFFSET_CLAIM:         { label: 'Klimaatclaim o.b.v. compensatie',   description: 'Claims als "CO₂-neutraal", "klimaatneutraal", "klimaatpositief" of "CO₂-gecompenseerd" die gebaseerd zijn op compensatie (offsetting).' },
-  SUSTAINABILITY_LABEL: { label: 'Niet-erkend duurzaamheidslabel',    description: 'Duurzaamheidskeurmerken/-logo\'s die niet gebaseerd zijn op een certificeringsregeling of door de overheid zijn vastgesteld.' },
-  WHOLE_PRODUCT:        { label: 'Claim over geheel product',         description: 'Milieuclaim over het hele product of de hele onderneming terwijl die slechts op één aspect betrekking heeft.' },
-  FUTURE_CLAIM:         { label: 'Toekomstige milieuprestatie',       description: 'Claims over toekomstige prestaties ("in 2030 klimaatneutraal") zonder concreet, openbaar en onafhankelijk gecontroleerd uitvoeringsplan.' },
-  LEGAL_REQUIREMENT:    { label: 'Wettelijke eis als USP',            description: 'Wettelijk verplichte eigenschappen presenteren als onderscheidend kenmerk (bijv. "vrij van [verboden stof]").' },
-  IRRELEVANT_BENEFIT:   { label: 'Irrelevant voordeel',               description: 'Benadrukken van een milieuvoordeel dat niet relevant is voor het product.' },
-  DURABILITY:           { label: 'Levensduur / repareerbaarheid',     description: 'Onjuiste of niet-onderbouwde claims over levensduur, duurzaamheid in gebruik of repareerbaarheid.' },
-  UNSUBSTANTIATED:      { label: 'Onvoldoende onderbouwd',            description: 'Specifieke milieuclaim die mogelijk klopt, maar niet concreet of verifieerbaar genoeg geformuleerd is.' },
+  GENERIC_CLAIM: { label: 'Generieke milieuclaim', description: 'Algemene claims zoals "eco", "groen", "duurzaam", "milieuvriendelijk", "natuurvriendelijk", "klimaatvriendelijk", "bewust" zonder aantoonbare, erkende uitmuntende milieuprestatie.' },
+  OFFSET_CLAIM: { label: 'Klimaatclaim o.b.v. compensatie', description: 'Claims als "CO₂-neutraal", "klimaatneutraal", "klimaatpositief" of "CO₂-gecompenseerd" die gebaseerd zijn op compensatie (offsetting).' },
+  SUSTAINABILITY_LABEL: { label: 'Niet-erkend duurzaamheidslabel', description: 'Duurzaamheidskeurmerken/-logo\'s die niet gebaseerd zijn op een certificeringsregeling of door de overheid zijn vastgesteld.' },
+  WHOLE_PRODUCT: { label: 'Claim over geheel product', description: 'Milieuclaim over het hele product of de hele onderneming terwijl die slechts op één aspect betrekking heeft.' },
+  FUTURE_CLAIM: { label: 'Toekomstige milieuprestatie', description: 'Claims over toekomstige prestaties ("in 2030 klimaatneutraal") zonder concreet, openbaar en onafhankelijk gecontroleerd uitvoeringsplan.' },
+  LEGAL_REQUIREMENT: { label: 'Wettelijke eis als USP', description: 'Wettelijk verplichte eigenschappen presenteren als onderscheidend kenmerk (bijv. "vrij van [verboden stof]").' },
+  IRRELEVANT_BENEFIT: { label: 'Irrelevant voordeel', description: 'Benadrukken van een milieuvoordeel dat niet relevant is voor het product.' },
+  DURABILITY: { label: 'Levensduur / repareerbaarheid', description: 'Onjuiste of niet-onderbouwde claims over levensduur, duurzaamheid in gebruik of repareerbaarheid.' },
+  UNSUBSTANTIATED: { label: 'Onvoldoende onderbouwd', description: 'Specifieke milieuclaim die mogelijk klopt, maar niet concreet of verifieerbaar genoeg geformuleerd is.' },
 };
 
 export function ruleLabel(code: string): string {
@@ -224,19 +223,17 @@ export function ruleLabel(code: string): string {
 
 /** Fields that are never customer-facing / never contain claims */
 const EXCLUDED_KEYS = new Set([
-  'internalArticleNumber', 'ean', 'webshopSlug', 'status', 'readyForImport', 'internalNotes',
-  'internalRemarks', 'supplierContacted', 'qualityControlStatus', 'exportStatus', 'assignedUserId',
-  'brandId', 'supplierId', 'categoryId', 'subcategoryId', 'color', 'size', 'media', 'basePrice', 'price',
+  'internalArticleNumber', 'ean', 'webshopSlug', 'seoTitle', 'seoMetaDescription', 'tags',
+  'status', 'readyForImport', 'internalNotes', 'internalRemarks', 'supplierContacted',
+  'qualityControlStatus', 'exportStatus', 'assignedUserId', 'brandId', 'supplierId',
+  'categoryId', 'subcategoryId', 'color', 'size', 'media', 'basePrice', 'price',
 ]);
 
 /** Customer-facing text fields that are always checked, even if missing from the layout */
 const ALWAYS_CHECK: { key: string; label: string }[] = [
-  { key: 'title',              label: 'Omschrijving' },
-  { key: 'shortDescription',   label: 'Korte omschrijving' },
-  { key: 'longDescription',    label: 'Lange omschrijving' },
-  { key: 'seoTitle',           label: 'SEO Titel' },
-  { key: 'seoMetaDescription', label: 'SEO Beschrijving' },
-  { key: 'tags',               label: 'Tags' },
+  { key: 'title', label: 'Omschrijving' },
+  { key: 'shortDescription', label: 'Korte omschrijving' },
+  { key: 'longDescription', label: 'Lange omschrijving' },
 ];
 
 function normalizeKey(fieldId: string): string {
@@ -727,9 +724,9 @@ export function reconcileEmpcoResult(
 // ── Display helpers ───────────────────────────────────────────────────────────
 
 export const EMPCO_STATUS_META: Record<EmpcoStatus | 'STALE' | 'NONE', { icon: string; label: string; color: string; bg: string; border: string }> = {
-  PASS:    { icon: '✅', label: 'EmpCo OK',        color: '#15803d', bg: '#f0fdf4', border: '#86efac' },
+  PASS: { icon: '✅', label: 'EmpCo OK', color: '#15803d', bg: '#f0fdf4', border: '#86efac' },
   WARNING: { icon: '⚠️', label: 'Aandachtspunten', color: '#a16207', bg: '#fefce8', border: '#fde047' },
-  FAIL:    { icon: '⛔', label: 'Overtreding',     color: '#b91c1c', bg: '#fef2f2', border: '#fca5a5' },
-  STALE:   { icon: '🕓', label: 'Verouderd',       color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' },
-  NONE:    { icon: '⚖️', label: 'Niet gecheckt',   color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' },
+  FAIL: { icon: '⛔', label: 'Overtreding', color: '#b91c1c', bg: '#fef2f2', border: '#fca5a5' },
+  STALE: { icon: '🕓', label: 'Verouderd', color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' },
+  NONE: { icon: '⚖️', label: 'Niet gecheckt', color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' },
 };

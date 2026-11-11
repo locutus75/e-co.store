@@ -10,22 +10,19 @@ interface FieldConfig {
 }
 
 const ENRICH_FIELDS: FieldConfig[] = [
-  { key: 'shortDescription',    label: 'Korte omschrijving',        type: 'textarea' },
-  { key: 'longDescription',     label: 'Lange omschrijving',         type: 'textarea' },
-  { key: 'weightGr',            label: 'Gewicht (gr)',               type: 'number' },
-  { key: 'lengthCm',            label: 'Lengte (cm)',                type: 'number' },
-  { key: 'widthCm',             label: 'Breedte (cm)',               type: 'number' },
-  { key: 'heightCm',            label: 'Hoogte (cm)',                type: 'number' },
-  { key: 'volumeMl',            label: 'Inhoud (ml)',                type: 'number' },
-  { key: 'volumeGr',            label: 'Inhoud (gr)',                type: 'number' },
-  { key: 'mainMaterial',        label: 'Hoofdmateriaal',             type: 'text' },
-  { key: 'material',            label: 'Materiaal',                  type: 'text' },
-  { key: 'color',               label: 'Kleur',                      type: 'text' },
-  { key: 'ingredients',         label: 'Ingrediënten',               type: 'textarea' },
-  { key: 'allergens',           label: 'Allergenen',                 type: 'textarea' },
-  { key: 'tags',                label: 'Tags',                       type: 'text' },
-  { key: 'seoTitle',            label: 'SEO Titel',                  type: 'text' },
-  { key: 'seoMetaDescription',  label: 'SEO Meta Omschrijving',      type: 'textarea' },
+  { key: 'shortDescription', label: 'Korte omschrijving', type: 'textarea' },
+  { key: 'longDescription', label: 'Lange omschrijving', type: 'textarea' },
+  { key: 'weightGr', label: 'Gewicht (gr)', type: 'number' },
+  { key: 'lengthCm', label: 'Lengte (cm)', type: 'number' },
+  { key: 'widthCm', label: 'Breedte (cm)', type: 'number' },
+  { key: 'heightCm', label: 'Hoogte (cm)', type: 'number' },
+  { key: 'volumeMl', label: 'Inhoud (ml)', type: 'number' },
+  { key: 'volumeGr', label: 'Inhoud (gr)', type: 'number' },
+  { key: 'mainMaterial', label: 'Hoofdmateriaal', type: 'text' },
+  { key: 'material', label: 'Materiaal', type: 'text' },
+  { key: 'color', label: 'Kleur', type: 'text' },
+  { key: 'ingredients', label: 'Ingrediënten', type: 'textarea' },
+  { key: 'allergens', label: 'Allergenen', type: 'textarea' },
 ];
 
 interface Props {

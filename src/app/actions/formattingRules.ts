@@ -66,27 +66,6 @@ Voorkom overdreven marketingkreten en vermijd onbewezen duurzaamheidsclaims.`,
     updatedAt: new Date().toISOString(),
   },
   {
-    id: 'rule-seo-meta',
-    name: 'SEO Titels & Meta Omschrijvingen',
-    description: 'Optimaliseert zoekmachine-titels (max 60 tekens) en meta-descriptions (max 155 tekens).',
-    sectionId: 'sect-basis',
-    sectionTitle: 'Webshop Content (Basis)',
-    targetFields: ['seoTitle', 'seoMetaDescription'],
-    instruction: `Genereer optimale zoekmachineteksten (SEO):
-1. SEO Titel:
-   - Maximaal 60 tekens (inclusief spaties).
-   - Begin met het belangrijkste zoekwoord / productnaam, gevolgd door merk of belangrijkste USP.
-   - Eindig met '| E&co'.
-2. SEO Meta Description:
-   - Tussen 130 en 155 tekens (inclusief spaties).
-   - Bevat een subtiele actieve call-to-action (bijv. "Ontdek het hier", "Bekijk direct").
-   - Geeft een heldere, nieuwsgierigmakende samenvatting van het product.`,
-    toneOfVoice: 'Aansprekend, doelgericht en zoekmachine-vriendelijk',
-    enabled: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
     id: 'rule-physical-materials',
     name: 'Fysieke Eigenschappen & Materiaalstandaard',
     description: 'Uniformeert materiaalaanduidingen, ingrediënten en kleurtermen volgens Nederlandse normen.',
@@ -135,7 +114,9 @@ export async function getFormattingRulesAction(): Promise<FormattingRule[]> {
       return getDefaultFormattingRules();
     }
 
-    const rules = JSON.parse(record.value) as FormattingRule[];
+    const rules = (JSON.parse(record.value) as FormattingRule[]).filter(
+      r => r.id !== 'rule-seo-meta'
+    );
     return Array.isArray(rules) && rules.length > 0 ? rules : getDefaultFormattingRules();
   } catch (e: any) {
     console.error('Failed to load formatting rules:', e);
@@ -566,7 +547,7 @@ export async function applyFormattingRuleAction(params: {
             entityId: item.articleNumber,
             changes: `Toegepaste regel: "${ruleName}" op velden: ${item.changes.map(c => c.fieldKey).join(', ')}`,
           },
-        }).catch(() => {});
+        }).catch(() => { });
       }
     }
 
