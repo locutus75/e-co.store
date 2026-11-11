@@ -35,14 +35,14 @@ async function assertProductLock(internalId: string) {
   const session = await getServerSession(authOptions);
   const roles = (session?.user as any)?.roles || [];
   const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
-  
+
   if (isAdmin) return; // Admins bypass locks
-  
+
   const existingProduct = await prisma.product.findUnique({
     where: { internalArticleNumber: internalId },
     select: { readyForImport: true }
   });
-  
+
   if (existingProduct) {
     const readyStatus = (existingProduct.readyForImport || '').toUpperCase();
     if (readyStatus === 'JA' || readyStatus === 'REVIEW' || readyStatus === 'R' || readyStatus === 'Y') {
@@ -55,13 +55,13 @@ export async function getSupplierProductsAction(supplierId: string, currentArtic
   if (!supplierId) return [];
   try {
     return await prisma.product.findMany({
-      where: { 
+      where: {
         supplierId: supplierId,
         internalArticleNumber: { not: currentArticleId }
       },
       select: { internalArticleNumber: true, title: true, status: true }
     });
-  } catch(e) {
+  } catch (e) {
     console.error("Failed to get supplier products", e);
     return [];
   }
@@ -221,7 +221,7 @@ export async function getProductDataAction(internalId: string) {
         assignedUser: true,
       }
     });
-  } catch(e) {
+  } catch (e) {
     console.error("Failed to get product data", e);
     return null;
   }
@@ -229,7 +229,7 @@ export async function getProductDataAction(internalId: string) {
 
 export async function bulkAssignAction(internalIds: string[], userId: string) {
   if (!internalIds || internalIds.length === 0) return { success: false, error: 'Geen ID\'s meegegeven' };
-  
+
   try {
     const res = await prisma.product.updateMany({
       where: {
@@ -248,7 +248,7 @@ export async function bulkAssignAction(internalIds: string[], userId: string) {
         productId: pid, // wait, product has an internal article number, but the relation might be the CUID. Let's just blindly update `assignedUserId` on the Product directly, which is clean.
       }))
     }
-    
+
     const session = await getServerSession(authOptions);
     const actorId = (session?.user as any)?.id;
     if (actorId) {
@@ -256,12 +256,12 @@ export async function bulkAssignAction(internalIds: string[], userId: string) {
         await logAuditAction(actorId, 'ASSIGN', 'Product', id, `Assigned to ${userId}`);
       }
     }
-    
+
     revalidatePath('/products');
     revalidatePath('/assignments');
     revalidatePath('/', 'layout');
     return { success: true, count: res.count };
-  } catch(e: any) {
+  } catch (e: any) {
     console.error("ASSIGN ERROR", e);
     return { success: false, error: e.message };
   }
@@ -269,7 +269,7 @@ export async function bulkAssignAction(internalIds: string[], userId: string) {
 
 export async function deleteProductsAction(internalIds: string[]) {
   if (!internalIds || internalIds.length === 0) return { success: false, error: 'Geen ID\'s meegegeven' };
-  
+
   try {
     const res = await prisma.product.deleteMany({
       where: {
@@ -280,7 +280,7 @@ export async function deleteProductsAction(internalIds: string[]) {
     });
     revalidatePath('/products');
     return { success: true, count: res.count };
-  } catch(e: any) {
+  } catch (e: any) {
     console.error("DELETE ERROR", e);
     return { success: false, error: e.message };
   }
@@ -438,27 +438,27 @@ export async function updateProductStatusAction(internalId: string, status: stri
 export async function updateProductAction(internalId: string, formData: FormData) {
   await assertProductLock(internalId);
   const data: any = {};
-  
+
   // Safe extraction of float fields
   if (formData.has('basePrice')) {
-      const pVal = formData.get('basePrice');
-      if (pVal === '') {
-          data.basePrice = null;
-      } else {
-          const parsed = parseFloat(pVal as string);
-          if (!Number.isNaN(parsed)) {
-             data.basePrice = parsed;
-          }
+    const pVal = formData.get('basePrice');
+    if (pVal === '') {
+      data.basePrice = null;
+    } else {
+      const parsed = parseFloat(pVal as string);
+      if (!Number.isNaN(parsed)) {
+        data.basePrice = parsed;
       }
+    }
   }
 
   // Load layout to dynamically extract all WYSIWYG fields
   const { getFormLayoutAction } = await import('@/app/actions/formLayouts');
   const layout = await getFormLayoutAction();
   const allFields = layout.flatMap((s: any) => s.fields);
-  
+
   const customData: Record<string, string | null> = {};
-  
+
   const presentFields = formData.getAll('_present_fields').map(v => v.toString());
 
   // Collect internalRemarks value for later migration (never save to DB column directly)
@@ -467,17 +467,17 @@ export async function updateProductAction(internalId: string, formData: FormData
   for (const field of allFields) {
     let key = field.id.replace('FIELD:', '');
     if (key === 'description') key = 'longDescription';
-    
+
     if (!presentFields.includes(key)) {
       continue;
     }
-    
+
     // Some keys are strictly natively boolean in Prisma schema
     const isNativeBoolean = key === 'webshopActive' || key === 'systemActive' || key === 'publicationReady' || key === 'uitlopend';
-    
+
     // How the data comes in from the DOM
     const val = formData.get(key);
-    
+
     let processedValue: any = val;
 
     if (field.type === 'checkbox') {
@@ -697,5 +697,52 @@ export async function updateProductAction(internalId: string, formData: FormData
     fs.writeFileSync('prisma_debug_err.log', "Error:\n" + String(e.message) + "\n\nPayload:\n" + JSON.stringify(data, null, 2));
     console.error("PRISMA VALIDATION ERROR", JSON.stringify(data), e.message);
     throw new Error(`Data Validation Failed! Error: ${e.message.slice(0, 150)}... // More written to prisma_debug_err.log`);
+  }
+}
+
+
+export async function bulkUpdateProductStatusAction(internalIds: string[], status: string) {
+  if (!internalIds || internalIds.length === 0) return { success: false, error: "Geen ID's meegegeven" };
+
+  try {
+    const session = await getServerSession(authOptions);
+    const roles = (session?.user as any)?.roles || [];
+    const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
+
+    const whereClause: any = {
+      internalArticleNumber: {
+        in: internalIds,
+      },
+    };
+
+    if (!isAdmin) {
+      whereClause.NOT = {
+        readyForImport: {
+          in: ['JA', 'REVIEW', 'R', 'Y', 'ja', 'review'],
+        },
+      };
+    }
+
+    const res = await prisma.product.updateMany({
+      where: whereClause,
+      data: {
+        status,
+      },
+    });
+
+    const actorId = (session?.user as any)?.id;
+    if (actorId) {
+      for (const id of internalIds) {
+        await logAuditAction(actorId, 'STATUS_CHANGE', 'Product', id, `Status set to ${status} via bulk update`);
+      }
+    }
+
+    revalidatePath('/products');
+    revalidatePath('/assignments');
+    revalidatePath('/', 'layout');
+    return { success: true, count: res.count };
+  } catch (e: any) {
+    console.error("BULK STATUS CHANGE ERROR", e);
+    return { success: false, error: e.message };
   }
 }
