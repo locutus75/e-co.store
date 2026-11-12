@@ -9,6 +9,7 @@ const MENU_MODULES = [
   { module: 'MENU:dashboard', label: 'Dashboard' },
   { module: 'MENU:products', label: 'Producten' },
   { module: 'MENU:view_role_peers', label: '👁️ Producten van collega\'s met dezelfde rol bekijken (Alleen lezen)' },
+  { module: 'MENU:edit_role_peers', label: '✏️ Producten van collega\'s met dezelfde rol bewerken' },
   { module: 'MENU:messages', label: 'Berichten' },
   { module: 'MENU:empco_approve', label: '⚖️✨ EmpCo & Formateringsregels (Klaargezette voorstellen beoordelen & accorderen)' },
   { module: 'MENU:ai', label: '🤖 AI Assistent (Nieuwe AI, EmpCo & Formateringsregels genereren)' },
@@ -94,6 +95,10 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
     startTransition(async () => {
       const newAction = current === 'ALLOW' ? 'DENY' : 'ALLOW';
       await setRolePermissionAction(roleId, module, newAction);
+      // Als je mag bewerken, mag je uiteraard ook lezen dus wordt die ook altijd aangevinkt
+      if (module === 'MENU:edit_role_peers' && newAction === 'ALLOW') {
+        await setRolePermissionAction(roleId, 'MENU:view_role_peers', 'ALLOW');
+      }
     });
   };
 
@@ -206,26 +211,42 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
               <div style={{ marginBottom: '2rem' }}>
                 <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text)', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>Menu Navigatie Rechten</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {MENU_MODULES.map(m => {
-                    const defaultMenuAction =
-                      m.module === 'MENU:empco_approve' && role.name?.toUpperCase() === 'EDITOR'
-                        ? 'ALLOW'
-                        : 'DENY';
-                    const currentAction = getActionForModule(role, m.module, defaultMenuAction);
-                    const isActive = currentAction === 'ALLOW';
+                    {
+                      (() => {
+                        const isEditPeersAllowed = getActionForModule(role, 'MENU:edit_role_peers', 'DENY') === 'ALLOW';
+                        return MENU_MODULES.map(m => {
+                          const defaultMenuAction =
+                            m.module === 'MENU:empco_approve' && role.name?.toUpperCase() === 'EDITOR'
+                              ? 'ALLOW'
+                              : 'DENY';
+                          const currentAction = getActionForModule(role, m.module, defaultMenuAction);
+                          const isForcedByEdit = m.module === 'MENU:view_role_peers' && isEditPeersAllowed;
+                          const isActive = currentAction === 'ALLOW' || isForcedByEdit;
 
-                    return (
-                      <label key={m.module} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', color: 'var(--text)', cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={isActive}
-                          disabled={isPending}
-                          onChange={() => handleMenuChange(role.id, m.module, currentAction)}
-                        />
-                        {m.label}
-                      </label>
-                    );
-                  })}
+                      return (
+                        <label
+                          key={m.module}
+                          title={isForcedByEdit ? 'Automatisch ingeschakeld omdat het bewerken van collega-producten aan staat' : undefined}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            fontSize: '0.9rem',
+                            color: 'var(--text)',
+                            cursor: isForcedByEdit ? 'default' : 'pointer',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isActive}
+                            disabled={isPending || isForcedByEdit}
+                            onChange={() => handleMenuChange(role.id, m.module, currentAction)}
+                          />
+                          <span>{m.label}</span>
+                        </label>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
 

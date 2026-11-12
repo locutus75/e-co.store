@@ -40,110 +40,115 @@ export default async function ProductsPage() {
     ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:assignments' && rp.action === 'ALLOW')
   ) || false;
 
-  const hasViewRolePeersRight = userRecord?.userRoles.some((ur: any) =>
-    ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:view_role_peers' && rp.action === 'ALLOW')
+  const hasEditRolePeersRight = userRecord?.userRoles.some((ur: any) =>
+    ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:edit_role_peers' && rp.action === 'ALLOW')
   ) || false;
 
-  const userRoleIds: string[] = userRecord?.userRoles.map((ur: any) => ur.roleId).filter(Boolean) || [];
+    const hasViewRolePeersRight = hasEditRolePeersRight || userRecord?.userRoles.some((ur: any) =>
+      ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:view_role_peers' && rp.action === 'ALLOW')
+    ) || false;
 
-  const hasAiRight = userRecord?.userRoles.some((ur: any) =>
-    ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:ai' && rp.action === 'ALLOW')
-  ) || false;
+    const userRoleIds: string[] = userRecord?.userRoles.map((ur: any) => ur.roleId).filter(Boolean) || [];
 
-  const hasEmpcoApproveExplicitAllow = userRecord?.userRoles.some((ur: any) =>
-    ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:empco_approve' && rp.action === 'ALLOW')
-  ) || false;
+    const hasAiRight = userRecord?.userRoles.some((ur: any) =>
+      ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:ai' && rp.action === 'ALLOW')
+    ) || false;
 
-  const hasEmpcoApproveExplicitDeny = userRecord?.userRoles.some((ur: any) =>
-    ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:empco_approve' && rp.action === 'DENY')
-  ) || false;
+    const hasEmpcoApproveExplicitAllow = userRecord?.userRoles.some((ur: any) =>
+      ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:empco_approve' && rp.action === 'ALLOW')
+    ) || false;
 
-  const isEditorRole = roles.some((r: string) => r.toUpperCase() === 'EDITOR');
+    const hasEmpcoApproveExplicitDeny = userRecord?.userRoles.some((ur: any) =>
+      ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:empco_approve' && rp.action === 'DENY')
+    ) || false;
 
-  const canSeeAllProducts = isAdmin || hasAssignmentsRight;
-  const canAssignProducts = isAdmin || hasAssignmentsRight;
-  const canViewRolePeers = hasViewRolePeersRight;
-  const canUseAi = isAdmin || hasAiRight;
-  const canApproveEmpco = isAdmin || hasAiRight || hasEmpcoApproveExplicitAllow || (isEditorRole && !hasEmpcoApproveExplicitDeny);
+    const isEditorRole = roles.some((r: string) => r.toUpperCase() === 'EDITOR');
 
-  const productWhere = canSeeAllProducts
-    ? undefined
-    : hasViewRolePeersRight && userRoleIds.length > 0
-      ? {
-        OR: [
-          { assignedUserId: userId },
-          {
-            assignedUser: {
-              userRoles: {
-                some: {
-                  roleId: { in: userRoleIds },
+    const canSeeAllProducts = isAdmin || hasAssignmentsRight;
+    const canAssignProducts = isAdmin || hasAssignmentsRight;
+    const canViewRolePeers = hasViewRolePeersRight;
+    const canEditRolePeers = hasEditRolePeersRight;
+    const canUseAi = isAdmin || hasAiRight;
+    const canApproveEmpco = isAdmin || hasAiRight || hasEmpcoApproveExplicitAllow || (isEditorRole && !hasEmpcoApproveExplicitDeny);
+
+    const productWhere = canSeeAllProducts
+      ? undefined
+      : hasViewRolePeersRight && userRoleIds.length > 0
+        ? {
+          OR: [
+            { assignedUserId: userId },
+            {
+              assignedUser: {
+                userRoles: {
+                  some: {
+                    roleId: { in: userRoleIds },
+                  },
                 },
               },
             },
-          },
-        ],
-      }
-      : { assignedUserId: userId };
+          ],
+        }
+        : { assignedUserId: userId };
 
-  const [products, aiAnalyses, empcoChecks, suppliers] = await Promise.all([
-    prisma.product.findMany({
-      where: productWhere,
-      orderBy: { createdAt: 'desc' },
-      include: { brand: true, supplier: true, category: true, subcategory: true, assignedUser: true, lastEditedByUser: { select: { id: true, email: true } }, remarks: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true, userId: true } } }
+    const [products, aiAnalyses, empcoChecks, suppliers] = await Promise.all([
+      prisma.product.findMany({
+        where: productWhere,
+        orderBy: { createdAt: 'desc' },
+        include: { brand: true, supplier: true, category: true, subcategory: true, assignedUser: true, lastEditedByUser: { select: { id: true, email: true } }, remarks: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true, userId: true } } }
 
-    }),
-    prisma.productAiAnalysis.findMany({ select: { articleNumber: true, score: true } }),
-    prisma.productEmpcoCheck.findMany({ select: { articleNumber: true, status: true, issueCount: true, contentHash: true } }),
-    prisma.supplier.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
-  ]);
+      }),
+      prisma.productAiAnalysis.findMany({ select: { articleNumber: true, score: true } }),
+      prisma.productEmpcoCheck.findMany({ select: { articleNumber: true, status: true, issueCount: true, contentHash: true } }),
+      prisma.supplier.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    ]);
 
-  // Build a quick lookup: articleNumber → score
-  const aiScoreMap: Record<string, number | null> = {};
-  for (const a of aiAnalyses) { aiScoreMap[a.articleNumber] = a.score; }
+    // Build a quick lookup: articleNumber → score
+    const aiScoreMap: Record<string, number | null> = {};
+    for (const a of aiAnalyses) { aiScoreMap[a.articleNumber] = a.score; }
 
-  const fieldPermissions: Record<string, string> = {};
-  if (!isAdmin && userRecord) {
-    userRecord.userRoles.forEach((ur: any) => {
-      ur.role.rolePermissions.forEach((rp: any) => {
-        if (rp.module.startsWith('FIELD:')) { fieldPermissions[rp.module] = rp.action; }
+    const fieldPermissions: Record<string, string> = {};
+    if (!isAdmin && userRecord) {
+      userRecord.userRoles.forEach((ur: any) => {
+        ur.role.rolePermissions.forEach((rp: any) => {
+          if (rp.module.startsWith('FIELD:')) { fieldPermissions[rp.module] = rp.action; }
+        });
       });
-    });
-    if (!fieldPermissions['FIELD:shortDescription'] && fieldPermissions['FIELD:seoTitle']) {
-      fieldPermissions['FIELD:shortDescription'] = fieldPermissions['FIELD:seoTitle'];
-    }
-  }
-
-  const { getFormLayoutAction } = await import('@/app/actions/formLayouts');
-  const { getEmpcoSettingsAction } = await import('@/app/actions/empco');
-  const [layout, empcoSettings] = await Promise.all([getFormLayoutAction(), getEmpcoSettingsAction()]);
-
-  // EmpCo lookup: articleNumber → { status, stale, issueCount }
-  // A check is "stale" when the customer-facing texts changed after the check.
-  const empcoMap: Record<string, { status: string; stale: boolean; issueCount: number }> = {};
-  if (empcoChecks.length > 0) {
-    const productByArticle = new Map(products.map(p => [p.internalArticleNumber, p]));
-    for (const c of empcoChecks) {
-      const p = productByArticle.get(c.articleNumber);
-      if (!p) continue;
-      const stale = !!c.contentHash && hashEmpcoFields(extractEmpcoFields(p, layout, undefined, empcoSettings.includedFieldKeys)) !== c.contentHash;
-      empcoMap[c.articleNumber] = { status: c.status, stale, issueCount: c.issueCount };
-    }
-  }
-
-  // Build image count map by scanning the uploads directory
-  const ROOT_DIR = process.env.APP_ROOT || process.cwd();
-  const uploadsDir = path.join(ROOT_DIR, 'public', 'uploads', 'products');
-  const imageCountMap: Record<string, number> = {};
-  try {
-    if (fs.existsSync(uploadsDir)) {
-      for (const articleDir of fs.readdirSync(uploadsDir)) {
-        const dirPath = path.join(uploadsDir, articleDir);
-        if (!fs.statSync(dirPath).isDirectory()) continue;
-        const count = fs.readdirSync(dirPath).filter(f => /\.(jpg|jpeg|png|webp|gif|avif)$/i.test(f)).length;
-        if (count > 0) imageCountMap[articleDir] = count;
+      if (!fieldPermissions['FIELD:shortDescription'] && fieldPermissions['FIELD:seoTitle']) {
+        fieldPermissions['FIELD:shortDescription'] = fieldPermissions['FIELD:seoTitle'];
       }
     }
-  } catch { /* ignore FS errors */ }
 
-  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} canAssignProducts={canAssignProducts} canViewRolePeers={canViewRolePeers} canUseAi={canUseAi} canApproveEmpco={canApproveEmpco} fieldPermissions={fieldPermissions} layout={layout} currentUserId={userId || ''} currentUserChatColor={(userRecord as any)?.chatColor || null} currentUserAutoMarkRemarksAsRead={userRecord?.autoMarkRemarksAsRead ?? true} aiScoreMap={aiScoreMap} imageCountMap={imageCountMap} empcoMap={empcoMap} allSuppliers={suppliers} />;
-}
+    const { getFormLayoutAction } = await import('@/app/actions/formLayouts');
+    const { getEmpcoSettingsAction } = await import('@/app/actions/empco');
+    const [layout, empcoSettings] = await Promise.all([getFormLayoutAction(), getEmpcoSettingsAction()]);
+
+    // EmpCo lookup: articleNumber → { status, stale, issueCount }
+    // A check is "stale" when the customer-facing texts changed after the check.
+    const empcoMap: Record<string, { status: string; stale: boolean; issueCount: number }> = {};
+    if (empcoChecks.length > 0) {
+      const productByArticle = new Map(products.map(p => [p.internalArticleNumber, p]));
+      for (const c of empcoChecks) {
+        const p = productByArticle.get(c.articleNumber);
+        if (!p) continue;
+        const stale = !!c.contentHash && hashEmpcoFields(extractEmpcoFields(p, layout, undefined, empcoSettings.includedFieldKeys)) !== c.contentHash;
+        empcoMap[c.articleNumber] = { status: c.status, stale, issueCount: c.issueCount };
+      }
+    }
+
+    // Build image count map by scanning the uploads directory
+    const ROOT_DIR = process.env.APP_ROOT || process.cwd();
+    const uploadsDir = path.join(ROOT_DIR, 'public', 'uploads', 'products');
+    const imageCountMap: Record<string, number> = {};
+    try {
+      if (fs.existsSync(uploadsDir)) {
+        for (const articleDir of fs.readdirSync(uploadsDir)) {
+          const dirPath = path.join(uploadsDir, articleDir);
+          if (!fs.statSync(dirPath).isDirectory()) continue;
+          const count = fs.readdirSync(dirPath).filter(f => /\.(jpg|jpeg|png|webp|gif|avif)$/i.test(f)).length;
+          if (count > 0) imageCountMap[articleDir] = count;
+        }
+      }
+    } catch { /* ignore FS errors */ }
+
+    return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} canAssignProducts={canAssignProducts} canViewRolePeers={canViewRolePeers} canEditRolePeers={canEditRolePeers} canUseAi={canUseAi} canApproveEmpco={canApproveEmpco} fieldPermissions={fieldPermissions} layout={layout} currentUserId={userId || ''} currentUserChatColor={(userRecord as any)?.chatColor || null} currentUserAutoMarkRemarksAsRead={userRecord?.autoMarkRemarksAsRead ?? true} aiScoreMap={aiScoreMap} imageCountMap={imageCountMap} empcoMap={empcoMap} allSuppliers={suppliers} />;
+  }

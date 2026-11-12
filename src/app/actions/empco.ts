@@ -145,14 +145,14 @@ async function getSessionInfo() {
   let canAssignProducts = isAdmin;
   if (!isAdmin && roles.length > 0) {
     const perms = await prisma.rolePermission.findMany({
-      where: { role: { name: { in: roles } }, module: { in: ['MENU:ai', 'MENU:empco_approve', 'MENU:assignments'] } },
+      where: { role: { name: { in: roles } }, module: { in: ['MENU:ai', 'MENU:empco_approve', 'MENU:assignments', 'MENU:edit_role_peers'] } },
     });
     const hasAi = perms.some(p => p.module === 'MENU:ai' && p.action === 'ALLOW');
     const hasApproveAllow = perms.some(p => p.module === 'MENU:empco_approve' && p.action === 'ALLOW');
     const hasApproveDeny = perms.some(p => p.module === 'MENU:empco_approve' && p.action === 'DENY');
     const isEditor = roles.some(r => r.toUpperCase() === 'EDITOR');
     canApproveEmpco = hasAi || hasApproveAllow || (isEditor && !hasApproveDeny);
-    canAssignProducts = perms.some(p => p.module === 'MENU:assignments' && p.action === 'ALLOW');
+    canAssignProducts = perms.some(p => (p.module === 'MENU:assignments' || p.module === 'MENU:edit_role_peers') && p.action === 'ALLOW');
   }
   return { session, userId: user?.id as string | undefined, email: user?.email as string | undefined, isAdmin, canApproveEmpco, canAssignProducts };
 }
@@ -337,34 +337,34 @@ export async function applyEmpcoBulkFixesAction(
             try {
               const { saveBrandRuleAction } = await import('@/app/actions/brandEmpco');
               for (const [key] of working) {
-                  const matchedIdx = (result.issues ?? []).findIndex((i, idx) => i.field === key && wanted.has(idx));
-                  if (matchedIdx >= 0) {
-                    const matchedIssue = result.issues[matchedIdx];
-                    await saveBrandRuleAction({
-                      brandId: product.brandId,
-                      original: matchedIssue.original,
-                      replacement: effectiveReplacements.get(matchedIdx) ?? matchedIssue.replacement,
-                      rule: matchedIssue.rule,
-                      fieldKey: key,
-                      explanation: matchedIssue.explanation,
-                      sourceArticle: sel.articleNumber,
-                    });
-                  }
+                const matchedIdx = (result.issues ?? []).findIndex((i, idx) => i.field === key && wanted.has(idx));
+                if (matchedIdx >= 0) {
+                  const matchedIssue = result.issues[matchedIdx];
+                  await saveBrandRuleAction({
+                    brandId: product.brandId,
+                    original: matchedIssue.original,
+                    replacement: effectiveReplacements.get(matchedIdx) ?? matchedIssue.replacement,
+                    rule: matchedIssue.rule,
+                    fieldKey: key,
+                    explanation: matchedIssue.explanation,
+                    sourceArticle: sel.articleNumber,
+                  });
                 }
-              } catch (ruleErr) {
-                console.error('Failed to learn brand rule in bulk:', ruleErr);
               }
+            } catch (ruleErr) {
+              console.error('Failed to learn brand rule in bulk:', ruleErr);
             }
+          }
         }
-        }
-        if (res.newStatus === undefined) { res.newStatus = check.status; res.openIssues = check.issueCount; }
-      } catch (e: any) {
-        res.error = e?.message ?? 'Onbekende fout';
       }
-      results.push(res);
+      if (res.newStatus === undefined) { res.newStatus = check.status; res.openIssues = check.issueCount; }
+    } catch (e: any) {
+      res.error = e?.message ?? 'Onbekende fout';
     }
+    results.push(res);
+  }
 
   revalidatePath('/products');
-    revalidatePath('/assignments');
-    return results;
-  }
+  revalidatePath('/assignments');
+  return results;
+}
