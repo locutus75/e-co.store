@@ -3,10 +3,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AvailableCategoryOption,
+  CategoryFeedbackRule,
   ProductCategoryCheck,
   applyCategorySuggestionsAction,
+  deleteCategoryFeedbackRuleAction,
   dismissCategoryCheckAction,
   getAvailableCategoriesForCheckAction,
+  getCategoryFeedbackRulesAction,
   runCategoryCheckBatchAction,
 } from '@/app/actions/categories';
 
@@ -54,10 +57,15 @@ export default function CategoryCheckModal({
   onComplete,
 }: CategoryCheckModalProps) {
   const [availableCategories, setAvailableCategories] = useState<AvailableCategoryOption[]>([]);
+  const [feedbackRules, setFeedbackRules] = useState<CategoryFeedbackRule[]>([]);
+  const [showFeedbackRulesPanel, setShowFeedbackRulesPanel] = useState(false);
+
   const [resultsMap, setResultsMap] = useState<Record<string, ProductCategoryCheck>>({});
   const [selectedTargets, setSelectedTargets] = useState<Record<string, string>>({});
+  const [feedbackReasons, setFeedbackReasons] = useState<Record<string, string>>({});
+  const [manualOverrideArticles, setManualOverrideArticles] = useState<Set<string>>(new Set());
   const [checkedArticles, setCheckedArticles] = useState<Set<string>>(new Set());
-  const [onlyShowIssues, setOnlyShowIssues] = useState(true);
+  const [onlyShowIssues, setOnlyShowIssues] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
 
   const [running, setRunning] = useState(false);
@@ -67,7 +75,7 @@ export default function CategoryCheckModal({
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const abortRef = useRef(false);
 
-  // Load existing categories and initialize state when modal opens
+  // Load existing categories, learned feedback rules, and initialize state when modal opens
   useEffect(() => {
     if (!isOpen) return;
     setErrorMsg(null);
@@ -95,11 +103,19 @@ export default function CategoryCheckModal({
 
     setResultsMap(initialMap);
     setSelectedTargets(initialTargets);
+    setFeedbackReasons({});
+    setManualOverrideArticles(new Set());
     setCheckedArticles(initialChecked);
 
     getAvailableCategoriesForCheckAction().then((cats) => {
       if (Array.isArray(cats)) {
         setAvailableCategories(cats);
+      }
+    });
+
+    getCategoryFeedbackRulesAction().then((rules) => {
+      if (Array.isArray(rules)) {
+        setFeedbackRules(rules);
       }
     });
   }, [isOpen, products]);
@@ -175,10 +191,10 @@ export default function CategoryCheckModal({
 
       if (!abortRef.current) {
         setSuccessMsg(
-          `Controle afgerond voor ${processed} product(en). ${newIssuesFound > 0
-            ? `${newIssuesFound} product(en) met een categorie-advies gevonden.`
-            : 'Alle gecontroleerde producten staan in een passende categorie!'
-          }`
+              `Controle afgerond voor ${processed} product(en). ${newIssuesFound > 0
+                ? `${newIssuesFound} product(en) met een categorie-advies gevonden.`
+                : 'Alle gecontroleerde producten staan volgens de check in een passende categorie. Je kunt hieronder altijd handmatig een categorie corrigeren en een reden meegeven.'
+              }`
         );
         onComplete();
       }
@@ -189,7 +205,6 @@ export default function CategoryCheckModal({
 
   useEffect(() => {
     if (isOpen && autoStartUnchecked && uncheckedProducts.length > 0 && uncheckedProducts.length <= 25 && !running) {
-      // Only auto-start if none of the products have results yet
       if (Object.keys(resultsMap).length === 0) {
         startBatchCheck(uncheckedProducts);
       }
@@ -229,7 +244,9 @@ export default function CategoryCheckModal({
     const q = searchFilter.trim().toLowerCase();
     return products.filter((p) => {
       const check = resultsMap[p.internalArticleNumber];
-      const isIssue = check && !check.dismissed && (check.status === 'MISMATCH' || check.status === 'WARNING');
+      const isIssue =
+        (check && !check.dismissed && (check.status === 'MISMATCH' || check.status === 'WARNING')) ||
+        manualOverrideArticles.has(p.internalArticleNumber);
       if (onlyShowIssues && stats.issueCount > 0 && !isIssue) {
         return false;
       }
@@ -242,35 +259,50 @@ export default function CategoryCheckModal({
         (check?.suggestedCategoryName ?? '').toLowerCase().includes(q)
       );
     });
-  }, [products, resultsMap, onlyShowIssues, stats.issueCount, searchFilter]);
+}, [products, resultsMap, manualOverrideArticles, onlyShowIssues, stats.issueCount, searchFilter]);
 
-  const handleToggleSelect = (articleNumber: string) => {
-    setCheckedArticles((prev) => {
-      const next = new Set(prev);
-      if (next.has(articleNumber)) next.delete(articleNumber);
-      else next.add(articleNumber);
-      return next;
-    });
-  };
+const handleToggleSelect = (articleNumber: string) => {
+  setCheckedArticles((prev) => {
+    const next = new Set(prev);
+    if (next.has(articleNumber)) next.delete(articleNumber);
+    else next.add(articleNumber);
+    return next;
+  });
+};
 
-  const handleSelectAllIssues = () => {
-    const next = new Set<string>();
-    for (const p of displayedProducts) {
-      const check = resultsMap[p.internalArticleNumber];
-      const targetId = selectedTargets[p.internalArticleNumber] || check?.suggestedCategoryId;
-      if (check && !check.dismissed && (check.status === 'MISMATCH' || check.status === 'WARNING') && targetId) {
+const handleSelectAllIssues = () => {
+  const next = new Set<string>();
+  for (const p of displayedProducts) {
+    const check = resultsMap[p.internalArticleNumber];
+    const isManual = manualOverrideArticles.has(p.internalArticleNumber);
+    const targetId = selectedTargets[p.internalArticleNumber] || check?.suggestedCategoryId;
+      if (
+        targetId &&
+        (isManual || (check && !check.dismissed && (check.status === 'MISMATCH' || check.status === 'WARNING')))
+      ) {
         next.add(p.internalArticleNumber);
       }
     }
     setCheckedArticles(next);
   };
 
+  const refreshFeedbackRules = async () => {
+    const rules = await getCategoryFeedbackRulesAction();
+    if (Array.isArray(rules)) {
+      setFeedbackRules(rules);
+    }
+  };
+
   const handleApplySelected = async () => {
-    const itemsToApply: { articleNumber: string; targetCategoryId: string }[] = [];
+    const itemsToApply: { articleNumber: string; targetCategoryId: string; feedbackReason?: string }[] = [];
     for (const artNo of checkedArticles) {
       const targetId = selectedTargets[artNo] || resultsMap[artNo]?.suggestedCategoryId;
       if (targetId) {
-        itemsToApply.push({ articleNumber: artNo, targetCategoryId: targetId });
+        itemsToApply.push({
+          articleNumber: artNo,
+          targetCategoryId: targetId,
+          feedbackReason: feedbackReasons[artNo],
+        });
       }
     }
 
@@ -290,24 +322,37 @@ export default function CategoryCheckModal({
           for (const item of itemsToApply) {
             const targetCat = catLookup.get(item.targetCategoryId);
             const prevCheck = next[item.articleNumber];
-            if (prevCheck) {
-              next[item.articleNumber] = {
-                ...prevCheck,
-                status: 'OK',
-                currentCategory: targetCat ? targetCat.fullLabel : prevCheck.currentCategory,
-                suggestedCategoryId: null,
-                suggestedCategoryName: null,
-                suggestedParentName: null,
-                explanation: `Ingedeeld in: ${targetCat?.fullLabel ?? 'gekozen categorie'}`,
-                checkedSubcategoryId: item.targetCategoryId,
-                checkedCategoryId: targetCat?.parentId || item.targetCategoryId,
-              };
-            }
+            const reasonText = (item.feedbackReason || '').trim();
+            next[item.articleNumber] = {
+              status: 'OK',
+              currentCategory: targetCat ? targetCat.fullLabel : prevCheck?.currentCategory || '',
+              suggestedCategoryId: null,
+              suggestedCategoryName: null,
+              suggestedParentName: null,
+              explanation: reasonText
+                ? `Ingedeeld in: ${targetCat?.fullLabel ?? 'gekozen categorie'} (Geleerde feedback: "${reasonText}")`
+                : `Ingedeeld in: ${targetCat?.fullLabel ?? 'gekozen categorie'}`,
+              checkedAt: new Date().toISOString(),
+              checkedSubcategoryId: item.targetCategoryId,
+              checkedCategoryId: targetCat?.parentId || item.targetCategoryId,
+              dismissed: false,
+            };
           }
           return next;
         });
+        setManualOverrideArticles((prev) => {
+          const next = new Set(prev);
+          for (const item of itemsToApply) next.delete(item.articleNumber);
+          return next;
+        });
         setCheckedArticles(new Set());
-        setSuccessMsg(`Categorie succesvol bijgewerkt voor ${res.updatedCount} product(en)!`);
+        await refreshFeedbackRules();
+        setSuccessMsg(
+          `Categorie succesvol bijgewerkt voor ${res.updatedCount} product(en)${res.learnedRulesCount > 0
+            ? ` én ${res.learnedRulesCount} feedback-regel(s) opgeslagen voor toekomstige controles!`
+            : '!'
+          }`
+        );
         onComplete();
       }
     } finally {
@@ -318,37 +363,55 @@ export default function CategoryCheckModal({
   const handleApplySingle = async (articleNumber: string) => {
     const targetId = selectedTargets[articleNumber] || resultsMap[articleNumber]?.suggestedCategoryId;
     if (!targetId) return;
+    const reasonText = (feedbackReasons[articleNumber] || '').trim();
+
     setApplying(true);
     setErrorMsg(null);
+    setSuccessMsg(null);
     try {
-      const res = await applyCategorySuggestionsAction([{ articleNumber, targetCategoryId: targetId }]);
+      const res = await applyCategorySuggestionsAction([
+        { articleNumber, targetCategoryId: targetId, feedbackReason: reasonText },
+      ]);
       if (!res.ok) {
         setErrorMsg(res.error || 'Doorvoeren mislukt.');
       } else {
         const targetCat = availableCategories.find((c) => c.id === targetId);
         setResultsMap((prev) => {
           const prevCheck = prev[articleNumber];
-          if (!prevCheck) return prev;
           return {
             ...prev,
             [articleNumber]: {
-              ...prevCheck,
               status: 'OK',
-              currentCategory: targetCat ? targetCat.fullLabel : prevCheck.currentCategory,
+              currentCategory: targetCat ? targetCat.fullLabel : prevCheck?.currentCategory || '',
               suggestedCategoryId: null,
               suggestedCategoryName: null,
               suggestedParentName: null,
-              explanation: `Ingedeeld in: ${targetCat?.fullLabel ?? 'gekozen categorie'}`,
+              explanation: reasonText
+                ? `Ingedeeld in: ${targetCat?.fullLabel ?? 'gekozen categorie'} (Geleerde feedback: "${reasonText}")`
+                : `Ingedeeld in: ${targetCat?.fullLabel ?? 'gekozen categorie'}`,
+              checkedAt: new Date().toISOString(),
               checkedSubcategoryId: targetId,
               checkedCategoryId: targetCat?.parentId || targetId,
+              dismissed: false,
             },
           };
+        });
+        setManualOverrideArticles((prev) => {
+          const next = new Set(prev);
+          next.delete(articleNumber);
+          return next;
         });
         setCheckedArticles((prev) => {
           const next = new Set(prev);
           next.delete(articleNumber);
           return next;
         });
+        if (reasonText) {
+          await refreshFeedbackRules();
+          setSuccessMsg(
+            `Product #${articleNumber} ingedeeld in "${targetCat?.fullLabel}" en feedback opgeslagen voor toekomstige checks!`
+          );
+        }
         onComplete();
       }
     } finally {
@@ -356,373 +419,498 @@ export default function CategoryCheckModal({
     }
   };
 
-  const handleDismiss = async (articleNumbers: string[]) => {
-    if (articleNumbers.length === 0) return;
-    setApplying(true);
-    setErrorMsg(null);
-    try {
-      const res = await dismissCategoryCheckAction(articleNumbers);
-      if (!res.ok) {
-        setErrorMsg(res.error || 'Bevestigen mislukt.');
-      } else {
-        setResultsMap((prev) => {
-          const next = { ...prev };
-          for (const artNo of articleNumbers) {
-            if (next[artNo]) {
-              next[artNo] = {
-                ...next[artNo],
-                status: 'OK',
-                dismissed: true,
-                explanation: 'Huidige categorie handmatig bevestigd als correct.',
-              };
+    const handleDismiss = async (articleNumbers: string[], singleFeedbackReason?: string) => {
+      if (articleNumbers.length === 0) return;
+      setApplying(true);
+      setErrorMsg(null);
+      try {
+        const res = await dismissCategoryCheckAction(articleNumbers, singleFeedbackReason);
+        if (!res.ok) {
+          setErrorMsg(res.error || 'Bevestigen mislukt.');
+        } else {
+          setResultsMap((prev) => {
+            const next = { ...prev };
+            for (const artNo of articleNumbers) {
+              if (next[artNo]) {
+                next[artNo] = {
+                  ...next[artNo],
+                  status: 'OK',
+                  dismissed: true,
+                  explanation: singleFeedbackReason?.trim()
+                    ? `Huidige categorie bevestigd (${singleFeedbackReason.trim()}).`
+                    : 'Huidige categorie handmatig bevestigd als correct.',
+                };
+              }
             }
+            return next;
+          });
+          setCheckedArticles((prev) => {
+            const next = new Set(prev);
+            for (const artNo of articleNumbers) next.delete(artNo);
+            return next;
+          });
+          if (singleFeedbackReason?.trim()) {
+            await refreshFeedbackRules();
           }
-          return next;
-        });
-        setCheckedArticles((prev) => {
-          const next = new Set(prev);
-          for (const artNo of articleNumbers) next.delete(artNo);
-          return next;
-        });
-        onComplete();
+          onComplete();
+        }
+      } finally {
+        setApplying(false);
       }
-    } finally {
-      setApplying(false);
-    }
-  };
+    };
 
-  if (!isOpen) return null;
+    const handleDeleteRule = async (ruleId: string) => {
+      const res = await deleteCategoryFeedbackRuleAction(ruleId);
+      if (res.ok) {
+        setFeedbackRules(res.rules);
+      }
+    };
 
-  const progressPct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+    if (!isOpen) return null;
 
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(15, 23, 42, 0.65)',
-        backdropFilter: 'blur(4px)',
-        zIndex: 9999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '1.25rem',
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !running) onClose();
-      }}
-    >
+    const progressPct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+
+    return (
       <div
         style={{
-          backgroundColor: 'var(--surface)',
-          borderRadius: '14px',
-          border: '1px solid var(--border)',
-          width: '100%',
-          maxWidth: '1060px',
-          maxHeight: '90vh',
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          zIndex: 9999,
           display: 'flex',
-          flexDirection: 'column',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-          overflow: 'hidden',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1.25rem',
+        }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget && !running) onClose();
         }}
       >
-        {/* Header */}
         <div
           style={{
-            padding: '1.15rem 1.5rem',
-            background: 'linear-gradient(135deg, #0369a1 0%, #0284c7 100%)',
-            color: 'white',
+            backgroundColor: 'var(--surface)',
+            borderRadius: '14px',
+            border: '1px solid var(--border)',
+            width: '100%',
+            maxWidth: '1080px',
+            maxHeight: '90vh',
             display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: '1rem',
+            flexDirection: 'column',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            overflow: 'hidden',
           }}
         >
-          <div>
-            <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span>🏷️ Categorie-indeling Controle</span>
-            </h2>
-            <p style={{ margin: '0.2rem 0 0', fontSize: '0.82rem', opacity: 0.9 }}>
-              {titleLabel || `${products.length} geselecteerde producten`} • Controleert uitsluitend tegen bestaande categorieën (bedenkt nooit nieuwe categorieën)
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={running}
+          {/* Header */}
+          <div
             style={{
-              background: 'rgba(255,255,255,0.15)',
-              border: 'none',
+              padding: '1.15rem 1.5rem',
+              background: 'linear-gradient(135deg, #0369a1 0%, #0284c7 100%)',
               color: 'white',
-              width: '32px',
-              height: '32px',
-              borderRadius: '8px',
-              cursor: running ? 'not-allowed' : 'pointer',
-              fontSize: '1rem',
-              fontWeight: 700,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '1rem',
             }}
           >
-            ✕
-          </button>
-        </div>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span>🏷️ Categorie-indeling Controle</span>
+              </h2>
+              <p style={{ margin: '0.2rem 0 0', fontSize: '0.82rem', opacity: 0.9 }}>
+                {titleLabel || `${products.length} geselecteerde producten`} • Controleert uitsluitend tegen bestaande categorieën en leert van jouw correcties
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={running}
+              style={{
+                background: 'rgba(255,255,255,0.15)',
+                border: 'none',
+                color: 'white',
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
+                cursor: running ? 'not-allowed' : 'pointer',
+                fontSize: '1rem',
+                fontWeight: 700,
+              }}
+            >
+              ✕
+            </button>
+          </div>
 
-        {/* Control & Action Bar */}
-        <div
-          style={{
-            padding: '0.9rem 1.5rem',
-            backgroundColor: 'var(--background)',
-            borderBottom: '1px solid var(--border)',
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '0.75rem',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          {/* Stats Badges */}
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-            <span
-              style={{
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                padding: '0.25rem 0.65rem',
-                borderRadius: '999px',
-                backgroundColor: stats.mismatchCount > 0 ? '#fef2f2' : 'var(--surface)',
-                color: stats.mismatchCount > 0 ? '#dc2626' : 'var(--text-muted)',
-                border: `1px solid ${stats.mismatchCount > 0 ? '#fecaca' : 'var(--border)'}`,
-              }}
-            >
-              ❌ Verkeerd ingedeeld: {stats.mismatchCount}
-            </span>
-            <span
-              style={{
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                padding: '0.25rem 0.65rem',
-                borderRadius: '999px',
-                backgroundColor: stats.warningCount > 0 ? '#fffbeb' : 'var(--surface)',
-                color: stats.warningCount > 0 ? '#d97706' : 'var(--text-muted)',
-                border: `1px solid ${stats.warningCount > 0 ? '#fde68a' : 'var(--border)'}`,
-              }}
-            >
-              ⚠️ Betere categorie: {stats.warningCount}
-            </span>
-            <span
-              style={{
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                padding: '0.25rem 0.65rem',
-                borderRadius: '999px',
-                backgroundColor: '#f0fdf4',
-                color: '#15803d',
-                border: '1px solid #bbf7d0',
-              }}
-            >
-              ✅ Juist ingedeeld: {stats.okCount}
-            </span>
-            {stats.uncheckedCount > 0 && (
+          {/* Control & Action Bar */}
+          <div
+            style={{
+              padding: '0.9rem 1.5rem',
+              backgroundColor: 'var(--background)',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            {/* Stats Badges */}
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
               <span
                 style={{
                   fontSize: '0.78rem',
-                  fontWeight: 600,
+                  fontWeight: 700,
                   padding: '0.25rem 0.65rem',
                   borderRadius: '999px',
-                  backgroundColor: 'var(--surface)',
-                  color: 'var(--text-muted)',
-                  border: '1px solid var(--border)',
+                  backgroundColor: stats.mismatchCount > 0 ? '#fef2f2' : 'var(--surface)',
+                  color: stats.mismatchCount > 0 ? '#dc2626' : 'var(--text-muted)',
+                  border: `1px solid ${stats.mismatchCount > 0 ? '#fecaca' : 'var(--border)'}`,
                 }}
               >
-                ⏳ Nog niet gecontroleerd: {stats.uncheckedCount}
+                ❌ Verkeerd ingedeeld: {stats.mismatchCount}
               </span>
-            )}
-          </div>
+              <span
+                style={{
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  padding: '0.25rem 0.65rem',
+                  borderRadius: '999px',
+                  backgroundColor: stats.warningCount > 0 ? '#fffbeb' : 'var(--surface)',
+                  color: stats.warningCount > 0 ? '#d97706' : 'var(--text-muted)',
+                  border: `1px solid ${stats.warningCount > 0 ? '#fde68a' : 'var(--border)'}`,
+                }}
+              >
+                ⚠️ Betere categorie: {stats.warningCount}
+              </span>
+              <span
+                style={{
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  padding: '0.25rem 0.65rem',
+                  borderRadius: '999px',
+                  backgroundColor: '#f0fdf4',
+                  color: '#15803d',
+                  border: '1px solid #bbf7d0',
+                }}
+              >
+                ✅ Juist ingedeeld: {stats.okCount}
+              </span>
+              {stats.uncheckedCount > 0 && (
+                <span
+                  style={{
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    padding: '0.25rem 0.65rem',
+                    borderRadius: '999px',
+                    backgroundColor: 'var(--surface)',
+                    color: 'var(--text-muted)',
+                    border: '1px solid var(--border)',
+                  }}
+                >
+                  ⏳ Nog niet gecontroleerd: {stats.uncheckedCount}
+                </span>
+              )}
 
-          {/* Run Check Buttons */}
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-            {running ? (
               <button
                 type="button"
-                className="btn"
-                onClick={() => {
-                  abortRef.current = true;
-                }}
+                onClick={() => setShowFeedbackRulesPanel((v) => !v)}
                 style={{
-                  padding: '0.45rem 0.9rem',
-                  fontSize: '0.82rem',
+                  fontSize: '0.76rem',
                   fontWeight: 700,
-                  backgroundColor: '#ef4444',
-                  color: 'white',
-                  border: 'none',
+                  padding: '0.25rem 0.65rem',
+                  borderRadius: '999px',
+                  backgroundColor: showFeedbackRulesPanel ? '#7c3aed' : '#f5f3ff',
+                  color: showFeedbackRulesPanel ? 'white' : '#6d28d9',
+                  border: '1px solid #ddd6fe',
+                  cursor: 'pointer',
                 }}
+                title="Bekijk en beheer de geleerde feedback-regels voor toekomstige controles"
               >
-                ⏹ Stoppen ({progress.done}/{progress.total})
+                🧠 Geleerde feedback ({feedbackRules.length})
               </button>
-            ) : (
-              <>
-                {uncheckedProducts.length > 0 && (
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => startBatchCheck(uncheckedProducts)}
-                    style={{
-                      padding: '0.45rem 0.95rem',
-                      fontSize: '0.82rem',
-                      fontWeight: 700,
-                      backgroundColor: '#0284c7',
-                      color: 'white',
-                      border: 'none',
-                    }}
-                  >
-                    🔍 Controleer {uncheckedProducts.length} niet-gecontroleerde producten
-                  </button>
-                )}
+            </div>
+
+            {/* Run Check Buttons */}
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              {running ? (
                 <button
                   type="button"
                   className="btn"
-                  onClick={() => startBatchCheck(products)}
+                  onClick={() => {
+                    abortRef.current = true;
+                  }}
                   style={{
                     padding: '0.45rem 0.9rem',
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                    backgroundColor: uncheckedProducts.length === 0 ? '#0284c7' : 'var(--surface)',
-                    color: uncheckedProducts.length === 0 ? 'white' : 'var(--text)',
-                    border: uncheckedProducts.length === 0 ? 'none' : '1px solid var(--border)',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    backgroundColor: '#ef4444',
+                    color: 'white',
+                    border: 'none',
                   }}
                 >
-                  🔄 {uncheckedProducts.length === 0 ? `Alle ${products.length} producten opnieuw controleren` : `Alles opnieuw (${products.length})`}
+                  ⏹ Stoppen ({progress.done}/{progress.total})
                 </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Progress Bar when running */}
-        {running && (
-          <div style={{ padding: '0.75rem 1.5rem', backgroundColor: '#f0f9ff', borderBottom: '1px solid #bae6fd' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 700, color: '#0369a1', marginBottom: '0.35rem' }}>
-              <span>🤖 AI Categorie-check bezig (vergelijkt met {availableCategories.length} bestaande categorieën)...</span>
-              <span>
-                {progress.done} / {progress.total} ({progressPct}%)
-              </span>
+              ) : (
+                <>
+                  {uncheckedProducts.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => startBatchCheck(uncheckedProducts)}
+                      style={{
+                        padding: '0.45rem 0.95rem',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        backgroundColor: '#0284c7',
+                        color: 'white',
+                        border: 'none',
+                      }}
+                    >
+                      🔍 Controleer {uncheckedProducts.length} niet-gecontroleerde producten
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => startBatchCheck(products)}
+                    style={{
+                      padding: '0.45rem 0.9rem',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      backgroundColor: uncheckedProducts.length === 0 ? '#0284c7' : 'var(--surface)',
+                      color: uncheckedProducts.length === 0 ? 'white' : 'var(--text)',
+                      border: uncheckedProducts.length === 0 ? 'none' : '1px solid var(--border)',
+                    }}
+                  >
+                    🔄 {uncheckedProducts.length === 0 ? `Alle ${products.length} producten opnieuw controleren` : `Alles opnieuw (${products.length})`}
+                  </button>
+                </>
+              )}
             </div>
-            <div style={{ width: '100%', height: '8px', backgroundColor: '#e0f2fe', borderRadius: '999px', overflow: 'hidden' }}>
-              <div
-                style={{
-                  width: `${progressPct}%`,
-                  height: '100%',
-                  backgroundColor: '#0284c7',
-                  transition: 'width 0.25s ease',
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Messages */}
-        {errorMsg && (
-          <div style={{ padding: '0.75rem 1.5rem', backgroundColor: '#fef2f2', color: '#991b1b', fontSize: '0.84rem', fontWeight: 600, borderBottom: '1px solid #fecaca' }}>
-            ❌ {errorMsg}
-          </div>
-        )}
-        {successMsg && (
-          <div style={{ padding: '0.75rem 1.5rem', backgroundColor: '#f0fdf4', color: '#166534', fontSize: '0.84rem', fontWeight: 600, borderBottom: '1px solid #bbf7d0' }}>
-            ✅ {successMsg}
-          </div>
-        )}
-
-        {/* Filter & Selection Toolbar */}
-        <div
-          style={{
-            padding: '0.65rem 1.5rem',
-            borderBottom: '1px solid var(--border)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '0.75rem',
-            backgroundColor: 'var(--surface)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={onlyShowIssues && stats.issueCount > 0}
-                disabled={stats.issueCount === 0}
-                onChange={(e) => setOnlyShowIssues(e.target.checked)}
-              />
-              <span>Alleen afwijkingen & voorstellen tonen ({stats.issueCount})</span>
-            </label>
-
-            <input
-              type="text"
-              className="input"
-              placeholder="🔍 Filter op artikel, titel of categorie..."
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              style={{ padding: '0.35rem 0.7rem', fontSize: '0.8rem', width: '250px' }}
-            />
           </div>
 
-          {stats.issueCount > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', fontSize: '0.8rem' }}>
-              <button
-                type="button"
-                onClick={handleSelectAllIssues}
-                style={{ background: 'none', border: 'none', color: '#0284c7', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
-              >
-                Alles selecteren
-              </button>
-              <span style={{ color: 'var(--border)' }}>•</span>
-              <button
-                type="button"
-                onClick={() => setCheckedArticles(new Set())}
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
-              >
-                Alles deselecteren
-              </button>
+          {/* Collapsible Learned Feedback Rules Panel */}
+          {showFeedbackRulesPanel && (
+            <div
+              style={{
+                padding: '0.85rem 1.5rem',
+                backgroundColor: '#faf5ff',
+                borderBottom: '1px solid #e9d5ff',
+                maxHeight: '190px',
+                overflowY: 'auto',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem' }}>
+                <strong style={{ fontSize: '0.82rem', color: '#581c87' }}>
+                  🧠 Geleerde feedback & indelingsregels (worden automatisch meegegeven bij elke nieuwe categorie-check):
+                </strong>
+                <button
+                  type="button"
+                  onClick={() => setShowFeedbackRulesPanel(false)}
+                  style={{ background: 'none', border: 'none', fontSize: '0.78rem', color: '#6b21a8', cursor: 'pointer', fontWeight: 600 }}
+                >
+                  Verbergen ▲
+                </button>
+              </div>
+              {feedbackRules.length === 0 ? (
+                <div style={{ fontSize: '0.8rem', color: '#6b21a8' }}>
+                  Nog geen feedback-regels opgeslagen. Wanneer je hieronder bij een product de categorie wijzigt en een reden invult (bijv. <em>&quot;Bevat het woord Zeep, hoort daarom in Douche &amp; bad&quot;</em>), onthoudt het systeem dit voor toekomstige checks.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  {feedbackRules.map((rule) => (
+                    <div
+                      key={rule.id}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '0.75rem',
+                        padding: '0.35rem 0.65rem',
+                        backgroundColor: 'white',
+                        border: '1px solid #e9d5ff',
+                        borderRadius: '6px',
+                        fontSize: '0.78rem',
+                      }}
+                    >
+                      <div>
+                        <strong>#{rule.articleNumber} {rule.productTitle}</strong>:{' '}
+                        <span style={{ color: 'var(--text-muted)' }}>{rule.fromCategory}</span> →{' '}
+                        <strong style={{ color: '#15803d' }}>{rule.targetCategoryLabel}</strong>{' '}
+                        <span style={{ color: '#581c87', fontStyle: 'italic' }}>— &ldquo;{rule.reason}&rdquo;</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteRule(rule.id)}
+                        title="Verwijder deze geleerde regel"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#dc2626',
+                          cursor: 'pointer',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                        }}
+                      >
+                        🗑
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
-        </div>
 
-        {/* Product List */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-          {displayedProducts.length === 0 ? (
-            <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-              {stats.uncheckedCount === products.length
-                ? 'Nog geen producten gecontroleerd in deze selectie. Klik hierboven op "🔍 Controleer niet-gecontroleerde producten" om te starten.'
-                : 'Geen producten gevonden voor dit filter.'}
-            </div>
-          ) : (
-            displayedProducts.map((p) => {
-              const check = resultsMap[p.internalArticleNumber];
-              const isIssue = check && !check.dismissed && (check.status === 'MISMATCH' || check.status === 'WARNING');
-              const isSelected = checkedArticles.has(p.internalArticleNumber);
-              const currentTargetId = selectedTargets[p.internalArticleNumber] ?? check?.suggestedCategoryId ?? '';
-
-              const curCatDisplay =
-                check?.currentCategory ||
-                (p.subcategory?.name
-                  ? p.category?.name && p.category.name !== p.subcategory.name
-                    ? `${p.category.name} › ${p.subcategory.name}`
-                    : p.subcategory.name
-                  : p.category?.name || 'Zonder categorie');
-
-              return (
+          {/* Progress Bar when running */}
+          {running && (
+            <div style={{ padding: '0.75rem 1.5rem', backgroundColor: '#f0f9ff', borderBottom: '1px solid #bae6fd' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 700, color: '#0369a1', marginBottom: '0.35rem' }}>
+                <span>
+                  🤖 AI Categorie-check bezig (vergelijkt met {availableCategories.length} bestaande categorieën
+                  {feedbackRules.length > 0 ? ` + ${feedbackRules.length} geleerde feedback-regels` : ''})...
+                </span>
+                <span>
+                  {progress.done} / {progress.total} ({progressPct}%)
+                </span>
+              </div>
+              <div style={{ width: '100%', height: '8px', backgroundColor: '#e0f2fe', borderRadius: '999px', overflow: 'hidden' }}>
                 <div
-                  key={p.internalArticleNumber}
                   style={{
-                    border: `1px solid ${isIssue
-                        ? check.status === 'MISMATCH'
-                          ? '#fca5a5'
-                          : '#fcd34d'
-                        : 'var(--border)'
-                      }`,
-                    backgroundColor: isIssue
-                      ? check.status === 'MISMATCH'
-                        ? 'rgba(254, 242, 242, 0.45)'
-                        : 'rgba(255, 251, 235, 0.45)'
-                      : 'var(--surface)',
+                    width: `${progressPct}%`,
+                    height: '100%',
+                    backgroundColor: '#0284c7',
+                    transition: 'width 0.25s ease',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Messages */}
+          {errorMsg && (
+            <div style={{ padding: '0.75rem 1.5rem', backgroundColor: '#fef2f2', color: '#991b1b', fontSize: '0.84rem', fontWeight: 600, borderBottom: '1px solid #fecaca' }}>
+              ❌ {errorMsg}
+            </div>
+          )}
+          {successMsg && (
+            <div style={{ padding: '0.75rem 1.5rem', backgroundColor: '#f0fdf4', color: '#166534', fontSize: '0.84rem', fontWeight: 600, borderBottom: '1px solid #bbf7d0' }}>
+              ✅ {successMsg}
+            </div>
+          )}
+
+          {/* Filter & Selection Toolbar */}
+          <div
+            style={{
+              padding: '0.65rem 1.5rem',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              backgroundColor: 'var(--surface)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={onlyShowIssues && stats.issueCount > 0}
+                  disabled={stats.issueCount === 0}
+                  onChange={(e) => setOnlyShowIssues(e.target.checked)}
+                />
+                <span>Alleen afwijkingen & voorstellen tonen ({stats.issueCount})</span>
+              </label>
+
+              <input
+                type="text"
+                className="input"
+                placeholder="🔍 Filter op artikel, titel of categorie..."
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                style={{ padding: '0.35rem 0.7rem', fontSize: '0.8rem', width: '250px' }}
+              />
+            </div>
+
+              {(stats.issueCount > 0 || manualOverrideArticles.size > 0) && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', fontSize: '0.8rem' }}>
+                  <button
+                    type="button"
+                    onClick={handleSelectAllIssues}
+                    style={{ background: 'none', border: 'none', color: '#0284c7', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    Alles selecteren
+                  </button>
+                  <span style={{ color: 'var(--border)' }}>•</span>
+                  <button
+                    type="button"
+                    onClick={() => setCheckedArticles(new Set())}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    Alles deselecteren
+                  </button>
+                </div>
+              )}
+          </div>
+
+          {/* Product List */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+            {displayedProducts.length === 0 ? (
+              <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                {stats.uncheckedCount === products.length
+                  ? 'Nog geen producten gecontroleerd in deze selectie. Klik hierboven op "🔍 Controleer niet-gecontroleerde producten" om te starten.'
+                  : 'Geen producten gevonden voor dit filter.'}
+              </div>
+            ) : (
+              displayedProducts.map((p) => {
+                const check = resultsMap[p.internalArticleNumber];
+                const isAiIssue = check && !check.dismissed && (check.status === 'MISMATCH' || check.status === 'WARNING');
+                const isManualOverride = manualOverrideArticles.has(p.internalArticleNumber);
+                const showEditor = isAiIssue || isManualOverride;
+
+                const isSelected = checkedArticles.has(p.internalArticleNumber);
+                const currentTargetId =
+                  selectedTargets[p.internalArticleNumber] ??
+                  check?.suggestedCategoryId ??
+                  p.subcategoryId ??
+                  p.categoryId ??
+                  availableCategories[0]?.id ??
+                  '';
+
+                const curCatDisplay =
+                  check?.currentCategory ||
+                  (p.subcategory?.name
+                    ? p.category?.name && p.category.name !== p.subcategory.name
+                      ? `${p.category.name} › ${p.subcategory.name}`
+                      : p.subcategory.name
+                    : p.category?.name || 'Zonder categorie');
+
+                const reasonValue = feedbackReasons[p.internalArticleNumber] ?? '';
+                const targetChangedFromAi =
+                  isAiIssue &&
+                  check?.suggestedCategoryId &&
+                  currentTargetId &&
+                  currentTargetId !== check.suggestedCategoryId;
+
+                return (
+                  <div
+                    key={p.internalArticleNumber}
+                    style={{
+                    border: `1px solid ${isManualOverride
+                          ? '#a78bfa'
+                          : isAiIssue
+                            ? check.status === 'MISMATCH'
+                              ? '#fca5a5'
+                              : '#fcd34d'
+                            : 'var(--border)'
+                        }`,
+                      backgroundColor: isManualOverride
+                        ? 'rgba(245, 243, 255, 0.55)'
+                        : isAiIssue
+                          ? check.status === 'MISMATCH'
+                          ? 'rgba(254, 242, 242, 0.45)'
+                          : 'rgba(255, 251, 235, 0.45)'
+                        : 'var(--surface)',
                     borderRadius: '10px',
                     padding: '0.85rem 1rem',
                     display: 'flex',
@@ -733,7 +921,7 @@ export default function CategoryCheckModal({
                   {/* Top row: checkbox, article, title, status badge */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flex: '1 1 300px' }}>
-                      {isIssue && (
+                      {showEditor && (
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -763,9 +951,57 @@ export default function CategoryCheckModal({
                       )}
                     </div>
 
-                    {/* Status Badge */}
-                    <div>
-                      {!check ? (
+                    {/* Status Badge + Manual Override button for OK rows */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      {!showEditor && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setManualOverrideArticles((prev) => new Set(prev).add(p.internalArticleNumber));
+                            if (!selectedTargets[p.internalArticleNumber] && availableCategories.length > 0) {
+                              const defaultCat =
+                                availableCategories.find(
+                                  (c) => c.id !== (p.subcategoryId ?? p.categoryId)
+                                ) || availableCategories[0];
+                              if (defaultCat) {
+                                setSelectedTargets((prev) => ({
+                                  ...prev,
+                                  [p.internalArticleNumber]: defaultCat.id,
+                                }));
+                              }
+                            }
+                            setCheckedArticles((prev) => new Set(prev).add(p.internalArticleNumber));
+                          }}
+                          style={{
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            padding: '0.22rem 0.6rem',
+                            borderRadius: '6px',
+                            backgroundColor: '#f5f3ff',
+                            color: '#6d28d9',
+                            border: '1px solid #ddd6fe',
+                            cursor: 'pointer',
+                          }}
+                          title="Toch een andere bestaande categorie kiezen en uitleggen waarom (zodat toekomstige checks hiervan leren)"
+                        >
+                          ✏️ Toch andere categorie kiezen
+                        </button>
+                      )}
+
+                      {isManualOverride && !isAiIssue ? (
+                        <span
+                          style={{
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            padding: '0.2rem 0.55rem',
+                            borderRadius: '999px',
+                            backgroundColor: '#ede9fe',
+                            color: '#5b21b6',
+                          }}
+                        >
+                          ✏️ Handmatige correctie & feedback
+                        </span>
+                      ) : !check ? (
                         <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600 }}>
                           Nog niet gecontroleerd
                         </span>
@@ -816,7 +1052,7 @@ export default function CategoryCheckModal({
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: isIssue ? '1fr auto 1.3fr auto' : '1fr',
+                      gridTemplateColumns: showEditor ? '1fr auto 1.3fr auto' : '1fr',
                       gap: '0.75rem',
                       alignItems: 'center',
                       fontSize: '0.82rem',
@@ -838,7 +1074,7 @@ export default function CategoryCheckModal({
                       </div>
                     </div>
 
-                    {isIssue && (
+                    {showEditor && (
                       <>
                         <div style={{ fontWeight: 700, color: 'var(--text-muted)', fontSize: '1rem' }}>→</div>
 
@@ -846,12 +1082,21 @@ export default function CategoryCheckModal({
                           style={{
                             padding: '0.45rem 0.7rem',
                             borderRadius: '6px',
-                            backgroundColor: '#f0fdf4',
-                            border: '1px solid #86efac',
+                            backgroundColor: isManualOverride && !isAiIssue ? '#f5f3ff' : '#f0fdf4',
+                            border: `1px solid ${ isManualOverride && !isAiIssue ? '#c4b5fd' : '#86efac' } `,
                           }}
                         >
-                          <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>
-                            Voorgestelde bestaande categorie
+                          <div
+                            style={{
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              color: isManualOverride && !isAiIssue ? '#5b21b6' : '#166534',
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            {isManualOverride && !isAiIssue
+                              ? 'Kies juiste bestaande categorie'
+                              : 'Voorgestelde bestaande categorie'}
                           </div>
                           <select
                             className="input"
@@ -869,9 +1114,9 @@ export default function CategoryCheckModal({
                               padding: '0.28rem 0.5rem',
                               fontSize: '0.82rem',
                               fontWeight: 700,
-                              color: '#14532d',
+                              color: isManualOverride && !isAiIssue ? '#4c1d95' : '#14532d',
                               backgroundColor: 'white',
-                              border: '1px solid #86efac',
+                              border: `1px solid ${ isManualOverride && !isAiIssue ? '#c4b5fd' : '#86efac' } `,
                             }}
                           >
                             {availableCategories.map((cat) => (
@@ -897,37 +1142,114 @@ export default function CategoryCheckModal({
                               border: 'none',
                               whiteSpace: 'nowrap',
                             }}
-                            title="Pas deze categorie direct toe op dit product"
+                            title="Pas deze categorie direct toe en sla eventuele feedback op voor toekomstige checks"
                           >
                             ✓ Overnemen
                           </button>
-                          <button
-                            type="button"
-                            className="btn"
-                            disabled={applying}
-                            onClick={() => handleDismiss([p.internalArticleNumber])}
-                            style={{
-                              padding: '0.4rem 0.65rem',
-                              fontSize: '0.76rem',
-                              fontWeight: 600,
-                              backgroundColor: 'var(--surface)',
-                              color: 'var(--text-muted)',
-                              border: '1px solid var(--border)',
-                              whiteSpace: 'nowrap',
-                            }}
-                            title="Huidige categorie klopt wel (negeer dit voorstel)"
-                          >
-                            ✕ Klopt wel
-                          </button>
+                          {isManualOverride && !isAiIssue ? (
+                            <button
+                              type="button"
+                              className="btn"
+                              disabled={applying}
+                              onClick={() => {
+                                setManualOverrideArticles((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete(p.internalArticleNumber);
+                                  return next;
+                                });
+                                setCheckedArticles((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete(p.internalArticleNumber);
+                                  return next;
+                                });
+                              }}
+                              style={{
+                                padding: '0.4rem 0.65rem',
+                                fontSize: '0.76rem',
+                                fontWeight: 600,
+                                backgroundColor: 'var(--surface)',
+                                color: 'var(--text-muted)',
+                                border: '1px solid var(--border)',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              Annuleren
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn"
+                              disabled={applying}
+                              onClick={() => handleDismiss([p.internalArticleNumber], reasonValue)}
+                              style={{
+                                padding: '0.4rem 0.65rem',
+                                fontSize: '0.76rem',
+                                fontWeight: 600,
+                                backgroundColor: 'var(--surface)',
+                                color: 'var(--text-muted)',
+                                border: '1px solid var(--border)',
+                                whiteSpace: 'nowrap',
+                              }}
+                              title="Huidige categorie klopt wel (negeer dit voorstel)"
+                            >
+                              ✕ Klopt wel
+                            </button>
+                          )}
                         </div>
                       </>
                     )}
                   </div>
 
-                  {/* Explanation */}
+                  {/* Explanation from AI */}
                   {check?.explanation && (
                     <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
                       💡 {check.explanation}
+                    </div>
+                  )}
+
+                  {/* Feedback / Reasoning input when editing or overriding */}
+                  {showEditor && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        padding: '0.45rem 0.65rem',
+                        borderRadius: '6px',
+                        backgroundColor:
+                          isManualOverride || targetChangedFromAi || reasonValue.trim()
+                            ? '#faf5ff'
+                            : 'rgba(248, 250, 252, 0.8)',
+                        border: `1px solid ${
+                  isManualOverride || targetChangedFromAi || reasonValue.trim()
+                    ? '#d8b4fe'
+                    : 'var(--border)'
+                } `,
+                      }}
+                    >
+                      <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#6d28d9', whiteSpace: 'nowrap' }}>
+                        🧠 Feedback voor toekomstige checks:
+                      </span>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="Waarom hoort dit product in deze categorie? (bijv. 'Bevat het woord Zeep, hoort daarom in Douche & bad')"
+                        value={reasonValue}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFeedbackReasons((prev) => ({
+                            ...prev,
+                            [p.internalArticleNumber]: val,
+                          }));
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '0.28rem 0.55rem',
+                          fontSize: '0.78rem',
+                          backgroundColor: 'white',
+                          border: '1px solid #d8b4fe',
+                        }}
+                      />
                     </div>
                   )}
                 </div>
@@ -950,7 +1272,7 @@ export default function CategoryCheckModal({
           }}
         >
           <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            Wijzigingen worden direct opgeslagen en vastgelegd in de 🕒 Historie.
+            Wijzigingen worden direct opgeslagen in de 🕒 Historie. Ingevulde feedback wordt onthouden voor toekomstige checks.
           </div>
 
           <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
@@ -1006,10 +1328,10 @@ export default function CategoryCheckModal({
               }}
             >
               {applying ? 'Bezig met opslaan...' : `✓ ${checkedArticles.size} voorstellen doorvoeren`}
-            </button>
-          </div>
+          </button>
         </div>
       </div>
-    </div>
+      </div >
+    </div >
   );
 }
