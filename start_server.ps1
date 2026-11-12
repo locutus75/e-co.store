@@ -5,8 +5,8 @@
 #
 #  Update flow (triggered from web UI):
 #    1. Web UI POSTs to /api/system/update/install
-#    2. Node writes update_requested.flag
-#    3. THIS script detects the flag, stops the server,
+#    2. Node writes update_requested.flag and exits cleanly
+#    3. THIS script detects the flag, ensures port 4000 is free,
 #       runs apply_update.ps1 directly, and restarts.
 # =========================================================
 
@@ -17,9 +17,45 @@ $UpdateRequestFlag = Join-Path $ProjectRoot "update_requested.flag"
 $UpdateScript = Join-Path $ProjectRoot "apply_update.ps1"
 $StandaloneServer = Join-Path $ProjectRoot ".next\standalone\server.js"
 
+# Disable Windows Console QuickEdit Mode so clicking in the terminal window
+# never freezes the PowerShell watchdog loop.
+try {
+    $quickEditCode = @"
+using System;
+using System.Runtime.InteropServices;
+public static class ConsoleQuickEdit {
+    const uint ENABLE_QUICK_EDIT = 0x0040;
+    const uint ENABLE_EXTENDED_FLAGS = 0x0080;
+    const int STD_INPUT_HANDLE = -10;
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr GetStdHandle(int nStdHandle);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+    public static void Disable() {
+        IntPtr handle = GetStdHandle(STD_INPUT_HANDLE);
+        uint mode;
+        if (GetConsoleMode(handle, out mode)) {
+            mode &= ~ENABLE_QUICK_EDIT;
+            mode |= ENABLE_EXTENDED_FLAGS;
+            SetConsoleMode(handle, mode);
+        }
+    }
+}
+"@
+    if (-not ("ConsoleQuickEdit" -as [type])) {
+        Add-Type -TypeDefinition $quickEditCode -Language CSharp -ErrorAction SilentlyContinue
+    }
+    [ConsoleQuickEdit]::Disable()
+}
+catch {
+    # Ignore if running in a host without standard console handles
+}
+
 # Remove any stale flags from a previous cycle
-if (Test-Path $FlagFile) { Remove-Item $FlagFile          -Force }
-if (Test-Path $UpdateRequestFlag) { Remove-Item $UpdateRequestFlag -Force }
+if (Test-Path $FlagFile) { Remove-Item $FlagFile -Force -ErrorAction SilentlyContinue }
+if (Test-Path $UpdateRequestFlag) { Remove-Item $UpdateRequestFlag -Force -ErrorAction SilentlyContinue }
 
 function Stop-Port4000 {
     $conns = Get-NetTCPConnection -LocalPort 4000 -ErrorAction SilentlyContinue
@@ -30,6 +66,43 @@ function Stop-Port4000 {
         }
     }
     Start-Sleep -Seconds 1
+}
+
+function Invoke-UpdateFlow {
+    param($Job)
+
+    Write-Host ""
+    Write-Host "==========================================" -ForegroundColor Yellow
+    Write-Host "  Update aangevraagd — server stoppen...  " -ForegroundColor Yellow
+    Write-Host "==========================================" -ForegroundColor Yellow
+
+    if (Test-Path $UpdateRequestFlag) {
+        Remove-Item $UpdateRequestFlag -Force -ErrorAction SilentlyContinue
+    }
+
+    # IMPORTANT: Kill node.exe on port 4000 FIRST before Stop-Job,
+    # because Stop-Job on Windows PowerShell can hang if child node.exe
+    # still holds open HTTP keep-alive connections or stdio pipes.
+    Stop-Port4000
+
+    if ($null -ne $Job) {
+        Stop-Job -Job $Job -ErrorAction SilentlyContinue
+        Remove-Job -Job $Job -Force -ErrorAction SilentlyContinue
+    }
+
+    Start-Sleep -Seconds 1
+    Stop-Port4000
+
+    Write-Host ""
+    Write-Host "apply_update.ps1 starten..." -ForegroundColor Cyan
+    & $UpdateScript -WaitSeconds 0
+    if (Test-Path $FlagFile) { Remove-Item $FlagFile -Force -ErrorAction SilentlyContinue }
+
+    Write-Host ""
+    Write-Host "==========================================" -ForegroundColor Green
+    Write-Host "  Update klaar — server herstarten...     " -ForegroundColor Green
+    Write-Host "==========================================" -ForegroundColor Green
+    Start-Sleep -Seconds 2
 }
 
 while ($true) {
@@ -49,7 +122,7 @@ while ($true) {
         Write-Host "WAARSCHUWING: '$StandaloneServer' ontbreekt!" -ForegroundColor Yellow
         Write-Host "Automatisch apply_update.ps1 uitvoeren om laatste versie op te halen en te bouwen..." -ForegroundColor Cyan
         & $UpdateScript -WaitSeconds 0
-        if (Test-Path $FlagFile) { Remove-Item $FlagFile -Force }
+        if (Test-Path $FlagFile) { Remove-Item $FlagFile -Force -ErrorAction SilentlyContinue }
 
         if (-not (Test-Path $StandaloneServer)) {
             Write-Host "FOUT: Build nog steeds niet geslaagd (.next\standalone\server.js ontbreekt). Opnieuw proberen over 15 seconden..." -ForegroundColor Red
@@ -60,10 +133,6 @@ while ($true) {
 
     $env:NODE_ENV = "production"
     $env:PORT = "4000"
-    # APP_ROOT tells the Next.js route handlers where the project root is.
-    # Next.js standalone server.js calls process.chdir(__dirname) internally,
-    # which changes process.cwd() to .next/standalone — so we must pass the
-    # real root explicitly via env var.
     $env:APP_ROOT = $ProjectRoot
 
     # -------------------------------------------------------
@@ -85,43 +154,14 @@ while ($true) {
     # -------------------------------------------------------
     # Poll loop: forward server output and watch for flags
     # -------------------------------------------------------
-    $updateMode = $false
-
     while ($true) {
         # Forward any new output from the server job to this console
-        $output = Receive-Job -Job $serverJob
+        $output = Receive-Job -Job $serverJob -ErrorAction SilentlyContinue
         if ($output) { Write-Host $output }
 
         # ── Update REQUESTED from web UI ──────────────────────────────────────
         if (Test-Path $UpdateRequestFlag) {
-            Write-Host ""
-            Write-Host "==========================================" -ForegroundColor Yellow
-            Write-Host "  Update aangevraagd — server stoppen...  " -ForegroundColor Yellow
-            Write-Host "==========================================" -ForegroundColor Yellow
-
-            Remove-Item $UpdateRequestFlag -Force
-
-            # Stop the server job
-            Stop-Job  -Job $serverJob
-            Remove-Job -Job $serverJob -Force
-
-            # Make sure port 4000 is released
-            Start-Sleep -Seconds 2
-            Stop-Port4000
-
-            # Run the update script directly in THIS PowerShell session
-            Write-Host ""
-            Write-Host "apply_update.ps1 starten..." -ForegroundColor Cyan
-            & $UpdateScript -WaitSeconds 0
-            if (Test-Path $FlagFile) { Remove-Item $FlagFile -Force }
-
-            Write-Host ""
-            Write-Host "==========================================" -ForegroundColor Green
-            Write-Host "  Update klaar — server herstarten...     " -ForegroundColor Green
-            Write-Host "==========================================" -ForegroundColor Green
-            Start-Sleep -Seconds 2
-
-            $updateMode = $true
+            Invoke-UpdateFlow -Job $serverJob
             break  # Break inner poll loop → outer while restarts server
         }
 
@@ -132,34 +172,39 @@ while ($true) {
             Write-Host "  Update klaar — server herstarten...     " -ForegroundColor Magenta
             Write-Host "==========================================" -ForegroundColor Magenta
 
-            Remove-Item $FlagFile -Force
+            Remove-Item $FlagFile -Force -ErrorAction SilentlyContinue
 
-            Stop-Job  -Job $serverJob
-            Remove-Job -Job $serverJob -Force
+            Stop-Port4000
+            Stop-Job -Job $serverJob -ErrorAction SilentlyContinue
+            Remove-Job -Job $serverJob -Force -ErrorAction SilentlyContinue
 
-            Start-Sleep -Seconds 2
+            Start-Sleep -Seconds 1
             Stop-Port4000
 
             break  # Break inner poll loop → outer while restarts server
         }
 
-        # ── Unexpected server crash ───────────────────────────────────────────
-        if ($serverJob.State -eq 'Failed' -or $serverJob.State -eq 'Completed') {
-            # Only treat as unexpected if we didn't just request an update
-            if (-not $updateMode) {
-                Write-Host ""
-                Write-Host "WAARSCHUWING: Server proces onverwacht gestopt (state: $($serverJob.State))." -ForegroundColor Red
-                $crashOutput = Receive-Job -Job $serverJob
-                if ($crashOutput) { Write-Host $crashOutput -ForegroundColor Red }
-                Remove-Job -Job $serverJob -Force
-                Stop-Port4000
+                # ── Server job exited (either because update_requested exited Node, or crash) ──
+                if ($serverJob.State -eq 'Failed' -or $serverJob.State -eq 'Completed' -or $serverJob.State -eq 'Stopped') {
+                    $remainingOutput = Receive-Job -Job $serverJob -ErrorAction SilentlyContinue
+                    if ($remainingOutput) { Write-Host $remainingOutput }
 
-                Write-Host "Herstart poging over 5 seconden..." -ForegroundColor Yellow
-                Start-Sleep -Seconds 5
-                break  # restart outer loop
+                    # Check if the server exited because an update was just requested
+                    if (Test-Path $UpdateRequestFlag) {
+                        Invoke-UpdateFlow -Job $serverJob
+                        break
+                    }
+
+                    Write-Host ""
+                    Write-Host "WAARSCHUWING: Server proces gestopt (state: $($serverJob.State))." -ForegroundColor Red
+                    Remove-Job -Job $serverJob -Force -ErrorAction SilentlyContinue
+                    Stop-Port4000
+
+                    Write-Host "Herstart poging over 3 seconden..." -ForegroundColor Yellow
+                    Start-Sleep -Seconds 3
+                    break  # restart outer loop
+                }
+
+                Start-Sleep -Milliseconds 500
             }
         }
-
-        Start-Sleep -Milliseconds 1000
-    }
-}

@@ -8,15 +8,31 @@ Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host " E-Co Store : Production Update Engine" -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan
 
+# Ensure port 4000 is free before updating/building so no files are locked
+$conns = Get-NetTCPConnection -LocalPort 4000 -ErrorAction SilentlyContinue
+foreach ($c in $conns) {
+    if ($c.OwningProcess -and $c.OwningProcess -gt 0 -and $c.OwningProcess -ne $PID) {
+        Write-Host "Stopping existing server on port 4000 (PID $($c.OwningProcess))..." -ForegroundColor Yellow
+        Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # 1. Pull Latest Source Code
 if (-Not $SkipPull) {
     Write-Host "`n[1/5] Syncing latest code from GitHub..." -ForegroundColor Yellow
-    git pull origin master
+    $env:GIT_TERMINAL_PROMPT = "0"
+    git fetch origin master
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "CRITICAL ERROR: Git pull failed or this is not a valid git repository! Exiting..." -ForegroundColor Red
+        Write-Host "CRITICAL ERROR: Git fetch failed or this is not a valid git repository! Exiting..." -ForegroundColor Red
         exit 1
     }
-} else {
+    git reset --hard origin/master
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "CRITICAL ERROR: Git reset failed! Exiting..." -ForegroundColor Red
+        exit 1
+    }
+}
+else {
     Write-Host "`n[1/5] Skipping Git Pull..." -ForegroundColor Yellow
 }
 
@@ -28,7 +44,7 @@ if (-Not (Test-Path "package.json")) {
 # 2. Install Dependencies
 Write-Host "`n[2/5] Checking Node Dependencies..." -ForegroundColor Yellow
 $env:NODE_ENV = "development"
-npm install
+npm install --no-audit --no-fund
 
 # 3. Synchronize Database & Generate Prisma Client
 Write-Host "`n[3/5] Synchronizing PostgreSQL Database Schema & Client..." -ForegroundColor Yellow
@@ -39,13 +55,13 @@ npx prisma generate
 $standaloneUploads = ".next/standalone/public/uploads"
 $rootUploads = "public/uploads"
 foreach ($dupPath in @(
-    "$standaloneUploads/products/products",
-    "$standaloneUploads/uploads",
-    "$rootUploads/products/products",
-    "$rootUploads/uploads",
-    "_uploads_backup_temp",
-    ".next/_uploads_backup"
-)) {
+        "$standaloneUploads/products/products",
+        "$standaloneUploads/uploads",
+        "$rootUploads/products/products",
+        "$rootUploads/uploads",
+        "_uploads_backup_temp",
+        ".next/_uploads_backup"
+    )) {
     if (Test-Path $dupPath) {
         Write-Host "  Oude/dubbele backup-map opruimen: $dupPath..." -ForegroundColor DarkYellow
         $resolvedDup = (Resolve-Path $dupPath).Path
@@ -59,6 +75,11 @@ if (Test-Path $standaloneUploads) {
     robocopy $standaloneUploads $rootUploads /E /XO /XD "products\products" "uploads" /NFL /NDL /NJH /NJS /R:1 /W:1 | Out-Null
     $resolvedStandaloneUploads = (Resolve-Path $standaloneUploads).Path
     cmd /c "rmdir /s /q `"$resolvedStandaloneUploads`"" 2>$null
+}
+
+# Clean .next/node_modules junction points before building on Windows
+if (Test-Path ".next/node_modules") {
+    cmd /c "rmdir /s /q .next\node_modules" 2>$null
 }
 
 # 4. Compile Standalone Server
@@ -84,18 +105,6 @@ if (Test-Path ".next/static") {
     robocopy ".next/static" $destStatic /MIR /NFL /NDL /NJH /NJS /R:1 /W:1 | Out-Null
 }
 
-# 6. Boot Application
-Write-Host "`n[6/6] Booting Production Server..." -ForegroundColor Green
-Write-Host "The application is now running. Close this window to shut it down." -ForegroundColor Magenta
-
-# In Next.js Standalone mode, we boot the raw server.js file inside the .next/standalone/ directory
-$env:NODE_ENV = "production"
-$env:PORT = "4000"
-
-# APP_ROOT tells images.ts and the serve route where the stable project root is.
-# standalone/server.js does process.chdir(__dirname) which would otherwise make
-# process.cwd() point inside .next/standalone/ (wiped on every update).
-$env:APP_ROOT = (Get-Location).Path
-
-# Execute Standalone
-node .next/standalone/server.js
+# 6. Boot Application via start_server.ps1 so the Update Watchdog is ALWAYS active!
+Write-Host "`n[6/6] Starting Production Server with Update Watchdog (start_server.ps1)..." -ForegroundColor Green
+& "$PSScriptRoot\start_server.ps1"

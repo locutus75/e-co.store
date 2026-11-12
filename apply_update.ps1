@@ -1,5 +1,5 @@
 param (
-    [int]$WaitSeconds = 3
+    [int]$WaitSeconds = 2
 )
 
 $ErrorActionPreference = "Continue"
@@ -8,8 +8,10 @@ Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host " E-Co Store : Background Auto-Updater" -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan
 
-Write-Host "`nWaiting $WaitSeconds seconds for the API to close cleanly..." -ForegroundColor Yellow
-Start-Sleep -Seconds $WaitSeconds
+if ($WaitSeconds -gt 0) {
+    Write-Host "`nWaiting $WaitSeconds seconds for the API to close cleanly..." -ForegroundColor Yellow
+    Start-Sleep -Seconds $WaitSeconds
+}
 
 # Kill any existing node process on port 4000
 Write-Host "Ensuring port 4000 is free..." -ForegroundColor Yellow
@@ -62,16 +64,22 @@ if (Test-Path $standaloneUploads) {
 
 # 1. Pull Latest Source Code
 Write-Host "`n[1/5] Syncing latest code from GitHub..." -ForegroundColor Yellow
-git pull origin master
+$env:GIT_TERMINAL_PROMPT = "0"
+git fetch origin master
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "CRITICAL ERROR: Git pull failed! Exiting..." -ForegroundColor Red
+    Write-Host "CRITICAL ERROR: Git fetch failed! Exiting..." -ForegroundColor Red
+    exit 1
+}
+git reset --hard origin/master
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "CRITICAL ERROR: Git reset failed! Exiting..." -ForegroundColor Red
     exit 1
 }
 
 # 2. Install Dependencies
 Write-Host "`n[2/5] Checking Node Dependencies..." -ForegroundColor Yellow
 $env:NODE_ENV = "development"
-npm install
+npm install --no-audit --no-fund
 
 # 3. Synchronize Database & Generate Client
 Write-Host "`n[3/5] Synchronizing PostgreSQL Database Schema & Prisma Client..." -ForegroundColor Yellow
