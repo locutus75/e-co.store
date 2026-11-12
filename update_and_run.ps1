@@ -31,9 +31,14 @@ if (-Not $SkipPull) {
         Write-Host "CRITICAL ERROR: Git reset failed! Exiting..." -ForegroundColor Red
         exit 1
     }
+
+    # Re-invoke the freshly pulled update_and_run.ps1 from disk with -SkipPull
+    # so PowerShell ALWAYS executes the latest script version rather than the old in-memory copy!
+    & "$PSScriptRoot\update_and_run.ps1" -SkipPull
+    exit $LASTEXITCODE
 }
 else {
-    Write-Host "`n[1/5] Skipping Git Pull..." -ForegroundColor Yellow
+    Write-Host "`n[1/5] Code synced — executing latest update_and_run.ps1..." -ForegroundColor Yellow
 }
 
 if (-Not (Test-Path "package.json")) {
@@ -55,13 +60,13 @@ npx prisma generate
 $standaloneUploads = ".next/standalone/public/uploads"
 $rootUploads = "public/uploads"
 foreach ($dupPath in @(
-        "$standaloneUploads/products/products",
-        "$standaloneUploads/uploads",
-        "$rootUploads/products/products",
-        "$rootUploads/uploads",
-        "_uploads_backup_temp",
-        ".next/_uploads_backup"
-    )) {
+    "$standaloneUploads/products/products",
+    "$standaloneUploads/uploads",
+    "$rootUploads/products/products",
+    "$rootUploads/uploads",
+    "_uploads_backup_temp",
+    ".next/_uploads_backup"
+)) {
     if (Test-Path $dupPath) {
         Write-Host "  Oude/dubbele backup-map opruimen: $dupPath..." -ForegroundColor DarkYellow
         $resolvedDup = (Resolve-Path $dupPath).Path

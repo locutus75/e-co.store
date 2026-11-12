@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { writeFileSync } from 'fs';
+import { spawn } from 'child_process';
 import path from 'path';
 
 export async function POST() {
@@ -11,13 +12,29 @@ export async function POST() {
 
     // Write the flag file so start_server.ps1 knows an update was requested.
     writeFileSync(flagPath, new Date().toISOString(), 'utf-8');
-
     console.log(`Update flag written to: ${flagPath}`);
-    console.log(`Shutting down server process so start_server.ps1 can run apply_update.ps1...`);
 
-    // Exit the Node process shortly after returning the HTTP response so:
-    // 1. Port 4000 and any file locks (.next/standalone, prisma dlls) are immediately released.
-    // 2. PowerShell's Stop-Job in start_server.ps1 never hangs on open HTTP keep-alive sockets.
+    const watchdogActive = process.env.WATCHDOG_ACTIVE === '1';
+
+    if (watchdogActive) {
+      console.log(`Watchdog is active — shutting down server process so start_server.ps1 runs apply_update.ps1...`);
+    } else {
+      // Fallback if the server was started without start_server.ps1 (e.g. an older update_and_run.ps1 session):
+      // spawn a new PowerShell window running update_and_run.ps1 so the update still runs automatically!
+      const updateScriptPath = path.join(projectRoot, 'update_and_run.ps1');
+      console.log(`No active watchdog detected — launching ${updateScriptPath} in a new PowerShell window...`);
+      try {
+        const child = spawn(
+          'cmd.exe',
+          ['/c', 'start', '"E-Co Store Updater"', 'powershell.exe', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', updateScriptPath],
+          { cwd: projectRoot, detached: true, stdio: 'ignore' }
+        );
+        child.unref();
+      } catch (spawnErr) {
+        console.error('Fallback spawn failed:', spawnErr);
+      }
+    }
+
     setTimeout(() => {
       process.exit(0);
     }, 750);

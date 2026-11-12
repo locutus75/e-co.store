@@ -1,13 +1,8 @@
 # =========================================================
 #  E-Co Store : Production Server Launcher & Update Watchdog
 #  Run this script to start the server. It will automatically
-#  restart after an update has been applied by apply_update.ps1.
-#
-#  Update flow (triggered from web UI):
-#    1. Web UI POSTs to /api/system/update/install
-#    2. Node writes update_requested.flag and exits cleanly
-#    3. THIS script detects the flag, ensures port 4000 is free,
-#       runs apply_update.ps1 directly, and restarts.
+#  run apply_update.ps1 and restart whenever an update is
+#  triggered from the web UI.
 # =========================================================
 
 $ErrorActionPreference = "Continue"
@@ -18,7 +13,7 @@ $UpdateScript = Join-Path $ProjectRoot "apply_update.ps1"
 $StandaloneServer = Join-Path $ProjectRoot ".next\standalone\server.js"
 
 # Disable Windows Console QuickEdit Mode so clicking in the terminal window
-# never freezes the PowerShell watchdog loop.
+# never freezes the PowerShell process.
 try {
     $quickEditCode = @"
 using System;
@@ -48,8 +43,7 @@ public static class ConsoleQuickEdit {
         Add-Type -TypeDefinition $quickEditCode -Language CSharp -ErrorAction SilentlyContinue
     }
     [ConsoleQuickEdit]::Disable()
-}
-catch {
+} catch {
     # Ignore if running in a host without standard console handles
 }
 
@@ -66,43 +60,6 @@ function Stop-Port4000 {
         }
     }
     Start-Sleep -Seconds 1
-}
-
-function Invoke-UpdateFlow {
-    param($Job)
-
-    Write-Host ""
-    Write-Host "==========================================" -ForegroundColor Yellow
-    Write-Host "  Update aangevraagd — server stoppen...  " -ForegroundColor Yellow
-    Write-Host "==========================================" -ForegroundColor Yellow
-
-    if (Test-Path $UpdateRequestFlag) {
-        Remove-Item $UpdateRequestFlag -Force -ErrorAction SilentlyContinue
-    }
-
-    # IMPORTANT: Kill node.exe on port 4000 FIRST before Stop-Job,
-    # because Stop-Job on Windows PowerShell can hang if child node.exe
-    # still holds open HTTP keep-alive connections or stdio pipes.
-    Stop-Port4000
-
-    if ($null -ne $Job) {
-        Stop-Job -Job $Job -ErrorAction SilentlyContinue
-        Remove-Job -Job $Job -Force -ErrorAction SilentlyContinue
-    }
-
-    Start-Sleep -Seconds 1
-    Stop-Port4000
-
-    Write-Host ""
-    Write-Host "apply_update.ps1 starten..." -ForegroundColor Cyan
-    & $UpdateScript -WaitSeconds 0
-    if (Test-Path $FlagFile) { Remove-Item $FlagFile -Force -ErrorAction SilentlyContinue }
-
-    Write-Host ""
-    Write-Host "==========================================" -ForegroundColor Green
-    Write-Host "  Update klaar — server herstarten...     " -ForegroundColor Green
-    Write-Host "==========================================" -ForegroundColor Green
-    Start-Sleep -Seconds 2
 }
 
 while ($true) {
@@ -134,77 +91,45 @@ while ($true) {
     $env:NODE_ENV = "production"
     $env:PORT = "4000"
     $env:APP_ROOT = $ProjectRoot
+    $env:WATCHDOG_ACTIVE = "1"
 
-    # -------------------------------------------------------
-    # Start the Next.js standalone server as a background job
-    # so this script can keep polling for update flags.
-    # -------------------------------------------------------
-    $serverJob = Start-Job -ScriptBlock {
-        param($root)
-        Set-Location $root
-        $env:NODE_ENV = "production"
-        $env:PORT = "4000"
-        $env:APP_ROOT = $root
-        node .next/standalone/server.js
-    } -ArgumentList $ProjectRoot
+    Write-Host "Server actief op poort 4000 (Watchdog ingeschakeld)." -ForegroundColor Green
 
-    Write-Host "Server started (Job ID: $($serverJob.Id)). Listening on port 4000." -ForegroundColor Green
-    Write-Host "Watching for update signals..." -ForegroundColor DarkGray
+    # Run node directly in the foreground. When /api/system/update/install is called,
+    # Node writes update_requested.flag and exits cleanly via process.exit(0),
+    # returning control immediately to the lines below!
+    node .next/standalone/server.js
 
-    # -------------------------------------------------------
-    # Poll loop: forward server output and watch for flags
-    # -------------------------------------------------------
-    while ($true) {
-        # Forward any new output from the server job to this console
-        $output = Receive-Job -Job $serverJob -ErrorAction SilentlyContinue
-        if ($output) { Write-Host $output }
+    # ── Check if Node exited because an update was requested ──────────────
+    if (Test-Path $UpdateRequestFlag) {
+        Write-Host ""
+        Write-Host "==========================================" -ForegroundColor Yellow
+        Write-Host "  Update aangevraagd — update starten...  " -ForegroundColor Yellow
+        Write-Host "==========================================" -ForegroundColor Yellow
 
-        # ── Update REQUESTED from web UI ──────────────────────────────────────
-        if (Test-Path $UpdateRequestFlag) {
-            Invoke-UpdateFlow -Job $serverJob
-            break  # Break inner poll loop → outer while restarts server
-        }
+        Remove-Item $UpdateRequestFlag -Force -ErrorAction SilentlyContinue
+        Stop-Port4000
 
-        # ── Update DONE flag (from a manually-run apply_update.ps1) ──────────
-        if (Test-Path $FlagFile) {
-            Write-Host ""
-            Write-Host "==========================================" -ForegroundColor Magenta
-            Write-Host "  Update klaar — server herstarten...     " -ForegroundColor Magenta
-            Write-Host "==========================================" -ForegroundColor Magenta
+        & $UpdateScript -WaitSeconds 0
+        if (Test-Path $FlagFile) { Remove-Item $FlagFile -Force -ErrorAction SilentlyContinue }
 
-            Remove-Item $FlagFile -Force -ErrorAction SilentlyContinue
+        Write-Host ""
+        Write-Host "==========================================" -ForegroundColor Green
+        Write-Host "  Update voltooid — server herstarten...  " -ForegroundColor Green
+        Write-Host "==========================================" -ForegroundColor Green
+        Start-Sleep -Seconds 1
+        continue
+    }
 
-            Stop-Port4000
-            Stop-Job -Job $serverJob -ErrorAction SilentlyContinue
-            Remove-Job -Job $serverJob -Force -ErrorAction SilentlyContinue
+    if (Test-Path $FlagFile) {
+        Remove-Item $FlagFile -Force -ErrorAction SilentlyContinue
+        Stop-Port4000
+        Start-Sleep -Seconds 1
+        continue
+    }
 
-            Start-Sleep -Seconds 1
-            Stop-Port4000
-
-            break  # Break inner poll loop → outer while restarts server
-        }
-
-                # ── Server job exited (either because update_requested exited Node, or crash) ──
-                if ($serverJob.State -eq 'Failed' -or $serverJob.State -eq 'Completed' -or $serverJob.State -eq 'Stopped') {
-                    $remainingOutput = Receive-Job -Job $serverJob -ErrorAction SilentlyContinue
-                    if ($remainingOutput) { Write-Host $remainingOutput }
-
-                    # Check if the server exited because an update was just requested
-                    if (Test-Path $UpdateRequestFlag) {
-                        Invoke-UpdateFlow -Job $serverJob
-                        break
-                    }
-
-                    Write-Host ""
-                    Write-Host "WAARSCHUWING: Server proces gestopt (state: $($serverJob.State))." -ForegroundColor Red
-                    Remove-Job -Job $serverJob -Force -ErrorAction SilentlyContinue
-                    Stop-Port4000
-
-                    Write-Host "Herstart poging over 3 seconden..." -ForegroundColor Yellow
-                    Start-Sleep -Seconds 3
-                    break  # restart outer loop
-                }
-
-                Start-Sleep -Milliseconds 500
-            }
-        }
+    Write-Host ""
+    Write-Host "WAARSCHUWING: Server proces is gestopt. Herstarten over 3 seconden..." -ForegroundColor Yellow
+    Stop-Port4000
+    Start-Sleep -Seconds 3
+}
