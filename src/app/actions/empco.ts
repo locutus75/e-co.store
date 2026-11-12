@@ -142,27 +142,33 @@ async function getSessionInfo() {
   const roles: string[] = user?.roles ?? [];
   const isAdmin = roles.some(r => r.toUpperCase() === 'ADMIN');
   let canApproveEmpco = isAdmin;
+  let canAssignProducts = isAdmin;
   if (!isAdmin && roles.length > 0) {
     const perms = await prisma.rolePermission.findMany({
-      where: { role: { name: { in: roles } }, module: { in: ['MENU:ai', 'MENU:empco_approve'] } },
+      where: { role: { name: { in: roles } }, module: { in: ['MENU:ai', 'MENU:empco_approve', 'MENU:assignments'] } },
     });
     const hasAi = perms.some(p => p.module === 'MENU:ai' && p.action === 'ALLOW');
     const hasApproveAllow = perms.some(p => p.module === 'MENU:empco_approve' && p.action === 'ALLOW');
     const hasApproveDeny = perms.some(p => p.module === 'MENU:empco_approve' && p.action === 'DENY');
     const isEditor = roles.some(r => r.toUpperCase() === 'EDITOR');
     canApproveEmpco = hasAi || hasApproveAllow || (isEditor && !hasApproveDeny);
+    canAssignProducts = perms.some(p => p.module === 'MENU:assignments' && p.action === 'ALLOW');
   }
-  return { session, userId: user?.id as string | undefined, email: user?.email as string | undefined, isAdmin, canApproveEmpco };
+  return { session, userId: user?.id as string | undefined, email: user?.email as string | undefined, isAdmin, canApproveEmpco, canAssignProducts };
 }
 
 function readFieldValue(product: any, key: string): string {
-  const raw = key.startsWith('custom_') ? product?.customData?.[key.replace('custom_', '')] : product?.[key];
+  const raw = key.startsWith('custom_')
+    ? product?.customData?.[key.replace('custom_', '')]
+    : key === 'shortDescription'
+      ? (product?.shortDescription || product?.seoTitle)
+      : product?.[key];
   return raw == null ? '' : String(raw);
 }
 
 /** Preview of all applicable EmpCo suggestions for the selected products. */
 export async function getEmpcoBulkFixPreviewAction(articleNumbers: string[]): Promise<EmpcoBulkProduct[]> {
-  const { userId, isAdmin, canApproveEmpco } = await getSessionInfo();
+  const { userId, isAdmin, canApproveEmpco, canAssignProducts } = await getSessionInfo();
   if (!userId || !canApproveEmpco || !articleNumbers?.length) return [];
 
   const [products, checks] = await Promise.all([
@@ -176,9 +182,11 @@ export async function getEmpcoBulkFixPreviewAction(articleNumbers: string[]): Pr
 
   const out: EmpcoBulkProduct[] = products.map((p: any) => {
     const check = checkMap.get(p.internalArticleNumber);
-    const locked = !isAdmin && LOCKED_READY.has(String(p.readyForImport ?? '').toUpperCase());
+    const readyLocked = !isAdmin && LOCKED_READY.has(String(p.readyForImport ?? '').toUpperCase());
+    const peerLocked = !isAdmin && !canAssignProducts && !!p.assignedUserId && p.assignedUserId !== userId;
+    const locked = readyLocked || peerLocked;
     const base = { articleNumber: p.internalArticleNumber, title: p.title, status: check?.status ?? null, locked };
-    if (!check) return { ...base, stale: false, note: 'Nog geen EmpCo-check', issues: [] };
+    if (!check) return { ...base, stale: false, note: peerLocked ? 'Alleen lezen (collega)' : 'Nog geen EmpCo-check', issues: [] };
 
     const stale = !!check.contentHash && check.contentHash !== hashEmpcoFields(extractEmpcoFields(p, layout, undefined, settings.includedFieldKeys));
     let result: EmpcoResult | null = null;
@@ -191,7 +199,8 @@ export async function getEmpcoBulkFixPreviewAction(articleNumbers: string[]): Pr
         idx, field: i.field, fieldLabel: i.fieldLabel ?? i.field, original: i.original, replacement: i.replacement,
         severity: i.severity, rule: i.rule, explanation: i.explanation, fixable: false,
       };
-      if (locked) return { ...issue, reason: 'Product is vergrendeld (Webshop Ready)' };
+      if (peerLocked) return { ...issue, reason: 'Alleen lezen — product is toegewezen aan een collega' };
+      if (readyLocked) return { ...issue, reason: 'Product is vergrendeld (Webshop Ready)' };
       if (stale) return { ...issue, reason: 'Check is verouderd — eerst opnieuw checken' };
       if (!isEmpcoIssueFixable(i)) return { ...issue, reason: 'Kenmerk — handmatig aanpassen' };
       const cur = working.has(i.field) ? working.get(i.field)! : readFieldValue(p, i.field);
@@ -203,7 +212,7 @@ export async function getEmpcoBulkFixPreviewAction(articleNumbers: string[]): Pr
 
     return {
       ...base, stale, issues,
-      note: locked ? 'Vergrendeld' : stale ? 'Verouderde check' : issues.length === 0 ? 'Geen open bevindingen' : undefined,
+      note: peerLocked ? 'Alleen lezen (collega)' : readyLocked ? 'Vergrendeld' : stale ? 'Verouderde check' : issues.length === 0 ? 'Geen open bevindingen' : undefined,
     };
   });
 
@@ -224,9 +233,9 @@ export interface EmpcoBulkApplyResult {
  * Writes field history (source EMPCO), an audit log entry and updates the EmpCo status.
  */
 export async function applyEmpcoBulkFixesAction(
-  selection: { articleNumber: string; issueIdx: number[] }[],
+  selection: { articleNumber: string; issueIdx: number[]; customReplacements?: Record<number, string> }[],
 ): Promise<EmpcoBulkApplyResult[]> {
-  const { userId, email, isAdmin, canApproveEmpco } = await getSessionInfo();
+  const { userId, email, isAdmin, canApproveEmpco, canAssignProducts } = await getSessionInfo();
   if (!userId) throw new Error('Niet ingelogd');
   if (!canApproveEmpco) throw new Error('Geen rechten om EmpCo-voorstellen te accorderen');
 
@@ -234,6 +243,9 @@ export async function applyEmpcoBulkFixesAction(
   const [layout, settings] = await Promise.all([getFormLayoutAction(), getEmpcoSettingsAction()]);
   const allFields = layout.flatMap((s: any) => s.fields ?? []);
   const labelOf = (k: string) => {
+    if (k === 'shortDescription') return 'Korte omschrijving';
+    if (k === 'longDescription') return 'Lange omschrijving';
+    if (k === 'title') return 'Omschrijving';
     const f = allFields.find((x: any) => {
       let fk = String(x.id ?? '').replace('FIELD:', '');
       if (fk === 'description') fk = 'longDescription';
@@ -254,6 +266,9 @@ export async function applyEmpcoBulkFixesAction(
       ]);
       if (!product || !check?.structuredData) throw new Error('Product of EmpCo-check niet gevonden');
       if (!isAdmin && LOCKED_READY.has(String(product.readyForImport ?? '').toUpperCase())) throw new Error('Product is vergrendeld');
+      if (!isAdmin && !canAssignProducts && product.assignedUserId && product.assignedUserId !== userId) {
+        throw new Error('Alleen lezen — product is toegewezen aan een collega');
+      }
       if (check.contentHash && check.contentHash !== hashEmpcoFields(extractEmpcoFields(product, layout, undefined, settings.includedFieldKeys))) {
         throw new Error('EmpCo-check is verouderd — voer eerst een nieuwe check uit');
       }
@@ -261,14 +276,20 @@ export async function applyEmpcoBulkFixesAction(
       const result: EmpcoResult = JSON.parse(check.structuredData);
       const wanted = new Set(sel.issueIdx);
       const working = new Map<string, string>();
+      const effectiveReplacements = new Map<number, string>();
 
       (result.issues ?? []).forEach((issue, idx) => {
         if (!wanted.has(idx)) return;
-        if (!isEmpcoIssueFixable(issue)) { res.skipped++; return; }
+        const customRep = sel.customReplacements && Object.prototype.hasOwnProperty.call(sel.customReplacements, idx)
+          ? sel.customReplacements[idx]
+          : issue.replacement;
+        const effectiveIssue = { ...issue, replacement: customRep };
+        if (!isEmpcoIssueFixable(effectiveIssue)) { res.skipped++; return; }
         const cur = working.has(issue.field) ? working.get(issue.field)! : readFieldValue(product, issue.field);
-        const next = replaceEmpcoFragment(cur, issue.original, issue.replacement);
+        const next = replaceEmpcoFragment(cur, issue.original, customRep);
         if (next === null) { res.skipped++; return; }
         working.set(issue.field, next);
+        effectiveReplacements.set(idx, customRep);
         res.applied++;
       });
 
@@ -281,8 +302,15 @@ export async function applyEmpcoBulkFixesAction(
         for (const [key, value] of working) {
           const oldValue = readFieldValue(product, key);
           if (oldValue === value) continue;
-          if (key.startsWith('custom_')) { customData[key.replace('custom_', '')] = value || null; customTouched = true; }
-          else data[key] = value || null;
+          if (key.startsWith('custom_')) {
+            customData[key.replace('custom_', '')] = value || null;
+            customTouched = true;
+          } else {
+            data[key] = value || null;
+            if (key === 'shortDescription' && !product.shortDescription && product.seoTitle) {
+              data.seoTitle = value || null;
+            }
+          }
           historyRows.push({
             articleNumber: sel.articleNumber, fieldKey: key, fieldLabel: labelOf(key),
             oldValue: oldValue || null, newValue: value || null, source: 'EMPCO', userId, userEmail: email ?? null,
@@ -299,7 +327,8 @@ export async function applyEmpcoBulkFixesAction(
             });
           } catch (e) { console.error('Audit logging failed:', e); }
 
-          const sync = await syncEmpcoCheckAfterEdit(sel.articleNumber, product, layout, new Set(working.keys()));
+          const updatedProduct = { ...product, ...data, customData: customTouched ? customData : product.customData };
+          const sync = await syncEmpcoCheckAfterEdit(sel.articleNumber, updatedProduct, layout, new Set(working.keys()));
           res.newStatus = sync.status ?? check.status;
           res.openIssues = sync.issueCount ?? check.issueCount;
 
@@ -308,33 +337,34 @@ export async function applyEmpcoBulkFixesAction(
             try {
               const { saveBrandRuleAction } = await import('@/app/actions/brandEmpco');
               for (const [key] of working) {
-                const matchedIssue = (result.issues ?? []).find(i => i.field === key && wanted.has((result.issues ?? []).indexOf(i)));
-                if (matchedIssue) {
-                  await saveBrandRuleAction({
-                    brandId: product.brandId,
-                    original: matchedIssue.original,
-                    replacement: matchedIssue.replacement,
-                    rule: matchedIssue.rule,
-                    fieldKey: key,
-                    explanation: matchedIssue.explanation,
-                    sourceArticle: sel.articleNumber,
-                  });
+                  const matchedIdx = (result.issues ?? []).findIndex((i, idx) => i.field === key && wanted.has(idx));
+                  if (matchedIdx >= 0) {
+                    const matchedIssue = result.issues[matchedIdx];
+                    await saveBrandRuleAction({
+                      brandId: product.brandId,
+                      original: matchedIssue.original,
+                      replacement: effectiveReplacements.get(matchedIdx) ?? matchedIssue.replacement,
+                      rule: matchedIssue.rule,
+                      fieldKey: key,
+                      explanation: matchedIssue.explanation,
+                      sourceArticle: sel.articleNumber,
+                    });
+                  }
                 }
+              } catch (ruleErr) {
+                console.error('Failed to learn brand rule in bulk:', ruleErr);
               }
-            } catch (ruleErr) {
-              console.error('Failed to learn brand rule in bulk:', ruleErr);
             }
-          }
         }
+        }
+        if (res.newStatus === undefined) { res.newStatus = check.status; res.openIssues = check.issueCount; }
+      } catch (e: any) {
+        res.error = e?.message ?? 'Onbekende fout';
       }
-      if (res.newStatus === undefined) { res.newStatus = check.status; res.openIssues = check.issueCount; }
-    } catch (e: any) {
-      res.error = e?.message ?? 'Onbekende fout';
+      results.push(res);
     }
-    results.push(res);
-  }
 
   revalidatePath('/products');
-  revalidatePath('/assignments');
-  return results;
-}
+    revalidatePath('/assignments');
+    return results;
+  }

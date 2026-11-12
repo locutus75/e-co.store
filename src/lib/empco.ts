@@ -246,6 +246,7 @@ function normalizeKey(fieldId: string): string {
 function readValue(product: any, key: string, overrides?: Record<string, string>): any {
   if (overrides && Object.prototype.hasOwnProperty.call(overrides, key)) return overrides[key];
   if (key.startsWith('custom_')) return product?.customData?.[key.replace('custom_', '')];
+  if (key === 'shortDescription') return product?.shortDescription || product?.seoTitle || '';
   return product?.[key];
 }
 

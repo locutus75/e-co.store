@@ -843,6 +843,7 @@ const toggleSelectAll = () => {
       {bulkFixIds && (
         <EmpcoBulkFixModal
           articleNumbers={bulkFixIds}
+          canUseAi={canUseAi}
           onClose={() => { setBulkFixIds(null); setSelectedIds(new Set()); }}
           onComplete={() => router.refresh()}
         />
