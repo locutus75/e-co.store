@@ -679,9 +679,6 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
           {label}{aiBtn}
         </label>
         {action === 'READ' ? (
-          <div className="input" style={{ backgroundColor: 'rgba(0,0,0,0.02)', color: 'inherit', opacity: 0.7, cursor: 'not-allowed', border: '1px solid rgba(0,0,0,0.05)', minHeight: '38px', display: 'flex', alignItems: 'center' }}>
-            {val || '-'}
-          </div>
           <>
             {canApproveEmpco && !isGloballyLocked && !isReadOnlyProductField(moduleName) && (
               <input type="hidden" data-empco-fallback="true" name={key} defaultValue={val || ''} />
@@ -991,8 +988,6 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
         {localProductData && (
           <>
             {/* Marks fields changed via EmpCo / history-restore so the save action can label the history entries */}
-            {Array.from(empcoFields).map(k => <input key={`empco_${k}`} type="hidden" name="_empco_fields" value={k} />)}
-            {Array.from(restoreFields).map(k => <input key={`restore_${k}`} type="hidden" name="_restore_fields" value={k} />)}
             {Array.from(empcoFields).map(k => (
               <React.Fragment key={`empco_${k}`}>
                 <input type="hidden" name="_empco_fields" value={k} />
@@ -1135,26 +1130,8 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                         🖨 Kopieer Data
                       </button>
                     )}
-                    {/* EmpCo check + field history — available for all users */}
                     {/* EmpCo check + field history */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderLeft: '1px solid var(--border)', paddingLeft: '0.75rem' }}>
-                      <ProductEmpcoPanel
-                        articleNumber={localProductData.internalArticleNumber}
-                        productTitle={localProductData.title}
-                        getLiveValues={getLiveFormValues}
-                        applyFix={applyEmpcoFix}
-                        canEdit={!isGloballyLocked}
-                        onOpenHistory={() => setShowHistory(true)}
-                        refreshKey={empcoRefreshKey}
-                        brandId={localProductData?.brandId ?? localProductData?.brand?.id}
-                        brandName={localProductData?.brand?.name}
-                        onSave={handleSaveFromEmpco}
-                        isSaving={isPending}
-                        isDirty={isDirty}
-                        onChecked={(status, stale, issueCount) => {
-                          onEmpcoCheck?.(localProductData.internalArticleNumber, status, stale, issueCount);
-                        }}
-                      />
                       {(canApproveEmpco || canUseAi) && (
                         <ProductEmpcoPanel
                           articleNumber={localProductData.internalArticleNumber}
@@ -1184,25 +1161,6 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                       >
                         🕘 Historie
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setFormattingModalSection('ALL')}
-                        title="Formatteer productteksten volgens vaste regels"
-                        style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                      >
-                        ✨ Regels
-                      </button>
-                      {!isGloballyLocked && (
-                        { canUseAi && !isGloballyLocked && (
-                          <button
-                            type="button"
-                            onClick={() => setFormattingModalSection('ALL')}
-                            title="Formatteer productteksten volgens vaste regels"
-                            style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                          >
-                            ✨ Regels
-                          </button>
-                        )}
                       {canUseAi && !isGloballyLocked && (
                         <button
                           type="button"
@@ -1341,39 +1299,6 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                           🔔 {chatUnreadCount} nieuw{chatUnreadCount === 1 ? '' : 'e'} {chatUnreadCount === 1 ? 'bericht' : 'berichten'}
                         </span>
                       )}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setFormattingModalSection(section.id);
-                        }}
-                        title={`Formatteer velden in "${section.title}" volgens een standaardregel`}
-                        style={{
-                          marginLeft: '0.75rem',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.35rem',
-                          padding: '0.2rem 0.6rem',
-                          borderRadius: 'var(--radius)',
-                          border: '1px solid var(--border)',
-                          backgroundColor: 'var(--surface)',
-                          color: 'var(--text-muted)',
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          transition: 'all 0.15s',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = 'var(--primary)';
-                          e.currentTarget.style.color = 'var(--text)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = 'var(--border)';
-                          e.currentTarget.style.color = 'var(--text-muted)';
-                        }}
-                      >
-                        ✨ Regels
-                      </button>
                       {canUseAi && !isGloballyLocked && (
                         <button
                           type="button"
