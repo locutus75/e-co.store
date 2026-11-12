@@ -140,7 +140,19 @@ async function getSessionInfo() {
   const session = await getServerSession(authOptions);
   const user = session?.user as any;
   const roles: string[] = user?.roles ?? [];
-  return { session, userId: user?.id as string | undefined, email: user?.email as string | undefined, isAdmin: roles.some(r => r.toUpperCase() === 'ADMIN') };
+  const isAdmin = roles.some(r => r.toUpperCase() === 'ADMIN');
+  let canApproveEmpco = isAdmin;
+  if (!isAdmin && roles.length > 0) {
+    const perms = await prisma.rolePermission.findMany({
+      where: { role: { name: { in: roles } }, module: { in: ['MENU:ai', 'MENU:empco_approve'] } },
+    });
+    const hasAi = perms.some(p => p.module === 'MENU:ai' && p.action === 'ALLOW');
+    const hasApproveAllow = perms.some(p => p.module === 'MENU:empco_approve' && p.action === 'ALLOW');
+    const hasApproveDeny = perms.some(p => p.module === 'MENU:empco_approve' && p.action === 'DENY');
+    const isEditor = roles.some(r => r.toUpperCase() === 'EDITOR');
+    canApproveEmpco = hasAi || hasApproveAllow || (isEditor && !hasApproveDeny);
+  }
+  return { session, userId: user?.id as string | undefined, email: user?.email as string | undefined, isAdmin, canApproveEmpco };
 }
 
 function readFieldValue(product: any, key: string): string {
@@ -150,8 +162,8 @@ function readFieldValue(product: any, key: string): string {
 
 /** Preview of all applicable EmpCo suggestions for the selected products. */
 export async function getEmpcoBulkFixPreviewAction(articleNumbers: string[]): Promise<EmpcoBulkProduct[]> {
-  const { userId, isAdmin } = await getSessionInfo();
-  if (!userId || !articleNumbers?.length) return [];
+  const { userId, isAdmin, canApproveEmpco } = await getSessionInfo();
+  if (!userId || !canApproveEmpco || !articleNumbers?.length) return [];
 
   const [products, checks] = await Promise.all([
     prisma.product.findMany({ where: { internalArticleNumber: { in: articleNumbers } } }),
@@ -214,8 +226,9 @@ export interface EmpcoBulkApplyResult {
 export async function applyEmpcoBulkFixesAction(
   selection: { articleNumber: string; issueIdx: number[] }[],
 ): Promise<EmpcoBulkApplyResult[]> {
-  const { userId, email, isAdmin } = await getSessionInfo();
+  const { userId, email, isAdmin, canApproveEmpco } = await getSessionInfo();
   if (!userId) throw new Error('Niet ingelogd');
+  if (!canApproveEmpco) throw new Error('Geen rechten om EmpCo-voorstellen te accorderen');
 
   const { getFormLayoutAction } = await import('@/app/actions/formLayouts');
   const [layout, settings] = await Promise.all([getFormLayoutAction(), getEmpcoSettingsAction()]);

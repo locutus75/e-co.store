@@ -57,6 +57,20 @@ export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: 'Niet ingelogd' }, { status: 401 });
   const userId = (session.user as any).id as string;
+  const roles: string[] = (session.user as any).roles ?? [];
+  const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
+
+  if (!isAdmin) {
+    const aiPerm = await prisma.rolePermission.findFirst({
+      where: { role: { name: { in: roles } }, module: 'MENU:ai', action: 'ALLOW' },
+    });
+    if (!aiPerm) {
+      return NextResponse.json(
+        { error: 'Alleen beheerders of gebruikers met AI-rechten mogen een nieuwe EmpCo-analyse starten.' },
+        { status: 403 }
+      );
+    }
+  }
 
   const body = await request.json() as { articleNumber: string; overrides?: Record<string, string>; skipIfCurrent?: boolean };
   if (!body.articleNumber) return NextResponse.json({ error: 'articleNumber is verplicht' }, { status: 400 });

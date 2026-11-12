@@ -44,10 +44,21 @@ export default async function ProductsPage() {
     ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:ai' && rp.action === 'ALLOW')
   ) || false;
 
+  const hasEmpcoApproveExplicitAllow = userRecord?.userRoles.some((ur: any) =>
+    ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:empco_approve' && rp.action === 'ALLOW')
+  ) || false;
+
+  const hasEmpcoApproveExplicitDeny = userRecord?.userRoles.some((ur: any) =>
+    ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:empco_approve' && rp.action === 'DENY')
+  ) || false;
+
+  const isEditorRole = roles.some((r: string) => r.toUpperCase() === 'EDITOR');
+
   const canSeeAllProducts = isAdmin || hasAssignmentsRight;
   const canAssignProducts = isAdmin || hasAssignmentsRight;
   const canUseAi = isAdmin || hasAiRight;
-  
+  const canApproveEmpco = isAdmin || hasAiRight || hasEmpcoApproveExplicitAllow || (isEditorRole && !hasEmpcoApproveExplicitDeny);
+
   const [products, aiAnalyses, empcoChecks, suppliers] = await Promise.all([
     prisma.product.findMany({
       where: canSeeAllProducts ? undefined : { assignedUserId: userId },
@@ -67,10 +78,13 @@ export default async function ProductsPage() {
   const fieldPermissions: Record<string, string> = {};
   if (!isAdmin && userRecord) {
     userRecord.userRoles.forEach((ur: any) => {
-       ur.role.rolePermissions.forEach((rp: any) => {
-          if (rp.module.startsWith('FIELD:')) { fieldPermissions[rp.module] = rp.action; }
-       });
+      ur.role.rolePermissions.forEach((rp: any) => {
+        if (rp.module.startsWith('FIELD:')) { fieldPermissions[rp.module] = rp.action; }
+      });
     });
+    if (!fieldPermissions['FIELD:shortDescription'] && fieldPermissions['FIELD:seoTitle']) {
+      fieldPermissions['FIELD:shortDescription'] = fieldPermissions['FIELD:seoTitle'];
+    }
   }
 
   const { getFormLayoutAction } = await import('@/app/actions/formLayouts');
@@ -105,6 +119,6 @@ export default async function ProductsPage() {
     }
   } catch { /* ignore FS errors */ }
 
-  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} canAssignProducts={canAssignProducts} canUseAi={canUseAi} fieldPermissions={fieldPermissions} layout={layout} currentUserId={userId || ''} currentUserChatColor={(userRecord as any)?.chatColor || null} currentUserAutoMarkRemarksAsRead={userRecord?.autoMarkRemarksAsRead ?? true} aiScoreMap={aiScoreMap} imageCountMap={imageCountMap} empcoMap={empcoMap} allSuppliers={suppliers} />;
+  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} canAssignProducts={canAssignProducts} canUseAi={canUseAi} canApproveEmpco={canApproveEmpco} fieldPermissions={fieldPermissions} layout={layout} currentUserId={userId || ''} currentUserChatColor={(userRecord as any)?.chatColor || null} currentUserAutoMarkRemarksAsRead={userRecord?.autoMarkRemarksAsRead ?? true} aiScoreMap={aiScoreMap} imageCountMap={imageCountMap} empcoMap={empcoMap} allSuppliers={suppliers} />;
 }
 

@@ -200,10 +200,12 @@ export function EmpcoGuidelinesModal({
   isOpen,
   onClose,
   initialGuidelines,
+  isAdmin = false,
 }: {
   isOpen: boolean;
   onClose: () => void;
   initialGuidelines?: { notes?: string; links?: EmpcoGuidelineLink[] };
+  isAdmin?: boolean;
 }) {
   const [links, setLinks] = useState<EmpcoGuidelineLink[]>(initialGuidelines?.links ?? DEFAULT_EMPCO_GUIDELINE_LINKS);
   const [notes, setNotes] = useState<string>(initialGuidelines?.notes ?? DEFAULT_EMPCO_GUIDELINE_NOTES);
@@ -222,7 +224,7 @@ export function EmpcoGuidelinesModal({
         if (d?.guidelines?.links) setLinks(d.guidelines.links);
         if (d?.guidelines?.notes) setNotes(d.guidelines.notes);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [isOpen, initialGuidelines]);
 
   if (!isOpen) return null;
@@ -235,223 +237,225 @@ export function EmpcoGuidelinesModal({
       width={900}
       zIndex={9200}
       headerRight={
-        <a
-          href="/admin/system"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '0.74rem',
-            padding: '0.3rem 0.7rem',
-            borderRadius: '6px',
-            backgroundColor: 'rgba(255,255,255,0.2)',
-            color: 'white',
-            textDecoration: 'none',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-            fontWeight: 700,
-          }}
-          title="Open Systeeminstellingen om EmpCo-richtlijnen en te controleren velden aan te passen"
-        >
-          ⚙️ Instellingen beheren ↗
-        </a>
-      }
+        isAdmin ? (
+          <a
+            href="/admin/system"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontSize: '0.74rem',
+              padding: '0.3rem 0.7rem',
+              borderRadius: '6px',
+              backgroundColor: 'rgba(255,255,255,0.2)',
+              color: 'white',
+              textDecoration: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              fontWeight: 700,
+            }}
+            title="Open Systeeminstellingen om EmpCo-richtlijnen en te controleren velden aan te passen"
+          >
+            ⚙️ Instellingen beheren ↗
+          </a>
+        ) : undefined
+}
     >
-      <div style={{ padding: '1.2rem 1.4rem' }}>
-        {/* Intro */}
-        <div style={{
-          backgroundColor: '#f0fdfa',
-          border: '1px solid #99f6e4',
-          borderRadius: '10px',
-          padding: '0.85rem 1.1rem',
-          marginBottom: '1.1rem',
-          display: 'flex',
-          gap: '0.75rem',
-          alignItems: 'flex-start',
-        }}>
-          <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>🏛️</span>
-          <div style={{ fontSize: '0.82rem', color: '#134e4a', lineHeight: 1.55 }}>
-            <strong>Toetsingskader tegen greenwashing:</strong> Sinds Richtlijn (EU) 2024/825 en de ACM Leidraad Duurzaamheidsclaims zijn vage, misleidende of ongecertificeerde milieuclaims verboden. Raadpleeg hieronder direct de officiële wetteksten om na te gaan of productinformatie in strijd is met de wet.
-          </div>
-        </div>
+  <div style={{ padding: '1.2rem 1.4rem' }}>
+    {/* Intro */}
+    <div style={{
+      backgroundColor: '#f0fdfa',
+      border: '1px solid #99f6e4',
+      borderRadius: '10px',
+      padding: '0.85rem 1.1rem',
+      marginBottom: '1.1rem',
+      display: 'flex',
+      gap: '0.75rem',
+      alignItems: 'flex-start',
+    }}>
+      <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>🏛️</span>
+      <div style={{ fontSize: '0.82rem', color: '#134e4a', lineHeight: 1.55 }}>
+        <strong>Toetsingskader tegen greenwashing:</strong> Sinds Richtlijn (EU) 2024/825 en de ACM Leidraad Duurzaamheidsclaims zijn vage, misleidende of ongecertificeerde milieuclaims verboden. Raadpleeg hieronder direct de officiële wetteksten om na te gaan of productinformatie in strijd is met de wet.
+      </div>
+    </div>
 
-        {/* Tab switcher */}
-        <div style={{ display: 'flex', gap: '0.45rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.6rem', marginBottom: '1.1rem', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => setActiveTab('links')}
-            style={{
-              padding: '0.4rem 0.85rem',
-              borderRadius: '7px',
-              border: 'none',
-              backgroundColor: activeTab === 'links' ? EMPCO_ACCENT : '#f1f5f9',
-              color: activeTab === 'links' ? 'white' : '#475569',
-              fontWeight: 700,
-              fontSize: '0.8rem',
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-            }}
-          >
-            <span>🔗</span> Officiële Wetgevingsbronnen ({links.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('rules')}
-            style={{
-              padding: '0.4rem 0.85rem',
-              borderRadius: '7px',
-              border: 'none',
-              backgroundColor: activeTab === 'rules' ? EMPCO_ACCENT : '#f1f5f9',
-              color: activeTab === 'rules' ? 'white' : '#475569',
-              fontWeight: 700,
-              fontSize: '0.8rem',
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-            }}
-          >
-            <span>⚖️</span> De 9 EmpCo Toetscriteria ({Object.keys(EMPCO_RULES).length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('notes')}
-            style={{
-              padding: '0.4rem 0.85rem',
-              borderRadius: '7px',
-              border: 'none',
-              backgroundColor: activeTab === 'notes' ? EMPCO_ACCENT : '#f1f5f9',
-              color: activeTab === 'notes' ? 'white' : '#475569',
-              fontWeight: 700,
-              fontSize: '0.8rem',
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-            }}
-          >
-            <span>📝</span> Webshop Richtlijnen
-          </button>
-        </div>
+    {/* Tab switcher */}
+    <div style={{ display: 'flex', gap: '0.45rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.6rem', marginBottom: '1.1rem', flexWrap: 'wrap' }}>
+      <button
+        type="button"
+        onClick={() => setActiveTab('links')}
+        style={{
+          padding: '0.4rem 0.85rem',
+          borderRadius: '7px',
+          border: 'none',
+          backgroundColor: activeTab === 'links' ? EMPCO_ACCENT : '#f1f5f9',
+          color: activeTab === 'links' ? 'white' : '#475569',
+          fontWeight: 700,
+          fontSize: '0.8rem',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.4rem',
+        }}
+      >
+        <span>🔗</span> Officiële Wetgevingsbronnen ({links.length})
+      </button>
+      <button
+        type="button"
+        onClick={() => setActiveTab('rules')}
+        style={{
+          padding: '0.4rem 0.85rem',
+          borderRadius: '7px',
+          border: 'none',
+          backgroundColor: activeTab === 'rules' ? EMPCO_ACCENT : '#f1f5f9',
+          color: activeTab === 'rules' ? 'white' : '#475569',
+          fontWeight: 700,
+          fontSize: '0.8rem',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.4rem',
+        }}
+      >
+        <span>⚖️</span> De 9 EmpCo Toetscriteria ({Object.keys(EMPCO_RULES).length})
+      </button>
+      <button
+        type="button"
+        onClick={() => setActiveTab('notes')}
+        style={{
+          padding: '0.4rem 0.85rem',
+          borderRadius: '7px',
+          border: 'none',
+          backgroundColor: activeTab === 'notes' ? EMPCO_ACCENT : '#f1f5f9',
+          color: activeTab === 'notes' ? 'white' : '#475569',
+          fontWeight: 700,
+          fontSize: '0.8rem',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.4rem',
+        }}
+      >
+        <span>📝</span> Webshop Richtlijnen
+      </button>
+    </div>
 
-        {/* Tab 1: Links */}
-        {activeTab === 'links' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem' }}>
-            {links.map((link) => {
-              const catLabel =
-                link.category === 'eu_law' ? '🇪🇺 Europese Wetgeving' :
-                link.category === 'national_authority' ? '🇳🇱 Toezichthouder (ACM/Overheid)' :
+    {/* Tab 1: Links */}
+    {activeTab === 'links' && (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem' }}>
+        {links.map((link) => {
+          const catLabel =
+            link.category === 'eu_law' ? '🇪🇺 Europese Wetgeving' :
+              link.category === 'national_authority' ? '🇳🇱 Toezichthouder (ACM/Overheid)' :
                 link.category === 'guideline' ? '📋 Leidraad' : '🔗 Officiële Bron';
-              return (
-                <div
-                  key={link.id || link.url}
+          return (
+            <div
+              key={link.id || link.url}
+              style={{
+                backgroundColor: 'white',
+                border: '1px solid #e2e8f0',
+                borderRadius: '10px',
+                padding: '0.85rem 1.05rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.35rem',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    padding: '0.12rem 0.5rem',
+                    borderRadius: '999px',
+                    backgroundColor: '#f1f5f9',
+                    color: '#475569',
+                  }}>
+                    {catLabel}
+                  </span>
+                  <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f172a' }}>{link.title}</span>
+                </div>
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   style={{
-                    backgroundColor: 'white',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '10px',
-                    padding: '0.85rem 1.05rem',
-                    display: 'flex',
-                    flexDirection: 'column',
+                    padding: '0.32rem 0.8rem',
+                    borderRadius: '6px',
+                    backgroundColor: '#0f766e',
+                    color: 'white',
+                    textDecoration: 'none',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
                     gap: '0.35rem',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                    boxShadow: '0 2px 6px rgba(15,118,110,0.22)',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.6rem', flexWrap: 'wrap' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <span style={{
-                        fontSize: '0.68rem',
-                        fontWeight: 700,
-                        padding: '0.12rem 0.5rem',
-                        borderRadius: '999px',
-                        backgroundColor: '#f1f5f9',
-                        color: '#475569',
-                      }}>
-                        {catLabel}
-                      </span>
-                      <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f172a' }}>{link.title}</span>
-                    </div>
-                    <a
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        padding: '0.32rem 0.8rem',
-                        borderRadius: '6px',
-                        backgroundColor: '#0f766e',
-                        color: 'white',
-                        textDecoration: 'none',
-                        fontSize: '0.76rem',
-                        fontWeight: 700,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.35rem',
-                        boxShadow: '0 2px 6px rgba(15,118,110,0.22)',
-                      }}
-                    >
-                      Openen ↗
-                    </a>
-                  </div>
-                  {link.description && (
-                    <div style={{ fontSize: '0.79rem', color: '#475569', lineHeight: 1.5 }}>
-                      {link.description}
-                    </div>
-                  )}
-                  <div style={{ fontSize: '0.71rem', color: '#94a3b8', wordBreak: 'break-all' }}>
-                    {link.url}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Tab 2: Rules */}
-        {activeTab === 'rules' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.65rem' }}>
-            {Object.entries(EMPCO_RULES).map(([code, rule]) => (
-              <div
-                key={code}
-                style={{
-                  backgroundColor: 'white',
-                  borderTop: '1px solid #e2e8f0',
-                  borderRight: '1px solid #e2e8f0',
-                  borderBottom: '1px solid #e2e8f0',
-                  borderLeft: `4px solid ${EMPCO_ACCENT}`,
-                  borderRadius: '8px',
-                  padding: '0.8rem 1rem',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
-                  <span style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0f172a' }}>{rule.label}</span>
-                  <span style={{ fontSize: '0.66rem', fontFamily: 'monospace', color: '#64748b', backgroundColor: '#f1f5f9', padding: '0.08rem 0.4rem', borderRadius: '4px' }}>{code}</span>
-                </div>
-                <div style={{ fontSize: '0.79rem', color: '#334155', lineHeight: 1.5 }}>
-                  {rule.description}
-                </div>
+                  Openen ↗
+                </a>
               </div>
-            ))}
-          </div>
-        )}
-
-        {/* Tab 3: Notes */}
-        {activeTab === 'notes' && (
-          <div style={{
-            backgroundColor: 'white',
-            border: '1px solid #e2e8f0',
-            borderRadius: '10px',
-            padding: '1.1rem',
-            whiteSpace: 'pre-wrap',
-            fontSize: '0.82rem',
-            lineHeight: 1.7,
-            color: '#1e293b',
-          }}>
-            {notes || DEFAULT_EMPCO_GUIDELINE_NOTES}
-          </div>
-        )}
+              {link.description && (
+                <div style={{ fontSize: '0.79rem', color: '#475569', lineHeight: 1.5 }}>
+                  {link.description}
+                </div>
+              )}
+              <div style={{ fontSize: '0.71rem', color: '#94a3b8', wordBreak: 'break-all' }}>
+                {link.url}
+              </div>
+            </div>
+          );
+        })}
       </div>
-    </EmpcoModalShell>
+    )}
+
+    {/* Tab 2: Rules */}
+    {activeTab === 'rules' && (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.65rem' }}>
+        {Object.entries(EMPCO_RULES).map(([code, rule]) => (
+          <div
+            key={code}
+            style={{
+              backgroundColor: 'white',
+              borderTop: '1px solid #e2e8f0',
+              borderRight: '1px solid #e2e8f0',
+              borderBottom: '1px solid #e2e8f0',
+              borderLeft: `4px solid ${EMPCO_ACCENT}`,
+              borderRadius: '8px',
+              padding: '0.8rem 1rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0f172a' }}>{rule.label}</span>
+              <span style={{ fontSize: '0.66rem', fontFamily: 'monospace', color: '#64748b', backgroundColor: '#f1f5f9', padding: '0.08rem 0.4rem', borderRadius: '4px' }}>{code}</span>
+            </div>
+            <div style={{ fontSize: '0.79rem', color: '#334155', lineHeight: 1.5 }}>
+              {rule.description}
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+
+    {/* Tab 3: Notes */}
+    {activeTab === 'notes' && (
+      <div style={{
+        backgroundColor: 'white',
+        border: '1px solid #e2e8f0',
+        borderRadius: '10px',
+        padding: '1.1rem',
+        whiteSpace: 'pre-wrap',
+        fontSize: '0.82rem',
+        lineHeight: 1.7,
+        color: '#1e293b',
+      }}>
+        {notes || DEFAULT_EMPCO_GUIDELINE_NOTES}
+      </div>
+    )}
+  </div>
+    </EmpcoModalShell >
   );
 }
 
@@ -463,6 +467,7 @@ export function EmpcoResultView({
   renderIssueActions,
   footerNote,
   guidelines,
+  isAdmin = false,
 }: {
   result: EmpcoResult;
   stale?: boolean;
@@ -470,6 +475,7 @@ export function EmpcoResultView({
   renderIssueActions?: (issue: EmpcoIssue, index: number) => React.ReactNode;
   footerNote?: React.ReactNode;
   guidelines?: { notes?: string; links?: EmpcoGuidelineLink[] };
+  isAdmin?: boolean;
 }) {
   const [showGuidelines, setShowGuidelines] = useState(false);
   const state = empcoBadgeState(result.status, stale);
@@ -583,6 +589,7 @@ export function EmpcoResultView({
             isOpen={showGuidelines}
             onClose={() => setShowGuidelines(false)}
             initialGuidelines={guidelines}
+            isAdmin={isAdmin}
           />
         )}
       </div>
@@ -644,6 +651,8 @@ export default function EmpcoViewer({
   stale,
   issueCount,
   onOpenProduct,
+  canApprove = true,
+  isAdmin = false,
 }: {
   articleNumber: string;
   productTitle?: string;
@@ -651,6 +660,8 @@ export default function EmpcoViewer({
   stale?: boolean;
   issueCount?: number;
   onOpenProduct?: () => void;
+  canApprove?: boolean;
+  isAdmin?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -787,44 +798,44 @@ export default function EmpcoViewer({
             {!loading && data?.check?.result && (
               <>
                 {/* Quick actions top bar */}
-                {openFixableCount > 0 && (
-                  <div style={{
-                    padding: '0.6rem 1.4rem',
-                    backgroundColor: '#ecfdf5',
-                    borderBottom: '1px solid #a7f3d0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '0.8rem',
-                    flexWrap: 'wrap',
-                  }}>
-                    <span style={{ fontSize: '0.78rem', color: '#065f46', fontWeight: 600 }}>
-                      ⚡ {openFixableCount} voorgestelde aanpassing{openFixableCount === 1 ? '' : 'en'} direct doorvoerbaar:
-                    </span>
-                    <button
-                      type="button"
-                      disabled={applyingAll}
-                      onClick={handleApplyAll}
-                      style={{
-                        padding: '0.35rem 0.95rem',
-                        borderRadius: '7px',
-                        border: 'none',
-                        backgroundColor: EMPCO_ACCENT,
-                        color: 'white',
-                        fontWeight: 700,
-                        fontSize: '0.76rem',
-                        cursor: applyingAll ? 'wait' : 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.4rem',
-                        boxShadow: '0 2px 6px rgba(15,118,110,0.25)',
-                      }}
-                    >
-                      {applyingAll && <EmpcoSpinner size={12} color="white" />}
-                      ✓ Alle {openFixableCount} voorstellen overnemen
-                    </button>
-                  </div>
-                )}
+                  { canApprove && openFixableCount > 0 && (
+                    <div style={{
+                      padding: '0.6rem 1.4rem',
+                      backgroundColor: '#ecfdf5',
+                      borderBottom: '1px solid #a7f3d0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '0.8rem',
+                      flexWrap: 'wrap',
+                    }}>
+                      <span style={{ fontSize: '0.78rem', color: '#065f46', fontWeight: 600 }}>
+                        ⚡ {openFixableCount} voorgestelde aanpassing{openFixableCount === 1 ? '' : 'en'} direct doorvoerbaar:
+                      </span>
+                      <button
+                        type="button"
+                        disabled={applyingAll}
+                        onClick={handleApplyAll}
+                        style={{
+                          padding: '0.35rem 0.95rem',
+                          borderRadius: '7px',
+                          border: 'none',
+                          backgroundColor: EMPCO_ACCENT,
+                          color: 'white',
+                          fontWeight: 700,
+                          fontSize: '0.76rem',
+                          cursor: applyingAll ? 'wait' : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          boxShadow: '0 2px 6px rgba(15,118,110,0.25)',
+                        }}
+                      >
+                        {applyingAll && <EmpcoSpinner size={12} color="white" />}
+                        ✓ Alle {openFixableCount} voorstellen overnemen
+                      </button>
+                    </div>
+                  )}
 
                 {actionSuccessMsg && (
                   <div style={{
@@ -845,63 +856,64 @@ export default function EmpcoViewer({
                   result={data.check.result}
                   stale={data.stale}
                   guidelines={data.guidelines}
-                  renderIssueActions={(issue, idx) => {
+                    isAdmin = { isAdmin }
+                    renderIssueActions = { canApprove?(issue, idx) => {
                     if (!isEmpcoIssueFixable(issue)) return null;
-                    const st = appliedStatus[idx];
-                    if (st === 'ok') {
+                const st = appliedStatus[idx];
+                if (st === 'ok') {
                       return <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#15803d' }}>✓ Overgenomen</span>;
                     }
-                    return (
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                        {st && <span style={{ fontSize: '0.7rem', color: '#b91c1c' }}>{st}</span>}
-                        <button
-                          type="button"
-                          disabled={applyingIdx === idx || applyingAll}
-                          onClick={() => handleApplySingle(idx)}
-                          style={{
-                            padding: '0.24rem 0.7rem',
-                            borderRadius: '6px',
-                            border: `1px solid ${EMPCO_ACCENT}`,
-                            backgroundColor: 'white',
-                            color: EMPCO_ACCENT,
-                            fontWeight: 700,
-                            fontSize: '0.72rem',
-                            cursor: applyingIdx === idx ? 'wait' : 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.3rem',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-                          }}
-                        >
-                          {applyingIdx === idx && <EmpcoSpinner size={11} />}
-                          ✓ Overnemen
-                        </button>
-                      </span>
-                    );
-                  }}
-                  footerNote={
-                    onOpenProduct ? (
-                      <>
-                        {' '}
-                        <button
-                          type="button"
-                          onClick={() => { setOpen(false); onOpenProduct(); }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#0f766e',
-                            fontWeight: 700,
-                            textDecoration: 'underline',
-                            cursor: 'pointer',
-                            padding: 0,
-                            fontSize: 'inherit',
-                          }}
-                        >
-                          Open product in de editor
-                        </button>
-                      </>
-                    ) : undefined
-                  }
+                return (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  {st && <span style={{ fontSize: '0.7rem', color: '#b91c1c' }}>{st}</span>}
+                  <button
+                    type="button"
+                    disabled={applyingIdx === idx || applyingAll}
+                    onClick={() => handleApplySingle(idx)}
+                    style={{
+                      padding: '0.24rem 0.7rem',
+                      borderRadius: '6px',
+                      border: `1px solid ${EMPCO_ACCENT}`,
+                      backgroundColor: 'white',
+                      color: EMPCO_ACCENT,
+                      fontWeight: 700,
+                      fontSize: '0.72rem',
+                      cursor: applyingIdx === idx ? 'wait' : 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                    }}
+                  >
+                    {applyingIdx === idx && <EmpcoSpinner size={11} />}
+                    ✓ Overnemen
+                  </button>
+                </span>
+                );
+                  } : undefined}
+                footerNote={
+                  onOpenProduct ? (
+                    <>
+                      {' '}
+                      <button
+                        type="button"
+                        onClick={() => { setOpen(false); onOpenProduct(); }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#0f766e',
+                          fontWeight: 700,
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                          padding: 0,
+                          fontSize: 'inherit',
+                        }}
+                      >
+                        Open product in de editor
+                      </button>
+                    </>
+                  ) : undefined
+                }
                 />
               </>
             )}

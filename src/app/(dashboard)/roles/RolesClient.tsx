@@ -6,16 +6,17 @@ import ConfirmationModal from '@/components/ConfirmationModal';
 import { isReadOnlyProductField } from '@/lib/constants';
 
 const MENU_MODULES = [
-  { module: 'MENU:dashboard',   label: 'Dashboard' },
-  { module: 'MENU:products',    label: 'Producten' },
-  { module: 'MENU:messages',    label: 'Berichten' },
-  { module: 'MENU:ai',          label: '🤖 AI Assistent' },
-  { module: 'MENU:categories',  label: 'Categorieën' },
+  { module: 'MENU:dashboard', label: 'Dashboard' },
+  { module: 'MENU:products', label: 'Producten' },
+  { module: 'MENU:messages', label: 'Berichten' },
+  { module: 'MENU:empco_approve', label: '⚖️ EmpCo (Voorstellen bekijken & accorderen)' },
+  { module: 'MENU:ai', label: '🤖 AI Assistent (Nieuwe AI & EmpCo analyses starten)' },
+  { module: 'MENU:categories', label: 'Categorieën' },
   { module: 'MENU:assignments', label: 'Toewijzingen' },
-  { module: 'MENU:users',       label: 'Team & Gebruikers' },
-  { module: 'MENU:roles',       label: 'Rollen & Rechten' },
-  { module: 'MENU:stats',       label: '📊 Statistieken' },
-  { module: 'MENU:system',      label: 'Systeeminstellingen' },
+  { module: 'MENU:users', label: 'Team & Gebruikers' },
+  { module: 'MENU:roles', label: 'Rollen & Rechten' },
+  { module: 'MENU:stats', label: '📊 Statistieken' },
+  { module: 'MENU:system', label: 'Systeeminstellingen' },
 ];
 
 const FIELD_MODULES = [
@@ -32,8 +33,6 @@ const FIELD_MODULES = [
   { module: 'FIELD:color', label: 'Kleur' },
   { module: 'FIELD:size', label: 'Maat' },
   { module: 'FIELD:material', label: 'Materiaal' },
-  { module: 'FIELD:tags', label: 'Tags' },
-  { module: 'FIELD:webshopSlug', label: 'Webshop URL Slug' },
   { module: 'FIELD:weightGr', label: 'Gewicht (gr)' },
   { module: 'FIELD:lengthCm', label: 'Lengte (cm)' },
   { module: 'FIELD:widthCm', label: 'Breedte (cm)' },
@@ -45,8 +44,8 @@ const FIELD_MODULES = [
   { module: 'FIELD:mainMaterial', label: 'Hoofdmateriaal' },
   { module: 'FIELD:readyForImport', label: 'Klaar voor Import' },
   { module: 'FIELD:internalRemarks', label: 'Interne Communicatie' },
-  { module: 'FIELD:webshopActive', label: 'Webshop Actief' },
-  { module: 'FIELD:systemActive', label: 'Systeem Actief' },
+  { module: 'FIELD:webshopActive', label: 'Op Webshop' },
+  { module: 'FIELD:systemActive', label: 'Actief in Systeem' },
   { module: 'FIELD:supplierContacted', label: 'Leverancier Gecontacteerd' },
   { module: 'FIELD:critMensSafeWork', label: 'Crit: Mens Safe Work' },
   { module: 'FIELD:critMensFairWage', label: 'Crit: Mens Fair Wage' },
@@ -65,8 +64,6 @@ const FIELD_MODULES = [
   { module: 'FIELD:critNatural', label: 'Crit: Natural' },
   { module: 'FIELD:critCircular', label: 'Crit: Circular' },
   { module: 'FIELD:critOther', label: 'Crit: Other' },
-  { module: 'FIELD:seoTitle', label: 'SEO Titel' },
-  { module: 'FIELD:seoMetaDescription', label: 'SEO Meta Definitie' },
   { module: 'FIELD:basePrice', label: 'Prijs (Price)' },
   { module: 'FIELD:qualityControlStatus', label: 'Kwaliteitscontrole' },
   { module: 'FIELD:exportStatus', label: 'Export Status' },
@@ -79,7 +76,7 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
 
   const [newRoleName, setNewRoleName] = useState('');
   const [editingRole, setEditingRole] = useState<{ id: string, name: string } | null>(null);
-  
+
   // State to hold which role ID we are currently configuring fields for
   const [fieldConfigModalRoleId, setFieldConfigModalRoleId] = useState<string | null>(null);
 
@@ -134,6 +131,10 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
   const getActionForModule = (role: any, moduleName: string, defaultAction: string) => {
     if (!role?.rolePermissions) return defaultAction;
     const perm = role.rolePermissions.find((p: any) => p.module === moduleName);
+    if (!perm && moduleName === 'FIELD:shortDescription') {
+      const legacySeo = role.rolePermissions.find((p: any) => p.module === 'FIELD:seoTitle');
+      if (legacySeo) return legacySeo.action;
+    }
     return perm ? perm.action : defaultAction;
   };
 
@@ -141,26 +142,26 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem', width: '100%', maxWidth: '1400px' }}>
-      
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-         <div>
-           <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)' }}>Rollen & Rechten</h1>
-           <p style={{ color: 'var(--text-muted)', fontSize: '1rem', marginTop: '0.2rem' }}>Configureer menu- en veldrechten per gebruikersrol.</p>
-         </div>
 
-         <div style={{ display: 'flex', gap: '0.5rem' }}>
-           <input 
-             type="text" 
-             className="input" 
-             placeholder="Nieuwe rolnaam..."
-             value={newRoleName}
-             onChange={(e) => setNewRoleName(e.target.value)}
-             disabled={isPending}
-           />
-           <button onClick={handleCreateRole} className="btn btn-primary" disabled={isPending || !newRoleName.trim()}>
-             + Toevoegen
-           </button>
-         </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)' }}>Rollen & Rechten</h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '1rem', marginTop: '0.2rem' }}>Configureer menu- en veldrechten per gebruikersrol.</p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <input
+            type="text"
+            className="input"
+            placeholder="Nieuwe rolnaam..."
+            value={newRoleName}
+            onChange={(e) => setNewRoleName(e.target.value)}
+            disabled={isPending}
+          />
+          <button onClick={handleCreateRole} className="btn btn-primary" disabled={isPending || !newRoleName.trim()}>
+            + Toevoegen
+          </button>
+        </div>
       </div>
 
       <div style={{ padding: '1rem 1.5rem', backgroundColor: 'rgba(225, 191, 220, 0.1)', border: '1px solid var(--primary)', borderRadius: 'var(--radius)', color: 'var(--text-muted)' }}>
@@ -173,13 +174,13 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
 
           return (
             <div key={role.id} className="glass" style={{ padding: '2rem', borderRadius: 'var(--radius-lg)' }}>
-              
+
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                 {editingRole?.id === role.id ? (
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <input 
-                      className="input" 
-                      value={editingRole!.name} 
+                    <input
+                      className="input"
+                      value={editingRole!.name}
                       onChange={(e) => setEditingRole({ id: editingRole!.id, name: e.target.value })}
                       disabled={isPending}
                     />
@@ -191,7 +192,7 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
                     {role.name}
                   </h2>
                 )}
-                
+
                 {!editingRole && (
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <button onClick={() => setEditingRole(role)} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', padding: '0.2rem 0.5rem', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-muted)' }}>✏️</button>
@@ -205,17 +206,21 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
                 <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text)', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>Menu Navigatie Rechten</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                   {MENU_MODULES.map(m => {
-                    const currentAction = getActionForModule(role, m.module, 'DENY');
+                    const defaultMenuAction =
+                      m.module === 'MENU:empco_approve' && role.name?.toUpperCase() === 'EDITOR'
+                        ? 'ALLOW'
+                        : 'DENY';
+                    const currentAction = getActionForModule(role, m.module, defaultMenuAction);
                     const isActive = currentAction === 'ALLOW';
-                    
+
                     return (
                       <label key={m.module} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', color: 'var(--text)', cursor: 'pointer' }}>
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={isActive}
                           disabled={isPending}
-                          onChange={() => handleMenuChange(role.id, m.module, currentAction)} 
-                        /> 
+                          onChange={() => handleMenuChange(role.id, m.module, currentAction)}
+                        />
                         {m.label}
                       </label>
                     );
@@ -226,8 +231,8 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
               {/* Field Permissions - Trigger */}
               <div>
                 <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text)', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>Productveld Rechten</h3>
-                <button 
-                  className="btn" 
+                <button
+                  className="btn"
                   style={{ width: '100%', padding: '0.75rem', display: 'flex', justifyContent: 'center', gap: '0.5rem' }}
                   onClick={() => setFieldConfigModalRoleId(role.id)}
                 >
@@ -242,15 +247,15 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
       </div>
 
       {/* Backdrop overlay */}
-      <div 
+      <div
         onClick={() => setFieldConfigModalRoleId(null)}
-        style={{ 
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
+        style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           backgroundColor: 'rgba(0,0,0,0.2)', zIndex: 40, backdropFilter: 'blur(2px)',
           opacity: (fieldConfigModalRoleId && selectedRoleForFields) ? 1 : 0,
           pointerEvents: (fieldConfigModalRoleId && selectedRoleForFields) ? 'auto' : 'none',
           transition: 'opacity 0.3s'
-        }} 
+        }}
       />
 
       {/* Drawer */}
@@ -276,8 +281,8 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
                   <span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>Configureer schrijfrechten of verberg specifieke velden.</span>
                 </div>
               </div>
-              <button 
-                onClick={() => setFieldConfigModalRoleId(null)} 
+              <button
+                onClick={() => setFieldConfigModalRoleId(null)}
                 style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.75rem', color: 'var(--text-muted)' }}
               >
                 ✕
@@ -285,55 +290,55 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
             </div>
 
             <div style={{ padding: '3rem', display: 'flex', flexDirection: 'column', gap: '3.5rem' }}>
-                {(() => {
-                  const renderDropdown = (moduleName: string, label: string) => {
-                    const isSystemReadOnly = isReadOnlyProductField(moduleName);
-                    const rawAction = getActionForModule(selectedRoleForFields, moduleName, 'READ');
-                    const currentAction = isSystemReadOnly && rawAction === 'WRITE' ? 'READ' : rawAction;
-                    return (
-                      <div style={{ marginBottom: '1.25rem' }}>
-                        <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>
-                          {label} {isSystemReadOnly && <span style={{ fontSize: '0.72rem', color: 'var(--primary)' }}>(Read-only)</span>}
-                        </label>
-                        <select 
-                          className="input" 
-                          style={{ padding: '0.4rem 0.5rem', fontSize: '0.85rem', width: '100%', border: currentAction === 'HIDDEN' ? '1px solid var(--error)' : '1px solid var(--border)', backgroundColor: currentAction === 'HIDDEN' ? 'rgba(255,0,0,0.02)' : 'white', minHeight: '38px' }}
-                          disabled={isPending}
-                          value={currentAction}
-                          onChange={(e) => handleActionChange(selectedRoleForFields.id, moduleName, e.target.value)}
-                        >
-                          {!isSystemReadOnly && <option value="WRITE">📝 Bewerken</option>}
-                          <option value="READ">👀 Alleen Lezen</option>
-                          <option value="HIDDEN">🚫 Verborgen</option>
-                        </select>
-                      </div>
-                    );
-                  };
-
+              {(() => {
+                const renderDropdown = (moduleName: string, label: string) => {
+                  const isSystemReadOnly = isReadOnlyProductField(moduleName);
+                  const rawAction = getActionForModule(selectedRoleForFields, moduleName, 'READ');
+                  const currentAction = isSystemReadOnly && rawAction === 'WRITE' ? 'READ' : rawAction;
                   return (
-                    <>
-                      {layout.map(section => (
-                        <section key={section.id}>
-                          <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: section.color, marginBottom: '1.5rem', borderBottom: `2px solid ${section.color}`, paddingBottom: '0.5rem', display: 'inline-block' }}>{section.title}</h3>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, minmax(0, 1fr))', gap: '1.5rem', backgroundColor: 'var(--background)', padding: '2rem', borderRadius: 'var(--radius)', border: `1px solid rgba(0,0,0,0.05)` }}>
-                            {section.fields.map((f: any) => {
-                              let span = f.width ? Number(f.width) : (f.type === 'textarea' || f.type === 'media' ? 12 : 4);
-                              if (isNaN(span) || f.width === 'full') span = 12;
-                              if (f.width === '1') span = 4;
-                              if (f.width === '2') span = 8;
-                              
-                              return (
-                                <div key={f.id} style={{ gridColumn: `span ${span}` }}>
-                                  {renderDropdown(f.id, f.label)}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </section>
-                      ))}
-                    </>
+                    <div style={{ marginBottom: '1.25rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>
+                        {label} {isSystemReadOnly && <span style={{ fontSize: '0.72rem', color: 'var(--primary)' }}>(Read-only)</span>}
+                      </label>
+                      <select
+                        className="input"
+                        style={{ padding: '0.4rem 0.5rem', fontSize: '0.85rem', width: '100%', border: currentAction === 'HIDDEN' ? '1px solid var(--error)' : '1px solid var(--border)', backgroundColor: currentAction === 'HIDDEN' ? 'rgba(255,0,0,0.02)' : 'white', minHeight: '38px' }}
+                        disabled={isPending}
+                        value={currentAction}
+                        onChange={(e) => handleActionChange(selectedRoleForFields.id, moduleName, e.target.value)}
+                      >
+                        {!isSystemReadOnly && <option value="WRITE">📝 Bewerken</option>}
+                        <option value="READ">👀 Alleen Lezen</option>
+                        <option value="HIDDEN">🚫 Verborgen</option>
+                      </select>
+                    </div>
                   );
-                })()}
+                };
+
+                return (
+                  <>
+                    {layout.map(section => (
+                      <section key={section.id}>
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: section.color, marginBottom: '1.5rem', borderBottom: `2px solid ${section.color}`, paddingBottom: '0.5rem', display: 'inline-block' }}>{section.title}</h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, minmax(0, 1fr))', gap: '1.5rem', backgroundColor: 'var(--background)', padding: '2rem', borderRadius: 'var(--radius)', border: `1px solid rgba(0,0,0,0.05)` }}>
+                          {section.fields.map((f: any) => {
+                            let span = f.width ? Number(f.width) : (f.type === 'textarea' || f.type === 'media' ? 12 : 4);
+                            if (isNaN(span) || f.width === 'full') span = 12;
+                            if (f.width === '1') span = 4;
+                            if (f.width === '2') span = 8;
+
+                            return (
+                              <div key={f.id} style={{ gridColumn: `span ${span}` }}>
+                                {renderDropdown(f.id, f.label)}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    ))}
+                  </>
+                );
+              })()}
 
             </div>
 
@@ -342,7 +347,7 @@ export default function RolesClient({ roles, layout = [] }: { roles: any[], layo
                 Opslaan & Sluiten
               </button>
             </div>
-            
+
           </>
         )}
       </div>

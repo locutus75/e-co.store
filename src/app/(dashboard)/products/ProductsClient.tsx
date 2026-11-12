@@ -307,7 +307,8 @@ function getPageNumbers(currentPage: number, totalPages: number) {
 }
 
 export default function ProductsClient({
-  initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canUseAi = false, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null, currentUserAutoMarkRemarksAsRead = true, aiScoreMap = {}, imageCountMap = {}, empcoMap = {}, allSuppliers = [] }: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, canAssignProducts?: boolean, canUseAi?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, currentUserAutoMarkRemarksAsRead?: boolean, aiScoreMap?: Record<string, number | null>, imageCountMap?: Record<string, number>, empcoMap?: Record<string, EmpcoMapEntry>, allSuppliers?: { id: string; name: string }[] }) {
+  initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canUseAi = false, canApproveEmpco = true, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null, currentUserAutoMarkRemarksAsRead = true, aiScoreMap = {}, imageCountMap = {}, empcoMap = {}, allSuppliers = []
+}: { initialProducts: any[], systemUsers ?: any[], isAdmin ?: boolean, canAssignProducts ?: boolean, canUseAi ?: boolean, canApproveEmpco ?: boolean, fieldPermissions ?: Record<string, string>, layout ?: any[], currentUserId ?: string, currentUserChatColor ?: string | null, currentUserAutoMarkRemarksAsRead ?: boolean, aiScoreMap ?: Record<string, number | null>, imageCountMap ?: Record<string, number>, empcoMap ?: Record<string, EmpcoMapEntry>, allSuppliers ?: { id: string; name: string }[] }) {
   const router = useRouter();
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
@@ -1245,79 +1246,85 @@ export default function ProductsClient({
               </button>
             )}
 
-            <button
-              type="button"
-              className="btn"
-              onClick={() => { setBatchMode('empco'); setShowBatchAnalyze(true); }}
-              style={{
-                height: '34px',
-                padding: '0 0.75rem',
-                fontSize: '0.82rem',
-                background: 'linear-gradient(135deg,#0f766e,#065f46)',
-                border: 'none',
-                color: 'white',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                fontWeight: 600,
-                borderRadius: 'var(--radius)',
-                whiteSpace: 'nowrap',
-              }}
-              title={`EmpCo-check voor ${selectedIds.size} geselecteerde producten`}
-            >
-              ⚖️ EmpCo-check ({selectedIds.size})
-            </button>
+            {canUseAi && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => { setBatchMode('empco'); setShowBatchAnalyze(true); }}
+                style={{
+                  height: '34px',
+                  padding: '0 0.75rem',
+                  fontSize: '0.82rem',
+                  background: 'linear-gradient(135deg,#0f766e,#065f46)',
+                  border: 'none',
+                  color: 'white',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontWeight: 600,
+                  borderRadius: 'var(--radius)',
+                  whiteSpace: 'nowrap',
+                }}
+                title={`EmpCo-check voor ${selectedIds.size} geselecteerde producten`}
+              >
+                ⚖️ EmpCo-check ({selectedIds.size})
+              </button>
+            )}
 
-            <button
-              id="empco-bulk-fix-btn"
-              type="button"
-              className="btn"
-              onClick={() => setBulkFixIds(Array.from(selectedIds))}
-              style={{
-                height: '34px',
-                padding: '0 0.75rem',
-                fontSize: '0.82rem',
-                backgroundColor: 'white',
-                border: '1.5px solid #0f766e',
-                color: '#0f766e',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                fontWeight: 600,
-                borderRadius: 'var(--radius)',
-                whiteSpace: 'nowrap',
-              }}
-              title={`EmpCo-voorstellen bekijken en doorvoeren voor ${selectedIds.size} geselecteerde producten`}
-            >
-              ✍️ EmpCo-voorstellen ({selectedIds.size})
-            </button>
+            {canApproveEmpco && (
+              <button
+                id="empco-bulk-fix-btn"
+                type="button"
+                className="btn"
+                onClick={() => setBulkFixIds(Array.from(selectedIds))}
+                style={{
+                  height: '34px',
+                  padding: '0 0.75rem',
+                  fontSize: '0.82rem',
+                  backgroundColor: 'white',
+                  border: '1.5px solid #0f766e',
+                  color: '#0f766e',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontWeight: 600,
+                  borderRadius: 'var(--radius)',
+                  whiteSpace: 'nowrap',
+                }}
+                title={`EmpCo-voorstellen bekijken en doorvoeren voor ${selectedIds.size} geselecteerde producten`}
+              >
+                ✍️ EmpCo-voorstellen ({selectedIds.size})
+              </button>
+            )}
 
-            <button
-              id="formatting-bulk-btn"
-              type="button"
-              className="btn"
-              onClick={() => setShowFormattingModal(true)}
-              style={{
-                height: '34px',
-                padding: '0 0.75rem',
-                fontSize: '0.82rem',
-                background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-                border: 'none',
-                color: 'white',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                fontWeight: 600,
-                borderRadius: 'var(--radius)',
-                whiteSpace: 'nowrap',
-              }}
-              title={`Formatteer ${selectedIds.size} geselecteerde producten met standaard regels`}
-            >
-              ✨ Formateren ({selectedIds.size})
-            </button>
+            {canUseAi && (
+              <button
+                id="formatting-bulk-btn"
+                type="button"
+                className="btn"
+                onClick={() => setShowFormattingModal(true)}
+                style={{
+                  height: '34px',
+                  padding: '0 0.75rem',
+                  fontSize: '0.82rem',
+                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                  border: 'none',
+                  color: 'white',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontWeight: 600,
+                  borderRadius: 'var(--radius)',
+                  whiteSpace: 'nowrap',
+                }}
+                title={`Formatteer ${selectedIds.size} geselecteerde producten met standaard regels`}
+              >
+                ✨ Formateren ({selectedIds.size})
+              </button>
+            )}
 
             <button
               type="button"
@@ -1543,6 +1550,8 @@ export default function ProductsClient({
                     stale={liveEmpcoMap[product.internalArticleNumber]?.stale ?? false}
                     issueCount={liveEmpcoMap[product.internalArticleNumber]?.issueCount ?? 0}
                     onOpenProduct={() => setSelectedProduct(product)}
+                    canApprove={canApproveEmpco}
+                    isAdmin={isAdmin}
                   />
                 </td>
                 <td style={{ padding: '1.25rem' }}>
@@ -1680,6 +1689,7 @@ export default function ProductsClient({
         fieldPermissions={isAdmin ? undefined : fieldPermissions}
         isAdmin={isAdmin}
         canUseAi={canUseAi}
+        canApproveEmpco={canApproveEmpco}
         layout={layout}
         currentUserId={currentUserId}
         currentUserChatColor={currentUserChatColor}
