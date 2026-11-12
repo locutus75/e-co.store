@@ -40,6 +40,12 @@ export default async function ProductsPage() {
     ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:assignments' && rp.action === 'ALLOW')
   ) || false;
 
+  const hasViewRolePeersRight = userRecord?.userRoles.some((ur: any) =>
+    ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:view_role_peers' && rp.action === 'ALLOW')
+  ) || false;
+
+  const userRoleIds: string[] = userRecord?.userRoles.map((ur: any) => ur.roleId).filter(Boolean) || [];
+
   const hasAiRight = userRecord?.userRoles.some((ur: any) =>
     ur.role.rolePermissions.some((rp: any) => rp.module === 'MENU:ai' && rp.action === 'ALLOW')
   ) || false;
@@ -56,12 +62,32 @@ export default async function ProductsPage() {
 
   const canSeeAllProducts = isAdmin || hasAssignmentsRight;
   const canAssignProducts = isAdmin || hasAssignmentsRight;
+  const canViewRolePeers = hasViewRolePeersRight;
   const canUseAi = isAdmin || hasAiRight;
   const canApproveEmpco = isAdmin || hasAiRight || hasEmpcoApproveExplicitAllow || (isEditorRole && !hasEmpcoApproveExplicitDeny);
 
+  const productWhere = canSeeAllProducts
+    ? undefined
+    : hasViewRolePeersRight && userRoleIds.length > 0
+      ? {
+        OR: [
+          { assignedUserId: userId },
+          {
+            assignedUser: {
+              userRoles: {
+                some: {
+                  roleId: { in: userRoleIds },
+                },
+              },
+            },
+          },
+        ],
+      }
+      : { assignedUserId: userId };
+
   const [products, aiAnalyses, empcoChecks, suppliers] = await Promise.all([
     prisma.product.findMany({
-      where: canSeeAllProducts ? undefined : { assignedUserId: userId },
+      where: productWhere,
       orderBy: { createdAt: 'desc' },
       include: { brand: true, supplier: true, category: true, subcategory: true, assignedUser: true, lastEditedByUser: { select: { id: true, email: true } }, remarks: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true, userId: true } } }
 
@@ -119,6 +145,5 @@ export default async function ProductsPage() {
     }
   } catch { /* ignore FS errors */ }
 
-  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} canAssignProducts={canAssignProducts} canUseAi={canUseAi} canApproveEmpco={canApproveEmpco} fieldPermissions={fieldPermissions} layout={layout} currentUserId={userId || ''} currentUserChatColor={(userRecord as any)?.chatColor || null} currentUserAutoMarkRemarksAsRead={userRecord?.autoMarkRemarksAsRead ?? true} aiScoreMap={aiScoreMap} imageCountMap={imageCountMap} empcoMap={empcoMap} allSuppliers={suppliers} />;
+  return <ProductsClient initialProducts={products} systemUsers={users} isAdmin={isAdmin} canAssignProducts={canAssignProducts} canViewRolePeers={canViewRolePeers} canUseAi={canUseAi} canApproveEmpco={canApproveEmpco} fieldPermissions={fieldPermissions} layout={layout} currentUserId={userId || ''} currentUserChatColor={(userRecord as any)?.chatColor || null} currentUserAutoMarkRemarksAsRead={userRecord?.autoMarkRemarksAsRead ?? true} aiScoreMap={aiScoreMap} imageCountMap={imageCountMap} empcoMap={empcoMap} allSuppliers={suppliers} />;
 }
-

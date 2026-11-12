@@ -17,6 +17,12 @@ import { deleteProductsAction, updateReadyForImportAction, updateProductStatusAc
 
 export interface EmpcoMapEntry { status: string; stale: boolean; issueCount: number }
 
+function getPendingFormattingCount(product: any): number {
+  const pf = product?.customData?._pendingFormatting;
+  if (!pf || typeof pf !== 'object' || Array.isArray(pf)) return 0;
+  return Object.keys(pf).length;
+}
+
 // ── Completeness helpers ────────────────────────────────────────────────────
 const BASIS_TEXT_TYPES = new Set(['text', 'textarea']);
 const ATTR_TYPES = new Set(['text', 'textarea', 'number', 'picklist']);
@@ -180,11 +186,13 @@ function buildGoogleSearchUrl(product: any, layout: any[]): string | null {
 function InlineStatusToggle({
   product,
   isAdmin,
+  isPeerReadOnly = false,
   selectedIds,
   onBulkStatusChange,
 }: {
   product: any;
   isAdmin: boolean;
+  isPeerReadOnly?: boolean;
   selectedIds?: Set<string>;
   onBulkStatusChange?: (status: string) => void;
 }) {
@@ -192,7 +200,7 @@ function InlineStatusToggle({
   const currentStatus = (product.status || 'NEW').toUpperCase();
 
   const lockStatus = (product.readyForImport || '').toUpperCase();
-  const isGloballyLocked = !isAdmin && (lockStatus === 'JA' || lockStatus === 'REVIEW' || lockStatus === 'R' || lockStatus === 'Y');
+  const isGloballyLocked = (!isAdmin && (lockStatus === 'JA' || lockStatus === 'REVIEW' || lockStatus === 'R' || lockStatus === 'Y')) || isPeerReadOnly;
 
   const handleSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (isGloballyLocked) return;
@@ -212,6 +220,7 @@ function InlineStatusToggle({
       onChange={handleSelect}
       onClick={(e) => e.stopPropagation()}
       disabled={isPending || isGloballyLocked}
+      title={isPeerReadOnly ? 'Alleen lezen — product is toegewezen aan een collega' : undefined}
       style={{
         padding: '0.35rem 1.75rem 0.35rem 0.85rem',
         borderRadius: '1rem',
@@ -307,8 +316,8 @@ function getPageNumbers(currentPage: number, totalPages: number) {
 }
 
 export default function ProductsClient({
-  initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canUseAi = false, canApproveEmpco = true, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null, currentUserAutoMarkRemarksAsRead = true, aiScoreMap = {}, imageCountMap = {}, empcoMap = {}, allSuppliers = []
-}: { initialProducts: any[], systemUsers ?: any[], isAdmin ?: boolean, canAssignProducts ?: boolean, canUseAi ?: boolean, canApproveEmpco ?: boolean, fieldPermissions ?: Record<string, string>, layout ?: any[], currentUserId ?: string, currentUserChatColor ?: string | null, currentUserAutoMarkRemarksAsRead ?: boolean, aiScoreMap ?: Record<string, number | null>, imageCountMap ?: Record<string, number>, empcoMap ?: Record<string, EmpcoMapEntry>, allSuppliers ?: { id: string; name: string }[] }) {
+  initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canViewRolePeers = false, canUseAi = false, canApproveEmpco = true, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null, currentUserAutoMarkRemarksAsRead = true, aiScoreMap = {}, imageCountMap = {}, empcoMap = {}, allSuppliers = []
+}: { initialProducts: any[], systemUsers ?: any[], isAdmin ?: boolean, canAssignProducts ?: boolean, canViewRolePeers ?: boolean, canUseAi ?: boolean, canApproveEmpco ?: boolean, fieldPermissions ?: Record<string, string>, layout ?: any[], currentUserId ?: string, currentUserChatColor ?: string | null, currentUserAutoMarkRemarksAsRead ?: boolean, aiScoreMap ?: Record<string, number | null>, imageCountMap ?: Record<string, number>, empcoMap ?: Record<string, EmpcoMapEntry>, allSuppliers ?: { id: string; name: string }[] }) {
   const router = useRouter();
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
@@ -318,8 +327,17 @@ export default function ProductsClient({
   const [isDeleting, startTransition] = useTransition();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showFormattingModal, setShowFormattingModal] = useState(false);
+  const [formattingModalMode, setFormattingModalMode] = useState<'configure' | 'review'>('configure');
+  const [formattingArticles, setFormattingArticles] = useState<string[] | null>(null);
   const [showEcoPosModal, setShowEcoPosModal] = useState(false);
   const [ecoPosArticles, setEcoPosArticles] = useState<string[] | undefined>(undefined);
+
+  // Whether a product is read-only for the current user because it is assigned to a colleague
+  const isProductReadOnlyForUser = useCallback((p: any): boolean => {
+    if (isAdmin || canAssignProducts) return false;
+    if (!p || !currentUserId) return false;
+    return p.assignedUserId !== currentUserId;
+  }, [isAdmin, canAssignProducts, currentUserId]);
 
   // ── Suppliers state & transfer modal (Admin only) ────────────────────────
   const [suppliersList, setSuppliersList] = useState<{ id: string; name: string }[]>(allSuppliers);
@@ -481,7 +499,13 @@ export default function ProductsClient({
     return webshopActiveFilter === 'JA' ? Boolean(p.webshopActive) : !p.webshopActive;
   }, [webshopActiveFilter]);
   const matchReady = useCallback((p: any) => webshopReadyFilter === '' || (p.readyForImport || 'NEE').toUpperCase() === webshopReadyFilter, [webshopReadyFilter]);
-  const matchAssigned = useCallback((p: any) => assignedUserFilter === '' || (assignedUserFilter === 'UNASSIGNED' ? !p.assignedUserId : p.assignedUserId === assignedUserFilter), [assignedUserFilter]);
+  const matchAssigned = useCallback((p: any) => {
+    if (assignedUserFilter === '') return true;
+    if (assignedUserFilter === 'UNASSIGNED') return !p.assignedUserId;
+    if (assignedUserFilter === 'MY_PRODUCTS') return p.assignedUserId === currentUserId;
+    if (assignedUserFilter === 'PEER_PRODUCTS') return Boolean(p.assignedUserId) && p.assignedUserId !== currentUserId;
+    return p.assignedUserId === assignedUserFilter;
+  }, [assignedUserFilter, currentUserId]);
   const matchScore = useCallback((p: any) => aiScoreFilter === '' || (aiScoreFilter === 'WITH_SCORE' ? aiScoreMap[p.internalArticleNumber] != null : aiScoreMap[p.internalArticleNumber] == null), [aiScoreFilter, aiScoreMap]);
   const matchUnread = useCallback((p: any) => unreadFilter === '' || (unreadFilter === 'UNREAD' ? unreadProducts.has(p.internalArticleNumber) : !unreadProducts.has(p.internalArticleNumber)), [unreadFilter, unreadProducts]);
   const empcoStateOf = useCallback((p: any): string => {
@@ -491,6 +515,7 @@ export default function ProductsClient({
   }, [liveEmpcoMap]);
   const matchEmpco = useCallback((p: any) => {
     if (empcoFilter === '') return true;
+    if (empcoFilter === 'PENDING_FORMATTING') return getPendingFormattingCount(p) > 0;
     const s = empcoStateOf(p);
     if (empcoFilter === 'TODO') return s === 'NONE' || s === 'STALE'; // needs (re)check
     if (empcoFilter === 'ISSUES') return s === 'FAIL' || s === 'WARNING';
@@ -608,108 +633,124 @@ export default function ProductsClient({
     );
     const userIds = new Set<string>();
     let hasUnassigned = false;
+    let hasMine = false;
+    let hasPeers = false;
     subset.forEach(p => {
       if (p.assignedUserId) {
         userIds.add(p.assignedUserId);
+        if (p.assignedUserId === currentUserId) hasMine = true;
+        else hasPeers = true;
       } else {
         hasUnassigned = true;
       }
     });
     return {
       userIds: Array.from(userIds),
-      hasUnassigned
+      hasUnassigned,
+      hasMine,
+      hasPeers,
     };
-  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchScore, matchUnread]);
+}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchScore, matchUnread, currentUserId]);
 
-  const uniqueCategories = useMemo(() => {
-    const subset = initialProducts.filter(p =>
-      matchSearch(p) &&
-      matchSupplier(p) &&
-      matchBrand(p) &&
-      matchStatus(p) &&
-      matchReady(p) &&
-      matchAssigned(p) &&
-      matchScore(p) &&
-      matchUnread(p)
-    );
-    const catSet = new Set<string>();
-    let hasUncategorized = false;
-    subset.forEach(p => {
-      const names = getProductSubcategoryNames(p);
-      if (names.length === 0) {
-        hasUncategorized = true;
-      } else {
-        names.forEach(n => catSet.add(n));
-      }
-    });
-    return {
-      names: Array.from(catSet).sort((a, b) => a.localeCompare(b, 'nl')),
-      hasUncategorized,
-    };
-  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread, getProductSubcategoryNames]);
+const uniqueCategories = useMemo(() => {
+  const subset = initialProducts.filter(p =>
+    matchSearch(p) &&
+    matchSupplier(p) &&
+    matchBrand(p) &&
+    matchStatus(p) &&
+    matchReady(p) &&
+    matchAssigned(p) &&
+    matchScore(p) &&
+    matchUnread(p)
+  );
+  const catSet = new Set<string>();
+  let hasUncategorized = false;
+  subset.forEach(p => {
+    const names = getProductSubcategoryNames(p);
+    if (names.length === 0) {
+      hasUncategorized = true;
+    } else {
+      names.forEach(n => catSet.add(n));
+    }
+  });
+  return {
+    names: Array.from(catSet).sort((a, b) => a.localeCompare(b, 'nl')),
+    hasUncategorized,
+  };
+}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread, getProductSubcategoryNames]);
 
-  // Filtered resulting list (uses all filters)
-  const filteredProducts = useMemo(() => {
-    return initialProducts.filter(p =>
-      matchSearch(p) &&
-      matchSupplier(p) &&
-      matchBrand(p) &&
-      matchCategory(p) &&
-      matchStatus(p) &&
-      matchWebshopActive(p) &&
-      matchReady(p) &&
-      matchAssigned(p) &&
-      matchScore(p) &&
-      matchUnread(p) &&
-      matchEmpco(p)
-    );
-  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchCategory, matchStatus, matchWebshopActive, matchReady, matchAssigned, matchScore, matchUnread, matchEmpco]);
+// Filtered resulting list (uses all filters)
+const filteredProducts = useMemo(() => {
+  return initialProducts.filter(p =>
+    matchSearch(p) &&
+    matchSupplier(p) &&
+    matchBrand(p) &&
+    matchCategory(p) &&
+    matchStatus(p) &&
+    matchWebshopActive(p) &&
+    matchReady(p) &&
+    matchAssigned(p) &&
+    matchScore(p) &&
+    matchUnread(p) &&
+    matchEmpco(p)
+  );
+}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchCategory, matchStatus, matchWebshopActive, matchReady, matchAssigned, matchScore, matchUnread, matchEmpco]);
 
-  // EmpCo filter option counts (based on all other filters)
-  const empcoCounts = useMemo(() => {
-    const c: Record<string, number> = { NONE: 0, STALE: 0, PASS: 0, WARNING: 0, FAIL: 0 };
-    initialProducts.forEach(p => {
-      if (matchSearch(p) && matchSupplier(p) && matchBrand(p) && matchCategory(p) && matchStatus(p) && matchReady(p) && matchAssigned(p) && matchScore(p) && matchUnread(p)) {
-        const s = empcoStateOf(p);
-        c[s] = (c[s] ?? 0) + 1;
-      }
-    });
-    return c;
-  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchCategory, matchStatus, matchReady, matchAssigned, matchScore, matchUnread, empcoStateOf]);
-
-  const totalPages = useMemo(() => {
-    if (pageSize === 'ALL') return 1;
-    return Math.ceil(filteredProducts.length / pageSize) || 1;
-  }, [filteredProducts.length, pageSize]);
-
-  const paginatedProducts = useMemo(() => {
-    if (pageSize === 'ALL') return filteredProducts;
-    const startIndex = (currentPage - 1) * pageSize;
-    return filteredProducts.slice(startIndex, startIndex + pageSize);
-  }, [filteredProducts, currentPage, pageSize]);
-
-  // Auto-sync currentPage when selectedProduct changes to a product on another page
-  useEffect(() => {
-    if (selectedProduct && pageSize !== 'ALL') {
-      const idx = filteredProducts.findIndex(p => p.internalArticleNumber === selectedProduct.internalArticleNumber);
-      if (idx !== -1) {
-        const expectedPage = Math.floor(idx / pageSize) + 1;
-        if (expectedPage !== currentPage) {
-          setCurrentPage(expectedPage);
-        }
+// EmpCo filter option counts (based on all other filters)
+const empcoCounts = useMemo(() => {
+  const c: Record<string, number> = { NONE: 0, STALE: 0, PASS: 0, WARNING: 0, FAIL: 0, PENDING_FORMATTING: 0 };
+  initialProducts.forEach(p => {
+    if (matchSearch(p) && matchSupplier(p) && matchBrand(p) && matchCategory(p) && matchStatus(p) && matchReady(p) && matchAssigned(p) && matchScore(p) && matchUnread(p)) {
+      const s = empcoStateOf(p);
+      c[s] = (c[s] ?? 0) + 1;
+      if (getPendingFormattingCount(p) > 0) {
+        c.PENDING_FORMATTING = (c.PENDING_FORMATTING ?? 0) + 1;
       }
     }
-  }, [selectedProduct, filteredProducts, pageSize, currentPage]);
+  });
+  return c;
+}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchCategory, matchStatus, matchReady, matchAssigned, matchScore, matchUnread, empcoStateOf]);
 
-  const toggleSelectAll = () => {
-    if (selectedIds.size === filteredProducts.length && filteredProducts.length > 0) {
+const totalPages = useMemo(() => {
+  if (pageSize === 'ALL') return 1;
+  return Math.ceil(filteredProducts.length / pageSize) || 1;
+}, [filteredProducts.length, pageSize]);
+
+const paginatedProducts = useMemo(() => {
+  if (pageSize === 'ALL') return filteredProducts;
+  const startIndex = (currentPage - 1) * pageSize;
+  return filteredProducts.slice(startIndex, startIndex + pageSize);
+}, [filteredProducts, currentPage, pageSize]);
+
+// Auto-sync currentPage when selectedProduct changes to a product on another page
+useEffect(() => {
+  if (selectedProduct && pageSize !== 'ALL') {
+    const idx = filteredProducts.findIndex(p => p.internalArticleNumber === selectedProduct.internalArticleNumber);
+    if (idx !== -1) {
+      const expectedPage = Math.floor(idx / pageSize) + 1;
+      if (expectedPage !== currentPage) {
+        setCurrentPage(expectedPage);
+      }
+    }
+  }
+}, [selectedProduct, filteredProducts, pageSize, currentPage]);
+
+const editableFilteredProducts = useMemo(
+  () => filteredProducts.filter(p => !isProductReadOnlyForUser(p)),
+  [filteredProducts, isProductReadOnlyForUser]
+);
+
+const toggleSelectAll = () => {
+    if (selectedIds.size === editableFilteredProducts.length && editableFilteredProducts.length > 0) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredProducts.map(p => p.internalArticleNumber)));
+      setSelectedIds(new Set(editableFilteredProducts.map(p => p.internalArticleNumber)));
     }
   };
 
   const toggleSelect = (id: string, e?: React.ChangeEvent) => {
+    const prod = initialProducts.find(p => p.internalArticleNumber === id);
+    if (prod && isProductReadOnlyForUser(prod)) return;
     const next = new Set(selectedIds);
     if (next.has(id)) next.delete(id);
     else next.add(id);
@@ -830,10 +871,16 @@ export default function ProductsClient({
       {showFormattingModal && (
         <FormattingRulePreviewModal
           isOpen={showFormattingModal}
-          onClose={() => setShowFormattingModal(false)}
-          articleNumbers={Array.from(selectedIds)}
+          onClose={() => {
+            setShowFormattingModal(false);
+            setFormattingArticles(null);
+          }}
+          articleNumbers={formattingArticles ?? Array.from(selectedIds)}
+          initialMode={formattingModalMode}
+          canUseAi={canUseAi}
           onComplete={() => {
             setSelectedIds(new Set());
+            setFormattingArticles(null);
             router.refresh();
           }}
         />
@@ -1026,7 +1073,7 @@ export default function ProductsClient({
           value={empcoFilter}
           onChange={(e) => setEmpcoFilter(e.target.value)}
         >
-          <option value="">-- EmpCo --</option>
+          <option value="">-- EmpCo & Regels --</option>
           <option value="TODO">⚖️ Te checken ({empcoCounts.NONE + empcoCounts.STALE})</option>
           <option value="NONE"> Niet gecheckt ({empcoCounts.NONE})</option>
           <option value="STALE"> 🕓 Verouderd ({empcoCounts.STALE})</option>
@@ -1034,26 +1081,39 @@ export default function ProductsClient({
           <option value="FAIL"> ⛔ Overtreding ({empcoCounts.FAIL})</option>
           <option value="WARNING"> ⚠️ Aandachtspunten ({empcoCounts.WARNING})</option>
           <option value="PASS">✅ EmpCo OK ({empcoCounts.PASS})</option>
+          <option value="PENDING_FORMATTING">✨ Formateringsvoorstellen ({empcoCounts.PENDING_FORMATTING})</option>
         </select>
-        {(isAdmin || canAssignProducts) && (
-          <select
-            className="input"
-            style={{ flex: '1 1 125px', minWidth: '115px', padding: '0.45rem 0.5rem', fontSize: '0.85rem', borderRadius: 'var(--radius)' }}
-            value={assignedUserFilter}
-            onChange={(e) => setAssignedUserFilter(e.target.value)}
-          >
-            <option value="">-- Toegewezen --</option>
-            {(availableAssignedUsers.hasUnassigned || assignedUserFilter === 'UNASSIGNED') && <option value="UNASSIGNED">[ Niet Toegewezen ]</option>}
-            {systemUsers.map(su => {
-              const hasUser = availableAssignedUsers.userIds.includes(su.id);
-              const isSelected = assignedUserFilter === su.id;
-              if (hasUser || isSelected) {
-                return <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>;
-              }
-              return null;
-            })}
-          </select>
-        )}
+          {(isAdmin || canAssignProducts || canViewRolePeers) && (
+            <select
+              className="input"
+              style={{ flex: '1 1 125px', minWidth: '115px', padding: '0.45rem 0.5rem', fontSize: '0.85rem', borderRadius: 'var(--radius)' }}
+              value={assignedUserFilter}
+              onChange={(e) => setAssignedUserFilter(e.target.value)}
+            >
+              <option value="">-- Toegewezen --</option>
+              {canViewRolePeers && !isAdmin && !canAssignProducts && (
+                <>
+                  {(availableAssignedUsers.hasMine || assignedUserFilter === 'MY_PRODUCTS') && (
+                    <option value="MY_PRODUCTS">👤 Mijn toewijzingen</option>
+                  )}
+                  {(availableAssignedUsers.hasPeers || assignedUserFilter === 'PEER_PRODUCTS') && (
+                    <option value="PEER_PRODUCTS">👁️ Collega&apos;s (Alleen lezen)</option>
+                  )}
+                </>
+              )}
+              {(availableAssignedUsers.hasUnassigned || assignedUserFilter === 'UNASSIGNED') && <option value="UNASSIGNED">[ Niet Toegewezen ]</option>}
+              {systemUsers.map(su => {
+                const hasUser = availableAssignedUsers.userIds.includes(su.id);
+                const isSelected = assignedUserFilter === su.id;
+                if (hasUser || isSelected) {
+                  const isMe = su.id === currentUserId;
+                  const label = su.email.split('@')[0] + (canViewRolePeers && !isAdmin && !canAssignProducts && !isMe ? ' (👁️ alleen lezen)' : '');
+                  return <option key={su.id} value={su.id}>{label}</option>;
+                }
+                return null;
+              })}
+            </select>
+          )}
       </div>
 
       {/* Dedicated Bulk Selection Action Bar */}
@@ -1304,7 +1364,11 @@ export default function ProductsClient({
                 id="formatting-bulk-btn"
                 type="button"
                 className="btn"
-                onClick={() => setShowFormattingModal(true)}
+                onClick={() => {
+                  setFormattingModalMode('configure');
+                  setFormattingArticles(Array.from(selectedIds));
+                  setShowFormattingModal(true);
+                }}
                 style={{
                   height: '34px',
                   padding: '0 0.75rem',
@@ -1323,6 +1387,37 @@ export default function ProductsClient({
                 title={`Formatteer ${selectedIds.size} geselecteerde producten met standaard regels`}
               >
                 ✨ Formateren ({selectedIds.size})
+              </button>
+            )}
+
+            {canApproveEmpco && (
+              <button
+                id="formatting-review-bulk-btn"
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setFormattingModalMode('review');
+                  setFormattingArticles(Array.from(selectedIds));
+                  setShowFormattingModal(true);
+                }}
+                style={{
+                  height: '34px',
+                  padding: '0 0.75rem',
+                  fontSize: '0.82rem',
+                  backgroundColor: 'white',
+                  border: '1.5px solid #6366f1',
+                  color: '#4f46e5',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontWeight: 600,
+                  borderRadius: 'var(--radius)',
+                  whiteSpace: 'nowrap',
+                }}
+                title={`Klaargezette tekst- en formateringsvoorstellen beoordelen voor ${selectedIds.size} geselecteerde producten`}
+              >
+                ✍️ Formateringsvoorstellen ({selectedIds.size})
               </button>
             )}
 
@@ -1390,17 +1485,18 @@ export default function ProductsClient({
                 <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                   <input
                     type="checkbox"
-                    checked={selectedIds.size > 0 && selectedIds.size === filteredProducts.length}
+                    disabled={editableFilteredProducts.length === 0}
+                    checked={selectedIds.size > 0 && selectedIds.size === editableFilteredProducts.length && editableFilteredProducts.length > 0}
                     ref={input => {
                       if (input) {
-                        input.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredProducts.length;
+                        input.indeterminate = selectedIds.size > 0 && selectedIds.size < editableFilteredProducts.length;
                       }
                     }}
                     onChange={toggleSelectAll}
                     style={{
                       width: '20px',
                       height: '20px',
-                      cursor: 'pointer',
+                      cursor: editableFilteredProducts.length === 0 ? 'not-allowed' : 'pointer',
                       accentColor: 'var(--primary)',
                       borderRadius: '4px'
                     }}
@@ -1408,7 +1504,7 @@ export default function ProductsClient({
                 </div>
               </th>
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:internalArticleNumber', 'Article ID')}</th>
-              {(isAdmin || canAssignProducts) && <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Toewijzing</th>}
+              {(isAdmin || canAssignProducts || canViewRolePeers) && <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Toewijzing</th>}
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:supplierId', 'Leverancier')}</th>
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:brandId', 'Merk')}</th>
               <th style={{ padding: '1.25rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{getLayoutLabel('FIELD:title', 'Title')}</th>
@@ -1420,267 +1516,356 @@ export default function ProductsClient({
             </tr>
           </thead>
           <tbody>
-            {paginatedProducts.map(product => (
-              <tr
-                key={product.id}
-                onClick={() => setSelectedProduct(product)}
-                style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background-color 0.2s', backgroundColor: selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'transparent' }}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'var(--surface-hover)'}
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'transparent'}
+                  {paginatedProducts.map(product => {
+                    const isPeerReadOnly = isProductReadOnlyForUser(product);
+                    return (
+                <tr
+                  key={product.id}
+                  onClick={() => setSelectedProduct(product)}
+                  style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background-color 0.2s', backgroundColor: selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'transparent' }}
+                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'var(--surface-hover)'}
+                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'transparent'}
+                >
+                  <td
+                    style={{ padding: '1rem 0.75rem 1rem 1.25rem', width: '48px', textAlign: 'center', verticalAlign: 'middle', cursor: isPeerReadOnly ? 'not-allowed' : 'pointer' }}
+                    onClick={e => {
+                      e.stopPropagation();
+                      if (!isPeerReadOnly) toggleSelect(product.internalArticleNumber);
+                    }}
+                    title={isPeerReadOnly ? 'Alleen lezen — product is toegewezen aan een collega' : 'Selecteer product'}
+                  >
+                    <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <input
+                        type="checkbox"
+                        disabled={isPeerReadOnly}
+                        checked={selectedIds.has(product.internalArticleNumber)}
+                        onChange={e => {
+                          e.stopPropagation();
+                          if (!isPeerReadOnly) toggleSelect(product.internalArticleNumber);
+                        }}
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                          width: '20px',
+                          height: '20px',
+                          cursor: isPeerReadOnly ? 'not-allowed' : 'pointer',
+                          opacity: isPeerReadOnly ? 0.35 : 1,
+                          accentColor: 'var(--primary)',
+                          borderRadius: '4px'
+                        }}
+                      />
+                    </div>
+                  </td>
+                  <td style={{ padding: '1.25rem', fontWeight: 600, color: 'var(--text)' }}>
+                    {(() => {
+                      const googleUrl = buildGoogleSearchUrl(product, layout);
+                      if (!googleUrl) return product.internalArticleNumber;
+                      return (
+                        <a
+                          href={googleUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          title="Google zoeken op basis van gemarkeerde velden"
+                          style={{
+                            color: 'var(--primary)',
+                            textDecoration: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.3rem',
+                            borderBottom: '1px dashed var(--primary)',
+                            paddingBottom: '1px',
+                            transition: 'opacity 0.15s',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.opacity = '0.7')}
+                          onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+                        >
+                          {product.internalArticleNumber}
+                          <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>🌐</span>
+                        </a>
+                      );
+                    })()}
+                  </td>
+                  {(isAdmin || canAssignProducts || canViewRolePeers) && (
+                    <td style={{ padding: '1.25rem' }} onClick={e => { if (isAdmin || canAssignProducts) e.stopPropagation(); }}>
+                      {(isAdmin || canAssignProducts) ? (
+                        <select
+                          value={product.assignedUserId || 'NONE'}
+                          onChange={(e) => {
+                            startTransition(async () => { await bulkAssignAction([product.internalArticleNumber], e.target.value); });
+                          }}
+                          style={{ border: 'none', backgroundColor: 'transparent', color: product.assignedUserId ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
+                        >
+                          <option value="NONE">-</option>
+                          {systemUsers.map(su => (
+                            <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>
+                          ))}
+                        </select>
+                      ) : isPeerReadOnly ? (
+                        <span
+                          title="Alleen lezen — dit product is toegewezen aan een collega met dezelfde rol"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                            padding: '0.18rem 0.55rem',
+                            borderRadius: '999px',
+                            backgroundColor: '#f1f5f9',
+                            border: '1px solid #cbd5e1',
+                            color: '#475569',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+            👁️ {product.assignedUser?.email?.split('@')[0] || '-'}
+          </span>
+          ) : (
+          <span style={{ color: 'var(--primary)', fontWeight: 600, fontSize: '0.8rem' }}>
+            {product.assignedUser?.email?.split('@')[0] || '-'}
+          </span>
+                      )}
+        </td>
+                  )}
+        <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.supplier?.name || '-'}</td>
+        <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.brand?.name || '-'}</td>
+        <td style={{ padding: '1.25rem', color: 'var(--text)', fontWeight: 500 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <span>{product.title}</span>
+            {unreadProducts.has(product.internalArticleNumber) && (
+              <span
+                title="Ongelezen berichten in interne communicatie"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
+                  backgroundColor: '#ef4444', color: 'white',
+                  fontSize: '0.6rem', fontWeight: 800,
+                  padding: '0.1rem 0.45rem', borderRadius: '1rem',
+                  flexShrink: 0, animation: 'chat-unread-pulse 2s ease-in-out infinite',
+                  whiteSpace: 'nowrap',
+                }}
               >
-                <td
-                  style={{ padding: '1rem 0.75rem 1rem 1.25rem', width: '48px', textAlign: 'center', verticalAlign: 'middle', cursor: 'pointer' }}
+                💬 nieuw
+              </span>
+            )}
+            {(() => {
+              const fmtCount = getPendingFormattingCount(product);
+              if (fmtCount <= 0 || (!canApproveEmpco && !canUseAi)) return null;
+              if (isPeerReadOnly) {
+                return (
+                  <span
+                    title={`${fmtCount} klaargezette tekst-/formateringsvoorstel(len) (alleen lezen)`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      backgroundColor: '#f3f4f6',
+                      color: '#6b7280',
+                      border: '1px solid #d1d5db',
+                      fontSize: '0.65rem',
+                      fontWeight: 700,
+                      padding: '0.12rem 0.5rem',
+                      borderRadius: '1rem',
+                      flexShrink: 0,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    ✨ {fmtCount} {fmtCount === 1 ? 'voorstel' : 'voorstellen'}
+                  </span>
+                );
+              }
+              return (
+                <button
+                  type="button"
                   onClick={e => {
                     e.stopPropagation();
-                    toggleSelect(product.internalArticleNumber);
+                    setFormattingModalMode('review');
+                    setFormattingArticles([product.internalArticleNumber]);
+                    setShowFormattingModal(true);
                   }}
-                  title="Selecteer product"
+                  title={`${fmtCount} klaargezette tekst-/formateringsvoorstel(len) bekijken, aanpassen of doorvoeren`}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    backgroundColor: '#ede9fe',
+                    color: '#6d28d9',
+                    border: '1px solid #c4b5fd',
+                    fontSize: '0.65rem',
+                    fontWeight: 700,
+                    padding: '0.12rem 0.5rem',
+                    borderRadius: '1rem',
+                    flexShrink: 0,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
                 >
-                  <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(product.internalArticleNumber)}
-                      onChange={e => {
-                        e.stopPropagation();
-                        toggleSelect(product.internalArticleNumber);
-                      }}
-                      onClick={e => e.stopPropagation()}
-                      style={{
-                        width: '20px',
-                        height: '20px',
-                        cursor: 'pointer',
-                        accentColor: 'var(--primary)',
-                        borderRadius: '4px'
-                      }}
-                    />
-                  </div>
-                </td>
-                <td style={{ padding: '1.25rem', fontWeight: 600, color: 'var(--text)' }}>
-                  {(() => {
-                    const googleUrl = buildGoogleSearchUrl(product, layout);
-                    if (!googleUrl) return product.internalArticleNumber;
-                    return (
-                      <a
-                        href={googleUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={e => e.stopPropagation()}
-                        title="Google zoeken op basis van gemarkeerde velden"
-                        style={{
-                          color: 'var(--primary)',
-                          textDecoration: 'none',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.3rem',
-                          borderBottom: '1px dashed var(--primary)',
-                          paddingBottom: '1px',
-                          transition: 'opacity 0.15s',
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.opacity = '0.7')}
-                        onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-                      >
-                        {product.internalArticleNumber}
-                        <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>🌐</span>
-                      </a>
-                    );
-                  })()}
-                </td>
-                {(isAdmin || canAssignProducts) && (
-                  <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
-                    <select
-                      value={product.assignedUserId || 'NONE'}
-                      onChange={(e) => {
-                        startTransition(async () => { await bulkAssignAction([product.internalArticleNumber], e.target.value); });
-                      }}
-                      style={{ border: 'none', backgroundColor: 'transparent', color: product.assignedUserId ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
-                    >
-                      <option value="NONE">-</option>
-                      {systemUsers.map(su => (
-                        <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>
-                      ))}
-                    </select>
-                  </td>
-                )}
-                <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.supplier?.name || '-'}</td>
-                <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.brand?.name || '-'}</td>
-                <td style={{ padding: '1.25rem', color: 'var(--text)', fontWeight: 500 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span>{product.title}</span>
-                    {unreadProducts.has(product.internalArticleNumber) && (
-                      <span
-                        title="Ongelezen berichten in interne communicatie"
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
-                          backgroundColor: '#ef4444', color: 'white',
-                          fontSize: '0.6rem', fontWeight: 800,
-                          padding: '0.1rem 0.45rem', borderRadius: '1rem',
-                          flexShrink: 0, animation: 'chat-unread-pulse 2s ease-in-out infinite',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        💬 nieuw
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td style={{ padding: '1.25rem' }}>
-                  <InlineStatusToggle
-                    product={product}
-                    isAdmin={isAdmin}
-                    selectedIds={selectedIds}
-                    onBulkStatusChange={handleBulkStatusChange}
-                  />
-                </td>
-                <td style={{ padding: '0.6rem 1.25rem' }}>
-                  <CompletenessCell product={product} layout={layout} imageCount={imageCountMap[product.internalArticleNumber] ?? 0} />
-                </td>
-                <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
-                  <AiAnalysisViewer
-                    articleNumber={product.internalArticleNumber}
-                    productTitle={product.title}
-                    score={aiScoreMap[product.internalArticleNumber] ?? null}
-                    canUseAi={canUseAi}
-                  />
-                </td>
-                <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
-                  <EmpcoViewer
-                    articleNumber={product.internalArticleNumber}
-                    productTitle={product.title}
-                    status={liveEmpcoMap[product.internalArticleNumber]?.status ?? null}
-                    stale={liveEmpcoMap[product.internalArticleNumber]?.stale ?? false}
-                    issueCount={liveEmpcoMap[product.internalArticleNumber]?.issueCount ?? 0}
-                    onOpenProduct={() => setSelectedProduct(product)}
-                    canApprove={canApproveEmpco}
-                    isAdmin={isAdmin}
-                  />
-                </td>
-                <td style={{ padding: '1.25rem' }}>
-                  <InlineReadyToggle product={product} isAdmin={isAdmin} />
-                </td>
-              </tr>
-            ))}
-            {filteredProducts.length === 0 && (
-              <tr>
-                <td colSpan={11} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>Geen producten gevonden die voldoen aan je filters.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                  ✨ {fmtCount} {fmtCount === 1 ? 'voorstel' : 'voorstellen'}
+                </button>
+              );
+            })()}
+          </div>
+        </td>
+        <td style={{ padding: '1.25rem' }}>
+          <InlineStatusToggle
+            product={product}
+            isAdmin={isAdmin}
+            isPeerReadOnly={isPeerReadOnly}
+            selectedIds={selectedIds}
+            onBulkStatusChange={handleBulkStatusChange}
+          />
+        </td>
+        <td style={{ padding: '0.6rem 1.25rem' }}>
+          <CompletenessCell product={product} layout={layout} imageCount={imageCountMap[product.internalArticleNumber] ?? 0} />
+        </td>
+        <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
+          <AiAnalysisViewer
+            articleNumber={product.internalArticleNumber}
+            productTitle={product.title}
+            score={aiScoreMap[product.internalArticleNumber] ?? null}
+            canUseAi={canUseAi}
+          />
+        </td>
+        <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
+          <EmpcoViewer
+            articleNumber={product.internalArticleNumber}
+            productTitle={product.title}
+            status={liveEmpcoMap[product.internalArticleNumber]?.status ?? null}
+            stale={liveEmpcoMap[product.internalArticleNumber]?.stale ?? false}
+            issueCount={liveEmpcoMap[product.internalArticleNumber]?.issueCount ?? 0}
+            onOpenProduct={() => setSelectedProduct(product)}
+            canApprove={canApproveEmpco && !isPeerReadOnly}
+            isAdmin={isAdmin}
+          />
+        </td>
+        <td style={{ padding: '1.25rem' }}>
+          <InlineReadyToggle product={product} isAdmin={isAdmin} />
+        </td>
+      </tr>
+      );
+            })}
+      {filteredProducts.length === 0 && (
+        <tr>
+          <td colSpan={11} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>Geen producten gevonden die voldoen aan je filters.</td>
+        </tr>
+      )}
+    </tbody>
+        </table >
+      </div >
+
+  {/* Pagination Controls */ }
+{
+  filteredProducts.length > 0 && (
+    <div className="glass" style={{
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: '0.75rem 1.5rem',
+      borderRadius: 'var(--radius)',
+      border: '1px solid var(--border)',
+      gap: '1rem',
+      flexWrap: 'wrap'
+    }}>
+      {/* Left section: Items per page */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+        <span>Producten per pagina:</span>
+        <select
+          className="input"
+          style={{ width: 'auto', padding: '0.35rem 1.75rem 0.35rem 0.75rem', fontSize: '0.875rem', cursor: 'pointer', minWidth: '85px' }}
+          value={pageSize}
+          onChange={(e) => {
+            const val = e.target.value;
+            setPageSize(val === 'ALL' ? 'ALL' : Number(val));
+            setCurrentPage(1);
+          }}
+        >
+          <option value={10}>10</option>
+          <option value={25}>25</option>
+          <option value={50}>50</option>
+          <option value={100}>100</option>
+          <option value={250}>250</option>
+          <option value="ALL">Alles</option>
+        </select>
       </div>
 
-      {/* Pagination Controls */}
-      {filteredProducts.length > 0 && (
-        <div className="glass" style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '0.75rem 1.5rem',
-          borderRadius: 'var(--radius)',
-          border: '1px solid var(--border)',
-          gap: '1rem',
-          flexWrap: 'wrap'
-        }}>
-          {/* Left section: Items per page */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-            <span>Producten per pagina:</span>
-            <select
-              className="input"
-              style={{ width: 'auto', padding: '0.35rem 1.75rem 0.35rem 0.75rem', fontSize: '0.875rem', cursor: 'pointer', minWidth: '85px' }}
-              value={pageSize}
-              onChange={(e) => {
-                const val = e.target.value;
-                setPageSize(val === 'ALL' ? 'ALL' : Number(val));
-                setCurrentPage(1);
-              }}
-            >
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-              <option value={250}>250</option>
-              <option value="ALL">Alles</option>
-            </select>
-          </div>
+      {/* Middle section: Page buttons */}
+      {pageSize !== 'ALL' && totalPages > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+          <button
+            className="btn"
+            style={{
+              padding: '0.35rem 0.75rem',
+              fontSize: '0.875rem',
+              backgroundColor: 'transparent',
+              border: '1px solid var(--border)',
+              color: currentPage === 1 ? 'var(--text-muted)' : 'var(--text)',
+              cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+              opacity: currentPage === 1 ? 0.5 : 1
+            }}
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+          >
+            Vorige
+          </button>
 
-          {/* Middle section: Page buttons */}
-          {pageSize !== 'ALL' && totalPages > 1 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+          {getPageNumbers(currentPage, totalPages).map((p, idx) => {
+            if (p === '...') {
+              return (
+                <span key={`dots-${idx}`} style={{ padding: '0.25rem 0.5rem', color: 'var(--text-muted)' }}>
+                  ...
+                </span>
+              );
+            }
+            const isSelected = p === currentPage;
+            return (
               <button
+                key={p}
                 className="btn"
                 style={{
                   padding: '0.35rem 0.75rem',
                   fontSize: '0.875rem',
-                  backgroundColor: 'transparent',
-                  border: '1px solid var(--border)',
-                  color: currentPage === 1 ? 'var(--text-muted)' : 'var(--text)',
-                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                  opacity: currentPage === 1 ? 0.5 : 1
+                  minWidth: '35px',
+                  backgroundColor: isSelected ? 'var(--primary)' : 'transparent',
+                  color: isSelected ? '#1e293b' : 'var(--text)',
+                  border: isSelected ? 'none' : '1px solid transparent',
+                  fontWeight: isSelected ? 700 : 500,
+                  cursor: 'pointer',
+                  borderRadius: 'var(--radius-sm)',
+                  transition: 'all 0.15s ease'
                 }}
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                onClick={() => setCurrentPage(p as number)}
               >
-                Vorige
+                {p}
               </button>
+            );
+          })}
 
-              {getPageNumbers(currentPage, totalPages).map((p, idx) => {
-                if (p === '...') {
-                  return (
-                    <span key={`dots-${idx}`} style={{ padding: '0.25rem 0.5rem', color: 'var(--text-muted)' }}>
-                      ...
-                    </span>
-                  );
-                }
-                const isSelected = p === currentPage;
-                return (
-                  <button
-                    key={p}
-                    className="btn"
-                    style={{
-                      padding: '0.35rem 0.75rem',
-                      fontSize: '0.875rem',
-                      minWidth: '35px',
-                      backgroundColor: isSelected ? 'var(--primary)' : 'transparent',
-                      color: isSelected ? '#1e293b' : 'var(--text)',
-                      border: isSelected ? 'none' : '1px solid transparent',
-                      fontWeight: isSelected ? 700 : 500,
-                      cursor: 'pointer',
-                      borderRadius: 'var(--radius-sm)',
-                      transition: 'all 0.15s ease'
-                    }}
-                    onClick={() => setCurrentPage(p as number)}
-                  >
-                    {p}
-                  </button>
-                );
-              })}
-
-              <button
-                className="btn"
-                style={{
-                  padding: '0.35rem 0.75rem',
-                  fontSize: '0.875rem',
-                  backgroundColor: 'transparent',
-                  border: '1px solid var(--border)',
-                  color: currentPage === totalPages ? 'var(--text-muted)' : 'var(--text)',
-                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                  opacity: currentPage === totalPages ? 0.5 : 1
-                }}
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              >
-                Volgende
-              </button>
-            </div>
-          )}
-
-          {/* Right section: Info text */}
-          <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-            Weergave {Math.min(filteredProducts.length, (currentPage - 1) * (pageSize === 'ALL' ? filteredProducts.length : pageSize) + 1)}-
-            {Math.min(filteredProducts.length, currentPage * (pageSize === 'ALL' ? filteredProducts.length : pageSize))} van{' '}
-            <strong>{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'product' : 'producten'}
-          </div>
+          <button
+            className="btn"
+            style={{
+              padding: '0.35rem 0.75rem',
+              fontSize: '0.875rem',
+              backgroundColor: 'transparent',
+              border: '1px solid var(--border)',
+              color: currentPage === totalPages ? 'var(--text-muted)' : 'var(--text)',
+              cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+              opacity: currentPage === totalPages ? 0.5 : 1
+            }}
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+          >
+            Volgende
+          </button>
         </div>
       )}
+
+      {/* Right section: Info text */}
+      <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+        Weergave {Math.min(filteredProducts.length, (currentPage - 1) * (pageSize === 'ALL' ? filteredProducts.length : pageSize) + 1)}-
+        {Math.min(filteredProducts.length, currentPage * (pageSize === 'ALL' ? filteredProducts.length : pageSize))} van{' '}
+        <strong>{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'product' : 'producten'}
+      </div>
+    </div>
+  )
+}
 
       <ProductDrawer
         product={selectedProduct}
@@ -1688,6 +1873,7 @@ export default function ProductsClient({
         onClose={() => setSelectedProduct(null)}
         fieldPermissions={isAdmin ? undefined : fieldPermissions}
         isAdmin={isAdmin}
+        canAssignProducts={canAssignProducts}
         canUseAi={canUseAi}
         canApproveEmpco={canApproveEmpco}
         layout={layout}
@@ -1716,6 +1902,6 @@ export default function ProductsClient({
         onConfirm={confirmDeleteProducts}
         onCancel={() => setShowDeleteConfirm(false)}
       />
-    </div>
+    </div >
   );
 }

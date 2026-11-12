@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState, useTransition, useRef, useCallback } from 'react';
 import ProductGallery from './ProductGallery';
-import { updateProductAction, updateProductStatusAction, updateReadyForImportAction } from '@/app/actions/product';
+import { updateProductAction, updateProductStatusAction, updateReadyForImportAction, getProductDataAction } from '@/app/actions/product';
 import ProductCopyModal from './ProductCopyModal';
 import ProductRemarksChat from './ProductRemarksChat';
 import ProductAiPanel from './ProductAiPanel';
@@ -191,383 +191,404 @@ function DrawerReadyToggle({ readyMode, internalArticleNumber, isAdmin, onChange
 }
 
 
-export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, canUseAi = false, canApproveEmpco = true, layout = [], currentUserId = '', currentUserChatColor = null, currentUserAutoMarkRemarksAsRead = true, userChatColors = {}, onPrev, onNext, aiScore = null, onEmpcoCheck, allSuppliers = [] }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, canUseAi?: boolean, canApproveEmpco?: boolean, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, currentUserAutoMarkRemarksAsRead?: boolean, userChatColors?: Record<string, string>, onPrev?: () => void, onNext?: () => void, aiScore?: number | null, onEmpcoCheck?: (articleNumber: string, status: string, stale: boolean, issueCount: number) => void, allSuppliers?: { id: string; name: string }[] }) {
-  const [isPending, startTransition] = useTransition();
-  const [pendingNavigation, setPendingNavigation] = useState<'prev' | 'next' | null>(null);
-  const [statusOverridden, setStatusOverridden] = useState(false);
-  const currentStatus = (product?.status || 'NEW').toUpperCase();
-  const [activeStatus, setActiveStatus] = useState(currentStatus);
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
-  const [chatUnreadCount, setChatUnreadCount] = useState<number>(0);
-  const initializedProductId = useRef<string | null>(null);
-  const saveModeRef = useRef<'save' | 'save_close'>('save_close');
+  export default function ProductDrawer({ product, isOpen, onClose, fieldPermissions, isAdmin = false, canAssignProducts = false, canUseAi = false, canApproveEmpco = true, layout = [], currentUserId = '', currentUserChatColor = null, currentUserAutoMarkRemarksAsRead = true, userChatColors = {}, onPrev, onNext, aiScore = null, onEmpcoCheck, allSuppliers = [] }: { product: any, isOpen: boolean, onClose: () => void, fieldPermissions?: Record<string, string>, isAdmin?: boolean, canAssignProducts?: boolean, canUseAi?: boolean, canApproveEmpco?: boolean, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, currentUserAutoMarkRemarksAsRead?: boolean, userChatColors?: Record<string, string>, onPrev?: () => void, onNext?: () => void, aiScore?: number | null, onEmpcoCheck?: (articleNumber: string, status: string, stale: boolean, issueCount: number) => void, allSuppliers?: { id: string; name: string }[] }) {
+    const [isPending, startTransition] = useTransition();
+    const [pendingNavigation, setPendingNavigation] = useState<'prev' | 'next' | null>(null);
+    const [statusOverridden, setStatusOverridden] = useState(false);
+    const currentStatus = (product?.status || 'NEW').toUpperCase();
+    const [activeStatus, setActiveStatus] = useState(currentStatus);
+    const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+    const [chatUnreadCount, setChatUnreadCount] = useState<number>(0);
+    const initializedProductId = useRef<string | null>(null);
+    const saveModeRef = useRef<'save' | 'save_close'>('save_close');
 
-  const lockStatus = (product?.readyForImport || '').toUpperCase();
-  const isGloballyLocked = !isAdmin && (lockStatus === 'JA' || lockStatus === 'REVIEW' || lockStatus === 'R' || lockStatus === 'Y');
+    // Deep clone data to allow programmatic UI refreshes without mutations
+    const [localProductData, setLocalProductData] = useState<any>(product);
+    const [formKey, setFormKey] = useState(0);
+    const [showCopyModal, setShowCopyModal] = useState(false);
+    const [copySuccess, setCopySuccess] = useState(false);
+    const [showTransferSupplierModal, setShowTransferSupplierModal] = useState(false);
 
-  // Deep clone data to allow programmatic UI refreshes without mutations
-  const [localProductData, setLocalProductData] = useState<any>(product);
-  const [formKey, setFormKey] = useState(0);
-  const [showCopyModal, setShowCopyModal] = useState(false);
-  const [copySuccess, setCopySuccess] = useState(false);
-  const [showTransferSupplierModal, setShowTransferSupplierModal] = useState(false);
+    const lockStatus = (product?.readyForImport || '').toUpperCase();
+    const isPeerReadOnly = !isAdmin && !canAssignProducts && Boolean(currentUserId) && (product?.assignedUserId ?? localProductData?.assignedUserId) !== currentUserId;
+    const isGloballyLocked = (!isAdmin && (lockStatus === 'JA' || lockStatus === 'REVIEW' || lockStatus === 'R' || lockStatus === 'Y')) || isPeerReadOnly;
 
-  const [isDirty, setIsDirty] = useState(false);
-  const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
-  const [showWebEnrichModal, setShowWebEnrichModal] = useState(false);
-  const formRef = React.useRef<HTMLFormElement>(null);
+    const [isDirty, setIsDirty] = useState(false);
+    const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
+    const [showWebEnrichModal, setShowWebEnrichModal] = useState(false);
+    const formRef = React.useRef<HTMLFormElement>(null);
 
-  // AI field suggestions — narrative loaded from DB when drawer opens
-  const [analysisNarrative, setAnalysisNarrative] = useState<string | null>(null);
+    // AI field suggestions — narrative loaded from DB when drawer opens
+    const [analysisNarrative, setAnalysisNarrative] = useState<string | null>(null);
 
-  // EmpCo + field history
-  const [empcoFields, setEmpcoFields] = useState<Set<string>>(new Set());     // fields changed via EmpCo suggestion
-  const [restoreFields, setRestoreFields] = useState<Set<string>>(new Set()); // fields restored from history
-  const [empcoRefreshKey, setEmpcoRefreshKey] = useState(0);                  // bump after save → reload EmpCo status
-  const [showHistory, setShowHistory] = useState(false);
-  const [formattingModalSection, setFormattingModalSection] = useState<string | null>(null);
-  const [showEcoPosModal, setShowEcoPosModal] = useState(false);
+    // EmpCo + field history
+    const [empcoFields, setEmpcoFields] = useState<Set<string>>(new Set());     // fields changed via EmpCo suggestion
+    const [restoreFields, setRestoreFields] = useState<Set<string>>(new Set()); // fields restored from history
+    const [empcoRefreshKey, setEmpcoRefreshKey] = useState(0);                  // bump after save → reload EmpCo status
+    const [showHistory, setShowHistory] = useState(false);
+    const [formattingModalSection, setFormattingModalSection] = useState<string | null>(null);
+    const [formattingModalMode, setFormattingModalMode] = useState<'configure' | 'review'>('configure');
+    const [showEcoPosModal, setShowEcoPosModal] = useState(false);
 
-  useEffect(() => {
-    if (isOpen && product?.internalArticleNumber !== initializedProductId.current) {
-      initializedProductId.current = product?.internalArticleNumber || null;
-      setActiveStatus((product?.status || 'NEW').toUpperCase());
-      setStatusOverridden(false);
-      setLocalProductData(product ? JSON.parse(JSON.stringify(product)) : null);
-      setFormKey(k => k + 1);
-      setIsDirty(false);
-      setShowUnsavedWarning(false);
-      setEmpcoFields(new Set());
-      setRestoreFields(new Set());
-      setShowHistory(false);
-      setChatUnreadCount(0);
+    const pendingFormattingCount =
+      localProductData?.customData?._pendingFormatting &&
+        typeof localProductData.customData._pendingFormatting === 'object'
+        ? Object.keys(localProductData.customData._pendingFormatting).length
+        : 0;
 
-      const initialCollapsed: Record<string, boolean> = {};
-      layout.forEach(s => {
-        if (s.fields?.some((f: any) => f.type === 'chat')) {
-          initialCollapsed[s.id] = true;
-        }
-      });
-      setCollapsedSections(initialCollapsed);
-    } else if (!isOpen) {
-      initializedProductId.current = null;
-    }
-  }, [product, isOpen, layout]);
-
-  // Load the AI analysis narrative for field suggestions (canUseAi users only)
-  useEffect(() => {
-    if (!isOpen || !canUseAi || !product?.internalArticleNumber) { setAnalysisNarrative(null); return; }
-    fetch(`/api/ai/analysis?article=${encodeURIComponent(product.internalArticleNumber)}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (d?.analysis?.response) {
-          const raw: string = d.analysis.response;
-          const idx = raw.lastIndexOf('```json');
-          setAnalysisNarrative(idx >= 0 ? raw.slice(0, idx).trim() : raw.trim());
-        } else {
-          setAnalysisNarrative(null);
-        }
-      })
-      .catch(() => setAnalysisNarrative(null));
-  }, [isOpen, product?.internalArticleNumber, canUseAi]);
-
-  const handleCloseAttempt = () => {
-    if (isDirty) {
-      setPendingNavigation(null);
-      setShowUnsavedWarning(true);
-    } else {
-      onClose();
-    }
-  };
-
-  const handleNavigateAttempt = (direction: 'prev' | 'next') => {
-    if (isDirty) {
-      setPendingNavigation(direction);
-      setShowUnsavedWarning(true);
-    } else {
-      if (direction === 'prev' && onPrev) onPrev();
-      if (direction === 'next' && onNext) onNext();
-    }
-  };
-
-  const handleCopyCommit = (injectedData: any) => {
-    const fresh = { ...localProductData, ...injectedData };
-    if (injectedData.customData) {
-      fresh.customData = {
-        ...(localProductData?.customData || {}),
-        ...injectedData.customData
-      };
-    }
-    setLocalProductData(fresh);
-    setFormKey(k => k + 1);
-    setShowCopyModal(false);
-    setIsDirty(true);
-
-    setCopySuccess(true);
-    setTimeout(() => setCopySuccess(false), 4000);
-  };
-
-  const getStatusColor = (status: string) => {
-    switch ((status || 'NEW').toUpperCase()) {
-      case 'NEW': return 'var(--primary)';
-      case 'EDIT': return 'var(--color-mustard)';
-      case 'CHECK': return '#3b82f6';
-      case 'DONE': return '#10b981';
-      default: return 'var(--text-muted)';
-    }
-  };
-
-  // Lock background scroll when drawer is open — prevents double scrollbar
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
-  }, [isOpen]);
-
-  // Handle escape key and navigation arrows
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen || showUnsavedWarning) return;
-      const isLightboxOpen = !!document.querySelector('[data-lightbox="true"]');
-
-      if (e.key === 'Escape') {
-        if (isLightboxOpen) return;
-        if (showEcoPosModal) {
-          e.preventDefault();
-          setShowEcoPosModal(false);
-          return;
-        }
-        if (formattingModalSection) {
-          e.preventDefault();
-          setFormattingModalSection(null);
-          return;
-        }
-        if (showTransferSupplierModal) {
-          e.preventDefault();
-          setShowTransferSupplierModal(false);
-          return;
-        }
-        if (showHistory) {
-          e.preventDefault();
-          setShowHistory(false);
-          return;
-        }
-        if (showWebEnrichModal) {
-          e.preventDefault();
-          setShowWebEnrichModal(false);
-          return;
-        }
-        if (showCopyModal) {
-          e.preventDefault();
-          setShowCopyModal(false);
-          return;
-        }
-        if (isDirty) {
-          setPendingNavigation(null);
-          setShowUnsavedWarning(true);
-        } else {
-          onClose();
-        }
-      } else if (
-        (e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
-        !showCopyModal &&
-        !showEcoPosModal &&
-        !formattingModalSection &&
-        !showTransferSupplierModal &&
-        !showHistory &&
-        !showWebEnrichModal
-      ) {
-        const active = document.activeElement;
-        const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || (active as HTMLElement).isContentEditable);
-        if (!isInput && !isLightboxOpen) {
-          e.preventDefault();
-          const direction = e.key === 'ArrowLeft' ? 'prev' : 'next';
-          if (direction === 'prev' && !onPrev) return;
-          if (direction === 'next' && !onNext) return;
-
-          if (isDirty) {
-            setPendingNavigation(direction);
-            setShowUnsavedWarning(true);
-          } else {
-            if (direction === 'prev') onPrev!();
-            if (direction === 'next') onNext!();
-          }
-        }
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    isOpen,
-    isDirty,
-    showUnsavedWarning,
-    showCopyModal,
-    showEcoPosModal,
-    formattingModalSection,
-    showTransferSupplierModal,
-    showHistory,
-    showWebEnrichModal,
-    onClose,
-    onPrev,
-    onNext,
-  ]);
-
-  const handleSubmit = (formData: FormData) => {
-    // Auto-fallback: if the user did NOT touch the status dropdown during this edit session,
-    // we forcibly intercept the form save and tag the product as 'EDIT'.
-    // If the status is already 'DONE', we keep it 'DONE'.
-    if (!statusOverridden && currentStatus !== 'DONE' && formData.get('status') !== 'EDIT') {
-      formData.set('status', 'EDIT');
-    }
-
-    // Always use the header's readyForImport value if multiple exist in the DOM
-    const readyVal = formData.getAll('readyForImport')[0];
-    if (readyVal) {
-      formData.set('readyForImport', readyVal);
-    }
-
-    startTransition(async () => {
-      if (product?.internalArticleNumber) {
-        await updateProductAction(product.internalArticleNumber, formData);
+    useEffect(() => {
+      if (isOpen && product?.internalArticleNumber !== initializedProductId.current) {
+        initializedProductId.current = product?.internalArticleNumber || null;
+        setActiveStatus((product?.status || 'NEW').toUpperCase());
+        setStatusOverridden(false);
+        setLocalProductData(product ? JSON.parse(JSON.stringify(product)) : null);
+        setFormKey(k => k + 1);
         setIsDirty(false);
+        setShowUnsavedWarning(false);
         setEmpcoFields(new Set());
         setRestoreFields(new Set());
-        setEmpcoRefreshKey(k => k + 1);
+        setShowHistory(false);
+        setChatUnreadCount(0);
 
-        if (pendingNavigation === 'prev' && onPrev) { onPrev(); setPendingNavigation(null); }
-        else if (pendingNavigation === 'next' && onNext) { onNext(); setPendingNavigation(null); }
-        else if (saveModeRef.current === 'save_close') { onClose(); }
-      }
-    });
-  };
-
-  // Apply an AI-suggested value directly to the DOM input (non-destructive — no re-mount)
-  const applyAiSuggestion = (fieldKey: string, value: string) => {
-    const form = formRef.current;
-    if (!form) return;
-    let el = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${fieldKey}"]`);
-    if (!el && fieldKey === 'longDescription') {
-      el = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="description"]`);
-    }
-    if (!el && fieldKey === 'description') {
-      el = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="longDescription"]`);
-    }
-    if (el) { el.value = value; setIsDirty(true); }
-  };
-
-  const applyAiSectionSuggestions = (suggestions: Record<string, string>) => {
-    Object.entries(suggestions).forEach(([key, value]) => {
-      applyAiSuggestion(key, value);
-    });
-  };
-
-  const handleFormattingComplete = (appliedItems?: AppliedFormattingChange[]) => {
-    setFormattingModalSection(null);
-    if (appliedItems && appliedItems.length > 0 && localProductData) {
-      const thisProduct = appliedItems.find(i => i.articleNumber === localProductData.internalArticleNumber);
-      if (thisProduct) {
-        const patch: Record<string, any> = {};
-        thisProduct.changes.forEach(c => {
-          patch[c.fieldKey] = c.newValue;
-          applyAiSuggestion(c.fieldKey, c.newValue);
+        const initialCollapsed: Record<string, boolean> = {};
+        layout.forEach(s => {
+          if (s.fields?.some((f: any) => f.type === 'chat')) {
+            initialCollapsed[s.id] = true;
+          }
         });
-        setLocalProductData((prev: any) => ({ ...prev, ...patch }));
-        setIsDirty(false);
-        setEmpcoRefreshKey(k => k + 1);
+        setCollapsedSections(initialCollapsed);
+      } else if (!isOpen) {
+        initializedProductId.current = null;
       }
-    }
-  };
+    }, [product, isOpen, layout]);
 
-  // ── EmpCo helpers ───────────────────────────────────────────────────────────
-  const findFormField = (fieldKey: string) => {
-    const form = formRef.current;
-    if (!form) return null;
-    const q = (n: string) =>
-      form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${n}"]:not([type="hidden"])`) ??
-      form.querySelector<HTMLInputElement>(`input[data-empco-fallback="true"][name="${n}"]`);
-    let el = q(fieldKey);
-    if (!el && fieldKey === 'longDescription') el = q('description');
-    if (!el && fieldKey === 'description') el = q('longDescription');
-    if (!el && fieldKey === 'shortDescription') el = q('seoTitle');
-    return el;
-  };
+    // Load the AI analysis narrative for field suggestions (canUseAi users only)
+    useEffect(() => {
+      if (!isOpen || !canUseAi || !product?.internalArticleNumber) { setAnalysisNarrative(null); return; }
+      fetch(`/api/ai/analysis?article=${encodeURIComponent(product.internalArticleNumber)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (d?.analysis?.response) {
+            const raw: string = d.analysis.response;
+            const idx = raw.lastIndexOf('```json');
+            setAnalysisNarrative(idx >= 0 ? raw.slice(0, idx).trim() : raw.trim());
+          } else {
+            setAnalysisNarrative(null);
+          }
+        })
+        .catch(() => setAnalysisNarrative(null));
+    }, [isOpen, product?.internalArticleNumber, canUseAi]);
 
-  /** Current (possibly unsaved) values of all form inputs, keyed by form key */
-  const getLiveFormValues = useCallback((): Record<string, string> => {
-    const out: Record<string, string> = {};
-    const form = formRef.current;
-    if (!form) return out;
-    for (const [k, v] of new FormData(form).entries()) {
-      if (typeof v !== 'string' || k.startsWith('_')) continue;
-      if (out[k] === undefined) out[k] = v; // first occurrence wins (header vs. body duplicates)
-    }
-    if (out.description !== undefined && out.longDescription === undefined) out.longDescription = out.description;
-    return out;
-  }, []);
+    const handleCloseAttempt = () => {
+      if (isDirty) {
+        setPendingNavigation(null);
+        setShowUnsavedWarning(true);
+      } else {
+        onClose();
+      }
+    };
 
-  /** Replace an offending fragment in a form field with the EmpCo-compliant suggestion */
-  const applyEmpcoFix = (fieldKey: string, original: string, replacement: string): ApplyFixResult => {
-    if (isGloballyLocked) return { ok: false, message: 'Product is vergrendeld' };
-    const el = findFormField(fieldKey);
-    if (!el || el.readOnly || el.disabled) return { ok: false, message: 'Veld niet bewerkbaar' };
-    const current = el.value || (localProductData?.[fieldKey] != null ? String(localProductData[fieldKey]) : '');
+    const handleNavigateAttempt = (direction: 'prev' | 'next') => {
+      if (isDirty) {
+        setPendingNavigation(direction);
+        setShowUnsavedWarning(true);
+      } else {
+        if (direction === 'prev' && onPrev) onPrev();
+        if (direction === 'next' && onNext) onNext();
+      }
+    };
 
-    const next = replaceEmpcoFragment(current, original, replacement);
-    if (next === null) return { ok: false, message: 'Tekst niet (meer) gevonden — pas handmatig aan' };
+    const handleCopyCommit = (injectedData: any) => {
+      const fresh = { ...localProductData, ...injectedData };
+      if (injectedData.customData) {
+        fresh.customData = {
+          ...(localProductData?.customData || {}),
+          ...injectedData.customData
+        };
+      }
+      setLocalProductData(fresh);
+      setFormKey(k => k + 1);
+      setShowCopyModal(false);
+      setIsDirty(true);
 
-    el.value = next;
-    const canonicalKey = fieldKey === 'description' ? 'longDescription' : fieldKey;
-    setLocalProductData((prev: any) => (prev ? { ...prev, [canonicalKey]: next } : prev));
-    setIsDirty(true);
-    setEmpcoFields(prev => new Set(prev).add(canonicalKey));
-    return { ok: true };
-  };
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 4000);
+    };
 
-  /** Put a previous value (from history) back into the form */
-  const restoreFieldValue = (fieldKey: string, value: string): boolean => {
-    if (isGloballyLocked) return false;
-    const el = findFormField(fieldKey);
-    if (!el || el.readOnly || el.disabled) return false;
-    el.value = value;
-    setIsDirty(true);
-    setRestoreFields(prev => new Set(prev).add(fieldKey));
-    setEmpcoFields(prev => { const n = new Set(prev); n.delete(fieldKey); return n; });
-    return true;
-  };
+    const getStatusColor = (status: string) => {
+      switch ((status || 'NEW').toUpperCase()) {
+        case 'NEW': return 'var(--primary)';
+        case 'EDIT': return 'var(--color-mustard)';
+        case 'CHECK': return '#3b82f6';
+        case 'DONE': return '#10b981';
+        default: return 'var(--text-muted)';
+      }
+    };
 
-  /** Save the current form directly from within the EmpCo panel */
-  const handleSaveFromEmpco = useCallback(async () => {
-    const artNum = product?.internalArticleNumber || localProductData?.internalArticleNumber;
-    if (!formRef.current || !artNum) return;
-    saveModeRef.current = 'save';
-    const formData = new FormData(formRef.current);
+    // Lock background scroll when drawer is open — prevents double scrollbar
+    useEffect(() => {
+      if (isOpen) {
+        document.body.style.overflow = 'hidden';
+      } else {
+        document.body.style.overflow = '';
+      }
+      return () => { document.body.style.overflow = ''; };
+    }, [isOpen]);
 
-    if (!statusOverridden && currentStatus !== 'DONE' && formData.get('status') !== 'EDIT') {
-      formData.set('status', 'EDIT');
-    }
-    const readyVal = formData.getAll('readyForImport')[0];
-    if (readyVal) {
-      formData.set('readyForImport', readyVal);
-    }
+    // Handle escape key and navigation arrows
+    useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (!isOpen || showUnsavedWarning) return;
+        const isLightboxOpen = !!document.querySelector('[data-lightbox="true"]');
 
-    await new Promise<void>((resolve, reject) => {
+        if (e.key === 'Escape') {
+          if (isLightboxOpen) return;
+          if (showEcoPosModal) {
+            e.preventDefault();
+            setShowEcoPosModal(false);
+            return;
+          }
+          if (formattingModalSection) {
+            e.preventDefault();
+            setFormattingModalSection(null);
+            return;
+          }
+          if (showTransferSupplierModal) {
+            e.preventDefault();
+            setShowTransferSupplierModal(false);
+            return;
+          }
+          if (showHistory) {
+            e.preventDefault();
+            setShowHistory(false);
+            return;
+          }
+          if (showWebEnrichModal) {
+            e.preventDefault();
+            setShowWebEnrichModal(false);
+            return;
+          }
+          if (showCopyModal) {
+            e.preventDefault();
+            setShowCopyModal(false);
+            return;
+          }
+          if (isDirty) {
+            setPendingNavigation(null);
+            setShowUnsavedWarning(true);
+          } else {
+            onClose();
+          }
+        } else if (
+          (e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
+          !showCopyModal &&
+          !showEcoPosModal &&
+          !formattingModalSection &&
+          !showTransferSupplierModal &&
+          !showHistory &&
+          !showWebEnrichModal
+        ) {
+          const active = document.activeElement;
+          const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || (active as HTMLElement).isContentEditable);
+          if (!isInput && !isLightboxOpen) {
+            e.preventDefault();
+            const direction = e.key === 'ArrowLeft' ? 'prev' : 'next';
+            if (direction === 'prev' && !onPrev) return;
+            if (direction === 'next' && !onNext) return;
+
+            if (isDirty) {
+              setPendingNavigation(direction);
+              setShowUnsavedWarning(true);
+            } else {
+              if (direction === 'prev') onPrev!();
+              if (direction === 'next') onNext!();
+            }
+          }
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [
+      isOpen,
+      isDirty,
+      showUnsavedWarning,
+      showCopyModal,
+      showEcoPosModal,
+      formattingModalSection,
+      showTransferSupplierModal,
+      showHistory,
+      showWebEnrichModal,
+      onClose,
+      onPrev,
+      onNext,
+    ]);
+
+    const handleSubmit = (formData: FormData) => {
+      if (isGloballyLocked) return;
+      // Auto-fallback: if the user did NOT touch the status dropdown during this edit session,
+      // we forcibly intercept the form save and tag the product as 'EDIT'.
+      // If the status is already 'DONE', we keep it 'DONE'.
+      if (!statusOverridden && currentStatus !== 'DONE' && formData.get('status') !== 'EDIT') {
+        formData.set('status', 'EDIT');
+      }
+
+      // Always use the header's readyForImport value if multiple exist in the DOM
+      const readyVal = formData.getAll('readyForImport')[0];
+      if (readyVal) {
+        formData.set('readyForImport', readyVal);
+      }
+
       startTransition(async () => {
-        try {
-          await updateProductAction(artNum, formData);
+        if (product?.internalArticleNumber) {
+          await updateProductAction(product.internalArticleNumber, formData);
           setIsDirty(false);
           setEmpcoFields(new Set());
           setRestoreFields(new Set());
           setEmpcoRefreshKey(k => k + 1);
-          resolve();
-        } catch (err) {
-          reject(err);
+
+          if (pendingNavigation === 'prev' && onPrev) { onPrev(); setPendingNavigation(null); }
+          else if (pendingNavigation === 'next' && onNext) { onNext(); setPendingNavigation(null); }
+          else if (saveModeRef.current === 'save_close') { onClose(); }
         }
       });
-    });
-  }, [product, localProductData, statusOverridden, currentStatus]);
+    };
+
+    // Apply an AI-suggested value directly to the DOM input (non-destructive — no re-mount)
+    const applyAiSuggestion = (fieldKey: string, value: string) => {
+      const form = formRef.current;
+      if (!form) return;
+      let el = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${fieldKey}"]`);
+      if (!el && fieldKey === 'longDescription') {
+        el = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="description"]`);
+      }
+      if (!el && fieldKey === 'description') {
+        el = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="longDescription"]`);
+      }
+      if (el) { el.value = value; setIsDirty(true); }
+    };
+
+    const applyAiSectionSuggestions = (suggestions: Record<string, string>) => {
+      Object.entries(suggestions).forEach(([key, value]) => {
+        applyAiSuggestion(key, value);
+      });
+    };
+
+    const handleFormattingComplete = async (appliedItems?: AppliedFormattingChange[]) => {
+      setFormattingModalSection(null);
+      const artNum = localProductData?.internalArticleNumber;
+      if (appliedItems && appliedItems.length > 0 && localProductData) {
+        const thisProduct = appliedItems.find(i => i.articleNumber === localProductData.internalArticleNumber);
+        if (thisProduct) {
+          const patch: Record<string, any> = {};
+          thisProduct.changes.forEach(c => {
+            patch[c.fieldKey] = c.newValue;
+            applyAiSuggestion(c.fieldKey, c.newValue);
+          });
+          setLocalProductData((prev: any) => ({ ...prev, ...patch }));
+          setFormKey(k => k + 1);
+          setIsDirty(false);
+          setEmpcoRefreshKey(k => k + 1);
+        }
+      }
+      if (artNum) {
+        const fresh = await getProductDataAction(artNum);
+        if (fresh) {
+          setLocalProductData((prev: any) => ({
+            ...prev,
+            ...fresh,
+          }));
+        }
+      }
+    };
+
+    // ── EmpCo helpers ───────────────────────────────────────────────────────────
+    const findFormField = (fieldKey: string) => {
+      const form = formRef.current;
+      if (!form) return null;
+      const q = (n: string) =>
+        form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${n}"]:not([type="hidden"])`) ??
+        form.querySelector<HTMLInputElement>(`input[data-empco-fallback="true"][name="${n}"]`);
+      let el = q(fieldKey);
+      if (!el && fieldKey === 'longDescription') el = q('description');
+      if (!el && fieldKey === 'description') el = q('longDescription');
+      if (!el && fieldKey === 'shortDescription') el = q('seoTitle');
+      return el;
+    };
+
+    /** Current (possibly unsaved) values of all form inputs, keyed by form key */
+    const getLiveFormValues = useCallback((): Record<string, string> => {
+      const out: Record<string, string> = {};
+      const form = formRef.current;
+      if (!form) return out;
+      for (const [k, v] of new FormData(form).entries()) {
+        if (typeof v !== 'string' || k.startsWith('_')) continue;
+        if (out[k] === undefined) out[k] = v; // first occurrence wins (header vs. body duplicates)
+      }
+      if (out.description !== undefined && out.longDescription === undefined) out.longDescription = out.description;
+      return out;
+    }, []);
+
+    /** Replace an offending fragment in a form field with the EmpCo-compliant suggestion */
+    const applyEmpcoFix = (fieldKey: string, original: string, replacement: string): ApplyFixResult => {
+      if (isGloballyLocked) return { ok: false, message: 'Product is alleen-lezen / vergrendeld' };
+      const el = findFormField(fieldKey);
+      if (!el || el.readOnly || el.disabled) return { ok: false, message: 'Veld niet bewerkbaar' };
+      const current = el.value || (localProductData?.[fieldKey] != null ? String(localProductData[fieldKey]) : '');
+
+      const next = replaceEmpcoFragment(current, original, replacement);
+      if (next === null) return { ok: false, message: 'Tekst niet (meer) gevonden — pas handmatig aan' };
+
+      el.value = next;
+      const canonicalKey = fieldKey === 'description' ? 'longDescription' : fieldKey;
+      setLocalProductData((prev: any) => (prev ? { ...prev, [canonicalKey]: next } : prev));
+      setIsDirty(true);
+      setEmpcoFields(prev => new Set(prev).add(canonicalKey));
+      return { ok: true };
+    };
+
+    /** Put a previous value (from history) back into the form */
+    const restoreFieldValue = (fieldKey: string, value: string): boolean => {
+      if (isGloballyLocked) return false;
+      const el = findFormField(fieldKey);
+      if (!el || el.readOnly || el.disabled) return false;
+      el.value = value;
+      setIsDirty(true);
+      setRestoreFields(prev => new Set(prev).add(fieldKey));
+      setEmpcoFields(prev => { const n = new Set(prev); n.delete(fieldKey); return n; });
+      return true;
+    };
+
+    /** Save the current form directly from within the EmpCo panel */
+    const handleSaveFromEmpco = useCallback(async () => {
+      if (isGloballyLocked) return;
+      const artNum = product?.internalArticleNumber || localProductData?.internalArticleNumber;
+      if (!formRef.current || !artNum) return;
+      saveModeRef.current = 'save';
+      const formData = new FormData(formRef.current);
+
+      if (!statusOverridden && currentStatus !== 'DONE' && formData.get('status') !== 'EDIT') {
+        formData.set('status', 'EDIT');
+      }
+      const readyVal = formData.getAll('readyForImport')[0];
+      if (readyVal) {
+        formData.set('readyForImport', readyVal);
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        startTransition(async () => {
+          try {
+            await updateProductAction(artNum, formData);
+            setIsDirty(false);
+            setEmpcoFields(new Set());
+            setRestoreFields(new Set());
+            setEmpcoRefreshKey(k => k + 1);
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        });
+      });
+  }, [product, localProductData, statusOverridden, currentStatus, isGloballyLocked]);
 
   // Extract current product specifications and form values to provide rich context to AI suggestions
   const getLiveProductContext = useCallback(() => {
@@ -611,7 +632,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
 
     if (data.customData && typeof data.customData === 'object') {
       Object.entries(data.customData).forEach(([k, v]) => {
-        if (v != null && v !== '') lines.push(`- ${k}: ${v}`);
+        if (!k.startsWith('_') && v != null && v !== '') lines.push(`- ${k}: ${v}`);
       });
     }
 
@@ -853,7 +874,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
     const computedHeight = `${Math.max(38, heightMultiplier * 40)}px`;
 
     if (f.id === 'FIELD:media' || f.type === 'media') {
-      const action = isAdmin ? 'WRITE' : (fieldPermissions?.[f.id] ?? 'READ');
+      const action = isGloballyLocked ? 'READ' : (isAdmin ? 'WRITE' : (fieldPermissions?.[f.id] ?? 'READ'));
       if (action === 'HIDDEN') return null;
       let mediaSpan = f.width ? Number(f.width) : 7;
       if (isNaN(mediaSpan) || f.width === 'full') mediaSpan = 24;
@@ -869,7 +890,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
           }}
           onChange={(e) => e.stopPropagation()}
         >
-          <ProductGallery articleNumber={localProductData?.internalArticleNumber} canUseAi={canUseAi} />
+          <ProductGallery articleNumber={localProductData?.internalArticleNumber} canUseAi={canUseAi && !isGloballyLocked} readOnly={action === 'READ'} />
         </div>
       );
     } else if (f.type === 'chat') {
@@ -1022,7 +1043,9 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
             })()}
             <div style={{ padding: '2rem 3rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, backgroundColor: 'rgba(255,255,255,0.95)', zIndex: 10, backdropFilter: 'blur(8px)' }}>
               <div>
-                <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text)' }}>Edit Product #{localProductData.internalArticleNumber}</h2>
+                <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text)' }}>
+                  {isPeerReadOnly ? 'Bekijk Product' : 'Edit Product'} #{localProductData.internalArticleNumber}
+                </h2>
                 {/* Last edited info */}
                 {(localProductData.updatedAt || localProductData.lastEditedByUser) && (
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -1078,6 +1101,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                       value={activeStatus}
                       disabled={isGloballyLocked}
                       onChange={(e) => {
+                        if (isGloballyLocked) return;
                         const newStatus = e.target.value;
                         setStatusOverridden(true);
                         setActiveStatus(newStatus);
@@ -1101,7 +1125,8 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                         backgroundRepeat: 'no-repeat',
                         backgroundPosition: 'right 2px center',
                         backgroundSize: '16px',
-                        cursor: 'pointer'
+                        cursor: isGloballyLocked ? 'not-allowed' : 'pointer',
+                        opacity: isGloballyLocked ? 0.65 : 1,
                       }}
                     >
                       {['NEW', 'EDIT', 'CHECK', 'DONE'].map(s => (
@@ -1139,7 +1164,7 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                           getLiveValues={getLiveFormValues}
                           applyFix={applyEmpcoFix}
                           canEdit={!isGloballyLocked && canApproveEmpco}
-                          canRunCheck={canUseAi}
+                          canRunCheck={canUseAi && !isPeerReadOnly}
                           isAdmin={isAdmin}
                           onOpenHistory={() => setShowHistory(true)}
                           refreshKey={empcoRefreshKey}
@@ -1161,14 +1186,35 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                       >
                         🕘 Historie
                       </button>
-                      {canUseAi && !isGloballyLocked && (
+                      {(canUseAi || canApproveEmpco) && !isGloballyLocked && (
                         <button
                           type="button"
-                          onClick={() => setFormattingModalSection('ALL')}
-                          title="Formatteer productteksten volgens vaste regels"
-                          style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                          onClick={() => {
+                            setFormattingModalMode(!canUseAi || pendingFormattingCount > 0 ? 'review' : 'configure');
+                            setFormattingModalSection('ALL');
+                          }}
+                          title={
+                            pendingFormattingCount > 0
+                              ? `Er staan ${pendingFormattingCount} klaargezette formateringsvoorstellen klaar voor review`
+                              : canUseAi
+                                ? 'Formatteer productteksten volgens vaste regels'
+                                : 'Bekijk klaargezette formateringsvoorstellen'
+                          }
+                          style={{
+                            padding: '0.25rem 0.6rem',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            backgroundColor: pendingFormattingCount > 0 ? '#f3e8ff' : '#eff6ff',
+                            color: pendingFormattingCount > 0 ? '#6d28d9' : '#1d4ed8',
+                            border: pendingFormattingCount > 0 ? '1.5px solid #c4b5fd' : '1px solid #bfdbfe',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.3rem',
+                          }}
                         >
-                          ✨ Regels
+                          ✨ Regels{pendingFormattingCount > 0 ? ` (${pendingFormattingCount})` : ''}
                         </button>
                       )}
                       {isAdmin && !isGloballyLocked && (
@@ -1188,26 +1234,30 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                           articleNumber={localProductData.internalArticleNumber}
                           productTitle={localProductData.title}
                           score={aiScore}
-                          canUseAi={canUseAi}
+                          canUseAi={canUseAi && !isPeerReadOnly}
                           fallbackIcon={true}
                         />
-                        <ProductAiPanel product={localProductData} layout={layout} isAdmin={isAdmin} />
-                        <button
-                          type="button"
-                          onClick={() => setShowWebEnrichModal(true)}
-                          title="Online productinformatie zoeken en automatisch invullen"
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
-                            padding: '0.4rem 0.85rem', borderRadius: 'var(--radius)',
-                            border: '1px solid #93c5fd', backgroundColor: '#eff6ff',
-                            color: '#2563eb', fontWeight: 600, fontSize: '0.8rem',
-                            cursor: 'pointer', transition: 'all 0.15s', flexShrink: 0,
-                          }}
-                          onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#dbeafe'; }}
-                          onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#eff6ff'; }}
-                        >
-                          🌐 Web Info
-                        </button>
+                        {!isPeerReadOnly && (
+                          <>
+                            <ProductAiPanel product={localProductData} layout={layout} isAdmin={isAdmin} />
+                            <button
+                              type="button"
+                              onClick={() => setShowWebEnrichModal(true)}
+                              title="Online productinformatie zoeken en automatisch invullen"
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                                padding: '0.4rem 0.85rem', borderRadius: 'var(--radius)',
+                                border: '1px solid #93c5fd', backgroundColor: '#eff6ff',
+                                color: '#2563eb', fontWeight: 600, fontSize: '0.8rem',
+                                cursor: 'pointer', transition: 'all 0.15s', flexShrink: 0,
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#dbeafe'; }}
+                              onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#eff6ff'; }}
+                            >
+                              🌐 Web Info
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                     <DrawerReadyToggle
@@ -1237,127 +1287,133 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
                 </div>
 
                 {/* Bottom Row: Save Buttons */}
-                {isGloballyLocked ? (
-                  <div style={{ color: 'var(--error)', fontWeight: 600, fontSize: '0.8rem', padding: '0.2rem 0.5rem' }}>
-                    🔒 Vergrendeld voor review/export
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <button type="submit" disabled={isPending} onClick={() => saveModeRef.current = 'save'} className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', opacity: 0.8, boxShadow: '0 2px 8px rgba(225, 191, 220, 0.2)' }}>
-                      {isPending && saveModeRef.current === 'save' ? 'Bezig...' : 'Opslaan'}
-                    </button>
-                    <button type="submit" disabled={isPending} onClick={() => saveModeRef.current = 'save_close'} className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', boxShadow: '0 2px 8px rgba(225, 191, 220, 0.4)' }}>
-                      {isPending && saveModeRef.current === 'save_close' ? 'Bezig...' : 'Opslaan & Sluiten'}
-                    </button>
-                  </div>
-                )}
+                  {
+                    isPeerReadOnly?(
+                  <div style = {{ color: '#475569', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', fontWeight: 600, fontSize: '0.8rem', padding: '0.3rem 0.65rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }} >
+                    👁️ Alleen lezen (toegewezen aan {localProductData.assignedUser?.email?.split('@')[0] || 'collega'})
               </div>
+              ) : isGloballyLocked ? (
+              <div style={{ color: 'var(--error)', fontWeight: 600, fontSize: '0.8rem', padding: '0.2rem 0.5rem' }}>
+                🔒 Vergrendeld voor review/export
+              </div>
+              ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <button type="submit" disabled={isPending} onClick={() => saveModeRef.current = 'save'} className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', opacity: 0.8, boxShadow: '0 2px 8px rgba(225, 191, 220, 0.2)' }}>
+                  {isPending && saveModeRef.current === 'save' ? 'Bezig...' : 'Opslaan'}
+                </button>
+                <button type="submit" disabled={isPending} onClick={() => saveModeRef.current = 'save_close'} className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', boxShadow: '0 2px 8px rgba(225, 191, 220, 0.4)' }}>
+                  {isPending && saveModeRef.current === 'save_close' ? 'Bezig...' : 'Opslaan & Sluiten'}
+                </button>
+              </div>
+                )}
             </div>
+          </div>
 
-            <div style={{ padding: '3rem', display: 'flex', flexDirection: 'column', gap: '4rem' }}>
-              {layout?.map((section) => {
-                const sectionAiFields = section.fields
-                  .filter((f: any) => f.includeInSectionAi)
-                  .map((f: any) => {
-                    let key = f.id.replace('FIELD:', '');
-                    if (key === 'description') key = 'longDescription';
-                    return {
-                      id: f.id,
-                      key,
-                      label: f.label,
-                      currentValue: key.startsWith('custom_')
-                        ? localProductData?.customData?.[key.replace('custom_', '')] || ''
-                        : localProductData?.[key] || '',
-                      instruction: f.aiInstruction
-                    };
-                  });
-                const isCollapsed = collapsedSections[section.id] || false;
-                const hasChat = section.fields?.some((f: any) => f.type === 'chat');
+        <div style={{ padding: '3rem', display: 'flex', flexDirection: 'column', gap: '4rem' }}>
+          {layout?.map((section) => {
+            const sectionAiFields = section.fields
+              .filter((f: any) => f.includeInSectionAi)
+              .map((f: any) => {
+                let key = f.id.replace('FIELD:', '');
+                if (key === 'description') key = 'longDescription';
+                return {
+                  id: f.id,
+                  key,
+                  label: f.label,
+                  currentValue: key.startsWith('custom_')
+                    ? localProductData?.customData?.[key.replace('custom_', '')] || ''
+                    : localProductData?.[key] || '',
+                  instruction: f.aiInstruction
+                };
+              });
+            const isCollapsed = collapsedSections[section.id] || false;
+            const hasChat = section.fields?.some((f: any) => f.type === 'chat');
 
-                return (
-                  <section key={section.id}>
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', cursor: 'pointer', userSelect: 'none' }} onClick={() => setCollapsedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}>
-                      <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: section.color, borderBottom: `2px solid ${section.color}`, paddingBottom: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
-                        <span style={{ fontSize: '0.85rem', transform: isCollapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.2s', display: 'inline-block', opacity: 0.8 }}>▼</span>
-                        {section.title}
-                      </h3>
-                      {hasChat && isCollapsed && chatUnreadCount > 0 && (
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.35rem',
-                          backgroundColor: '#ef4444',
-                          color: 'white',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          padding: '0.2rem 0.65rem',
-                          borderRadius: '1rem',
-                          marginLeft: '0.75rem',
-                          boxShadow: '0 2px 6px rgba(239, 68, 68, 0.35)',
-                          animation: 'chat-pulse 1.2s ease-in-out infinite',
-                        }}>
-                          🔔 {chatUnreadCount} nieuw{chatUnreadCount === 1 ? '' : 'e'} {chatUnreadCount === 1 ? 'bericht' : 'berichten'}
-                        </span>
-                      )}
-                      {canUseAi && !isGloballyLocked && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setFormattingModalSection(section.id);
-                          }}
-                          title={`Formatteer velden in "${section.title}" volgens een standaardregel`}
-                          style={{
-                            marginLeft: '0.75rem',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.35rem',
-                            padding: '0.2rem 0.6rem',
-                            borderRadius: 'var(--radius)',
-                            border: '1px solid var(--border)',
-                            backgroundColor: 'var(--surface)',
-                            color: 'var(--text-muted)',
-                            fontSize: '0.72rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            transition: 'all 0.15s',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.borderColor = 'var(--primary)';
-                            e.currentTarget.style.color = 'var(--text)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.borderColor = 'var(--border)';
-                            e.currentTarget.style.color = 'var(--text-muted)';
-                          }}
-                        >
-                          ✨ Regels
-                        </button>
-                      )}
-                      {canUseAi && analysisNarrative && sectionAiFields.length > 0 && (
-                        <AiSectionSuggestion
-                          sectionTitle={section.title}
-                          fields={sectionAiFields}
-                          analysisNarrative={analysisNarrative}
-                          productTitle={localProductData?.title || ''}
-                          sectionInstruction={section.aiInstruction}
-                          getProductContext={getLiveProductContext}
-                          onApply={applyAiSectionSuggestions}
-                        />
-                      )}
-                    </div>
-                    <div style={{ display: isCollapsed ? 'none' : 'grid', gridTemplateColumns: 'repeat(24, minmax(0, 1fr))', gap: '0.75rem', backgroundColor: section.backgroundColor || 'var(--background)', color: section.textColor || 'var(--text)', padding: '1rem', borderRadius: 'var(--radius)', border: `1px solid rgba(0,0,0,0.05)` }}>
-                      {section.fields.map((f: any) => renderDataField(f, section))}
-                    </div>
-                  </section>
-                )
-              })}
-            </div>
-          </>
+            return (
+              <section key={section.id}>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', cursor: 'pointer', userSelect: 'none' }} onClick={() => setCollapsedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: section.color, borderBottom: `2px solid ${section.color}`, paddingBottom: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
+                    <span style={{ fontSize: '0.85rem', transform: isCollapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.2s', display: 'inline-block', opacity: 0.8 }}>▼</span>
+                    {section.title}
+                  </h3>
+                  {hasChat && isCollapsed && chatUnreadCount > 0 && (
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      backgroundColor: '#ef4444',
+                      color: 'white',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      padding: '0.2rem 0.65rem',
+                      borderRadius: '1rem',
+                      marginLeft: '0.75rem',
+                      boxShadow: '0 2px 6px rgba(239, 68, 68, 0.35)',
+                      animation: 'chat-pulse 1.2s ease-in-out infinite',
+                    }}>
+                      🔔 {chatUnreadCount} nieuw{chatUnreadCount === 1 ? '' : 'e'} {chatUnreadCount === 1 ? 'bericht' : 'berichten'}
+                    </span>
+                  )}
+                  {(canUseAi || (canApproveEmpco && pendingFormattingCount > 0)) && !isGloballyLocked && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFormattingModalMode(!canUseAi || pendingFormattingCount > 0 ? 'review' : 'configure');
+                        setFormattingModalSection(section.id);
+                      }}
+                      title={`Formatteer velden in "${section.title}" volgens een standaardregel`}
+                      style={{
+                        marginLeft: '0.75rem',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '0.2rem 0.6rem',
+                        borderRadius: 'var(--radius)',
+                        border: '1px solid var(--border)',
+                        backgroundColor: 'var(--surface)',
+                        color: 'var(--text-muted)',
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--primary)';
+                        e.currentTarget.style.color = 'var(--text)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--border)';
+                        e.currentTarget.style.color = 'var(--text-muted)';
+                      }}
+                    >
+                      ✨ Regels
+                    </button>
+                  )}
+                    { canUseAi && !isGloballyLocked && analysisNarrative && sectionAiFields.length > 0 && (
+                      <AiSectionSuggestion
+                        sectionTitle={section.title}
+                        fields={sectionAiFields}
+                        analysisNarrative={analysisNarrative}
+                        productTitle={localProductData?.title || ''}
+                        sectionInstruction={section.aiInstruction}
+                        getProductContext={getLiveProductContext}
+                        onApply={applyAiSectionSuggestions}
+                      />
+                    )}
+                </div>
+                <div style={{ display: isCollapsed ? 'none' : 'grid', gridTemplateColumns: 'repeat(24, minmax(0, 1fr))', gap: '0.75rem', backgroundColor: section.backgroundColor || 'var(--background)', color: section.textColor || 'var(--text)', padding: '1rem', borderRadius: 'var(--radius)', border: `1px solid rgba(0,0,0,0.05)` }}>
+                  {section.fields.map((f: any) => renderDataField(f, section))}
+                </div>
+              </section>
+            )
+          })}
+        </div>
+      </>
         )}
-      </form>
+    </form >
 
-      {showCopyModal && localProductData?.supplierId && (
+      { showCopyModal && localProductData?.supplierId && (
         <ProductCopyModal
           supplierId={localProductData.supplierId}
           currentArticleId={localProductData.internalArticleNumber}
@@ -1367,142 +1423,159 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
           onClose={() => setShowCopyModal(false)}
           onCopy={handleCopyCommit}
         />
-      )}
+      )
+}
 
-      {showWebEnrichModal && (
-        <ProductWebEnrichModal
-          product={localProductData}
-          isOpen={showWebEnrichModal}
-          onClose={() => setShowWebEnrichModal(false)}
-          onApplyFields={(fields) => {
-            applyAiSectionSuggestions(fields);
-          }}
-        />
-      )}
+{
+  showWebEnrichModal && (
+    <ProductWebEnrichModal
+      product={localProductData}
+      isOpen={showWebEnrichModal}
+      onClose={() => setShowWebEnrichModal(false)}
+      onApplyFields={(fields) => {
+        applyAiSectionSuggestions(fields);
+      }}
+    />
+  )
+}
 
-      {showHistory && localProductData && (
-        <ProductFieldHistoryModal
-          articleNumber={localProductData.internalArticleNumber}
-          productTitle={localProductData.title}
-          onClose={() => setShowHistory(false)}
-          onRestore={isGloballyLocked ? undefined : restoreFieldValue}
-        />
-      )}
+{
+  showHistory && localProductData && (
+    <ProductFieldHistoryModal
+      articleNumber={localProductData.internalArticleNumber}
+      productTitle={localProductData.title}
+      onClose={() => setShowHistory(false)}
+      onRestore={isGloballyLocked ? undefined : restoreFieldValue}
+    />
+  )
+}
 
-      {showTransferSupplierModal && localProductData && (
-        <TransferSupplierModal
-          isOpen={showTransferSupplierModal}
-          onClose={() => setShowTransferSupplierModal(false)}
-          products={[{
-            internalArticleNumber: localProductData.internalArticleNumber,
-            title: localProductData.title,
-            supplier: localProductData.supplier
-          }]}
-          allSuppliers={allSuppliers}
-          preselectedSupplierId={localProductData?.supplierId || ''}
-          onSuccess={(targetSupplier) => {
-            setLocalProductData((prev: any) => ({
-              ...prev,
-              supplierId: targetSupplier.id,
-              supplier: targetSupplier,
-            }));
-            setShowTransferSupplierModal(false);
-            setEmpcoRefreshKey(k => k + 1);
-          }}
-        />
-      )}
+{
+  showTransferSupplierModal && localProductData && (
+    <TransferSupplierModal
+      isOpen={showTransferSupplierModal}
+      onClose={() => setShowTransferSupplierModal(false)}
+      products={[{
+        internalArticleNumber: localProductData.internalArticleNumber,
+        title: localProductData.title,
+        supplier: localProductData.supplier
+      }]}
+      allSuppliers={allSuppliers}
+      preselectedSupplierId={localProductData?.supplierId || ''}
+      onSuccess={(targetSupplier) => {
+        setLocalProductData((prev: any) => ({
+          ...prev,
+          supplierId: targetSupplier.id,
+          supplier: targetSupplier,
+        }));
+        setShowTransferSupplierModal(false);
+        setEmpcoRefreshKey(k => k + 1);
+      }}
+    />
+  )
+}
 
-      {formattingModalSection && localProductData && (
-        <FormattingRulePreviewModal
-          isOpen={Boolean(formattingModalSection)}
-          onClose={() => setFormattingModalSection(null)}
-          articleNumbers={[localProductData.internalArticleNumber]}
-          initialSectionId={formattingModalSection === 'ALL' ? undefined : formattingModalSection}
-          onComplete={handleFormattingComplete}
-        />
-      )}
+{
+  formattingModalSection && localProductData && (
+    <FormattingRulePreviewModal
+      isOpen={Boolean(formattingModalSection)}
+      onClose={() => setFormattingModalSection(null)}
+      articleNumbers={[localProductData.internalArticleNumber]}
+      initialSectionId={formattingModalSection === 'ALL' ? undefined : formattingModalSection}
+      initialMode={formattingModalMode}
+      canUseAi={canUseAi}
+      onComplete={handleFormattingComplete}
+    />
+  )
+}
 
-      {/* Toast Notification */}
-      {copySuccess && (
-        <div style={{ position: 'fixed', bottom: '2rem', right: '3rem', backgroundColor: '#10b981', color: 'white', padding: '1rem 2rem', borderRadius: 'var(--radius)', boxShadow: '0 10px 40px rgba(16, 185, 129, 0.35)', zIndex: 100, display: 'flex', alignItems: 'center', gap: '0.75rem', fontWeight: 600, animation: 'slideIn 0.3s ease-out' }}>
-          <span style={{ fontSize: '1.25rem' }}>✓</span>
-          <span>Data succesvol gekopieerd! Controleer en klik op Opslaan.</span>
-          <style>{`
+{/* Toast Notification */ }
+{
+  copySuccess && (
+    <div style={{ position: 'fixed', bottom: '2rem', right: '3rem', backgroundColor: '#10b981', color: 'white', padding: '1rem 2rem', borderRadius: 'var(--radius)', boxShadow: '0 10px 40px rgba(16, 185, 129, 0.35)', zIndex: 100, display: 'flex', alignItems: 'center', gap: '0.75rem', fontWeight: 600, animation: 'slideIn 0.3s ease-out' }}>
+      <span style={{ fontSize: '1.25rem' }}>✓</span>
+      <span>Data succesvol gekopieerd! Controleer en klik op Opslaan.</span>
+      <style>{`
             @keyframes slideIn {
               from { transform: translateY(20px); opacity: 0; }
               to { transform: translateY(0); opacity: 1; }
             }
           `}</style>
-        </div>
-      )}
-      {/* Unsaved Changes Confirmation Modal */}
-      {showUnsavedWarning && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, backdropFilter: 'blur(4px)' }}>
-          <div style={{ backgroundColor: 'white', padding: '3rem', borderRadius: '20px', width: '90%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', animation: 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', marginBottom: '2rem' }}>
-              <div style={{ width: '64px', height: '64px', backgroundColor: '#fff7ed', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <span style={{ fontSize: '2.5rem' }}>⚠️</span>
-              </div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.5rem', color: '#9a3412', fontWeight: 700 }}>Niet Opgeslagen!</h3>
-                <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-muted)', fontSize: '1rem', lineHeight: '1.5' }}>
-                  Er zijn wijzigingen gemaakt! Wat wil je met deze aanpassingen doen?
-                </p>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <button
-                onClick={() => { setShowUnsavedWarning(false); formRef.current?.requestSubmit(); }}
-                className="btn btn-primary"
-                style={{ padding: '1.25rem', fontSize: '1.1rem', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', border: 'none', borderRadius: '12px' }}
-              >
-                💾 Wijzigingen Opslaan
-              </button>
-              <button
-                onClick={() => {
-                  setShowUnsavedWarning(false);
-                  if (pendingNavigation === 'prev' && onPrev) { onPrev(); setPendingNavigation(null); }
-                  else if (pendingNavigation === 'next' && onNext) { onNext(); setPendingNavigation(null); }
-                  else { onClose(); setPendingNavigation(null); }
-                }}
-                className="btn"
-                style={{ padding: '1.25rem', fontSize: '1.1rem', backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '12px', fontWeight: 600 }}
-              >
-                {pendingNavigation ? '🗑️ Wijzigingen Negeren & Verdergaan' : '🗑️ Wijzigingen Negeren & Sluiten'}
-              </button>
-              <button
-                onClick={() => { setShowUnsavedWarning(false); setPendingNavigation(null); }}
-                className="btn ghost"
-                style={{ padding: '1rem', color: 'var(--text-muted)' }}
-              >
-                Blijf op deze pagina
-              </button>
-            </div>
+    </div>
+  )
+}
+{/* Unsaved Changes Confirmation Modal */ }
+{
+  showUnsavedWarning && (
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, backdropFilter: 'blur(4px)' }}>
+      <div style={{ backgroundColor: 'white', padding: '3rem', borderRadius: '20px', width: '90%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', animation: 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', marginBottom: '2rem' }}>
+          <div style={{ width: '64px', height: '64px', backgroundColor: '#fff7ed', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <span style={{ fontSize: '2.5rem' }}>⚠️</span>
+          </div>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.5rem', color: '#9a3412', fontWeight: 700 }}>Niet Opgeslagen!</h3>
+            <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-muted)', fontSize: '1rem', lineHeight: '1.5' }}>
+              Er zijn wijzigingen gemaakt! Wat wil je met deze aanpassingen doen?
+            </p>
           </div>
         </div>
-      )}
 
-      {showEcoPosModal && localProductData?.internalArticleNumber && (
-        <EcoPosSyncModal
-          isOpen={showEcoPosModal}
-          onClose={() => setShowEcoPosModal(false)}
-          articleNumbers={[localProductData.internalArticleNumber]}
-          singleProductMode={true}
-          onComplete={(result) => {
-            if (result?.updatedProducts && result.updatedProducts.length > 0) {
-              const updated = result.updatedProducts[0];
-              setLocalProductData((prev: any) => ({
-                ...prev,
-                ...updated,
-              }));
-              setActiveStatus((updated.status || 'NEW').toUpperCase());
-              setFormKey((k) => k + 1);
-              setEmpcoRefreshKey((k) => k + 1);
-            }
-          }}
-        />
-      )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <button
+            onClick={() => { setShowUnsavedWarning(false); formRef.current?.requestSubmit(); }}
+            className="btn btn-primary"
+            style={{ padding: '1.25rem', fontSize: '1.1rem', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', border: 'none', borderRadius: '12px' }}
+          >
+            💾 Wijzigingen Opslaan
+          </button>
+          <button
+            onClick={() => {
+              setShowUnsavedWarning(false);
+              if (pendingNavigation === 'prev' && onPrev) { onPrev(); setPendingNavigation(null); }
+              else if (pendingNavigation === 'next' && onNext) { onNext(); setPendingNavigation(null); }
+              else { onClose(); setPendingNavigation(null); }
+            }}
+            className="btn"
+            style={{ padding: '1.25rem', fontSize: '1.1rem', backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '12px', fontWeight: 600 }}
+          >
+            {pendingNavigation ? '🗑️ Wijzigingen Negeren & Verdergaan' : '🗑️ Wijzigingen Negeren & Sluiten'}
+          </button>
+          <button
+            onClick={() => { setShowUnsavedWarning(false); setPendingNavigation(null); }}
+            className="btn ghost"
+            style={{ padding: '1rem', color: 'var(--text-muted)' }}
+          >
+            Blijf op deze pagina
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+{
+  showEcoPosModal && localProductData?.internalArticleNumber && (
+    <EcoPosSyncModal
+      isOpen={showEcoPosModal}
+      onClose={() => setShowEcoPosModal(false)}
+      articleNumbers={[localProductData.internalArticleNumber]}
+      singleProductMode={true}
+      onComplete={(result) => {
+        if (result?.updatedProducts && result.updatedProducts.length > 0) {
+          const updated = result.updatedProducts[0];
+          setLocalProductData((prev: any) => ({
+            ...prev,
+            ...updated,
+          }));
+          setActiveStatus((updated.status || 'NEW').toUpperCase());
+          setFormKey((k) => k + 1);
+          setEmpcoRefreshKey((k) => k + 1);
+        }
+      }}
+    />
+  )
+}
     </>
   );
 }

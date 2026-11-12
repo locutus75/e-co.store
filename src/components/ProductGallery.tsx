@@ -35,70 +35,78 @@ interface AiEditState {
   editMode: boolean | null; // null = not yet run
 }
 
-export default function ProductGallery({ articleNumber, canUseAi = false }: { articleNumber: string; canUseAi?: boolean }) {
-  const [images, setImages] = useState<{ url: string, name: string }[]>([]);
-  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const [imageToDelete, setImageToDelete] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-  const [mounted, setMounted] = useState(false);
+  export default function ProductGallery({
+    articleNumber,
+    canUseAi = false,
+    readOnly = false,
+  }: {
+    articleNumber: string;
+    canUseAi?: boolean;
+    readOnly?: boolean;
+  }) {
+    const [images, setImages] = useState<{ url: string, name: string }[]>([]);
+    const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+    const [imageToDelete, setImageToDelete] = useState<string | null>(null);
+    const [isPending, startTransition] = useTransition();
+    const [mounted, setMounted] = useState(false);
 
-  // AI editing state: keyed by image name
-  const [aiPanelOpen, setAiPanelOpen] = useState<string | null>(null); // image name
-  const [aiState, setAiState] = useState<AiEditState>({
-    instruction: '',
-    provider: 'openai',
-    loading: false,
-    result: null,
-    newImageUrl: null,
-    error: null,
-    editMode: null,
-  });
-
-  // Available vision providers with their configured model
-  const [availableProviders, setAvailableProviders] = useState<VisionProvider[]>([]);
-  const [providerVisionInfo, setProviderVisionInfo] = useState<Record<VisionProvider, ProviderVisionInfo>>({
-    openai: { provider: 'openai', visionModel: '', hasApiKey: false },
-    anthropic: { provider: 'anthropic', visionModel: '', hasApiKey: false },
-    gemini: { provider: 'gemini', visionModel: '', hasApiKey: false },
-  });
-  // Photo presets for the media field
-  const [photoPresets, setPhotoPresets] = useState<string[]>([]);
-
-
-  useEffect(() => { setMounted(true); }, []);
-
-  // Load existing images on mount
-  useEffect(() => {
-    if (!articleNumber) return;
-    getProductImagesAction(articleNumber).then(data => setImages(data));
-  }, [articleNumber]);
-
-  // Load available AI providers + their vision model config + photo presets
-  useEffect(() => {
-    if (!canUseAi) return;
-    Promise.all([
-      fetch('/api/ai/providers').then(r => r.json()).catch(() => []),
-      fetch('/api/ai/vision-config').then(r => r.ok ? r.json() : []).catch(() => []),
-      fetch('/api/ai/photo-presets?fieldId=FIELD%3Amedia').then(r => r.ok ? r.json() : { presets: [] }).catch(() => ({ presets: [] })),
-    ]).then(([providers, visionConfigs, presetsData]: [any[], any[], any]) => {
-      const active = providers
-        .filter((c: any) => c.hasApiKey)
-        .map((c: any) => c.provider as VisionProvider);
-      setAvailableProviders(active);
-
-      const infoMap: Record<string, ProviderVisionInfo> = {};
-      for (const vc of visionConfigs) {
-        infoMap[vc.provider] = { provider: vc.provider, visionModel: vc.visionModel, hasApiKey: vc.hasApiKey };
-      }
-      setProviderVisionInfo(prev => ({ ...prev, ...infoMap }));
-
-      setPhotoPresets(presetsData.presets ?? []);
-
-      if (active.length > 0 && !active.includes(aiState.provider)) {
-        setAiState(prev => ({ ...prev, provider: active[0] }));
-      }
+    // AI editing state: keyed by image name
+    const [aiPanelOpen, setAiPanelOpen] = useState<string | null>(null); // image name
+    const [aiState, setAiState] = useState<AiEditState>({
+      instruction: '',
+      provider: 'openai',
+      loading: false,
+      result: null,
+      newImageUrl: null,
+      error: null,
+      editMode: null,
     });
-  }, [canUseAi]);
+
+    // Available vision providers with their configured model
+    const [availableProviders, setAvailableProviders] = useState<VisionProvider[]>([]);
+    const [providerVisionInfo, setProviderVisionInfo] = useState<Record<VisionProvider, ProviderVisionInfo>>({
+      openai: { provider: 'openai', visionModel: '', hasApiKey: false },
+      anthropic: { provider: 'anthropic', visionModel: '', hasApiKey: false },
+      gemini: { provider: 'gemini', visionModel: '', hasApiKey: false },
+    });
+    // Photo presets for the media field
+    const [photoPresets, setPhotoPresets] = useState<string[]>([]);
+
+
+    useEffect(() => { setMounted(true); }, []);
+
+    // Load existing images on mount
+    useEffect(() => {
+      if (!articleNumber) return;
+      getProductImagesAction(articleNumber).then(data => setImages(data));
+    }, [articleNumber]);
+
+    // Load available AI providers + their vision model config + photo presets
+    useEffect(() => {
+      if (!canUseAi || readOnly) return;
+      Promise.all([
+        fetch('/api/ai/providers').then(r => r.json()).catch(() => []),
+        fetch('/api/ai/vision-config').then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch('/api/ai/photo-presets?fieldId=FIELD%3Amedia').then(r => r.ok ? r.json() : { presets: [] }).catch(() => ({ presets: [] })),
+      ]).then(([providers, visionConfigs, presetsData]: [any[], any[], any]) => {
+        const active = providers
+          .filter((c: any) => c.hasApiKey)
+          .map((c: any) => c.provider as VisionProvider);
+        setAvailableProviders(active);
+
+        const infoMap: Record<string, ProviderVisionInfo> = {};
+        for (const vc of visionConfigs) {
+          infoMap[vc.provider] = { provider: vc.provider, visionModel: vc.visionModel, hasApiKey: vc.hasApiKey };
+        }
+        setProviderVisionInfo(prev => ({ ...prev, ...infoMap }));
+
+        setPhotoPresets(presetsData.presets ?? []);
+
+        if (active.length > 0 && !active.includes(aiState.provider)) {
+          setAiState(prev => ({ ...prev, provider: active[0] }));
+        }
+      });
+  }, [canUseAi, readOnly]);
 
 
   // Keyboard navigation for lightbox
@@ -114,6 +122,7 @@ export default function ProductGallery({ articleNumber, canUseAi = false }: { ar
   }, [lightboxIndex, images.length]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (readOnly) return;
     if (e.target.files && e.target.files.length > 0) {
       const fd = new FormData();
       Array.from(e.target.files).forEach(f => fd.append('images', f));
@@ -132,11 +141,12 @@ export default function ProductGallery({ articleNumber, canUseAi = false }: { ar
 
   const handleDeleteClick = (e: React.MouseEvent, filename: string) => {
     e.stopPropagation();
+    if (readOnly) return;
     setImageToDelete(filename);
   };
 
   const confirmDelete = async () => {
-    if (!imageToDelete) return;
+    if (!imageToDelete || readOnly) return;
     const filename = imageToDelete;
     setImageToDelete(null);
     startTransition(async () => {
@@ -148,12 +158,13 @@ export default function ProductGallery({ articleNumber, canUseAi = false }: { ar
   // ── AI image edit ──────────────────────────────────────────────────────────
   const openAiPanel = (e: React.MouseEvent, imageName: string) => {
     e.stopPropagation();
+    if (readOnly) return;
     setAiPanelOpen(imageName);
     setAiState(prev => ({ ...prev, result: null, newImageUrl: null, error: null, instruction: '', editMode: null }));
   };
 
   const runAiEdit = async (imageName: string) => {
-    if (!aiState.instruction.trim()) return;
+    if (readOnly || !aiState.instruction.trim()) return;
     setAiState(prev => ({ ...prev, loading: true, result: null, newImageUrl: null, error: null }));
     try {
       const res = await fetch('/api/ai/image-edit', {
@@ -450,9 +461,6 @@ export default function ProductGallery({ articleNumber, canUseAi = false }: { ar
             />
           </div>
 
-
-
-
           {/* Result */}
           {aiState.result && (
             <div style={{ padding: '1rem', backgroundColor: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 'var(--radius)', fontSize: '0.85rem', color: 'var(--text)', lineHeight: 1.6, maxHeight: '200px', overflowY: 'auto' }}>
@@ -475,7 +483,6 @@ export default function ProductGallery({ articleNumber, canUseAi = false }: { ar
               </p>
             </div>
           )}
-
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
@@ -504,76 +511,80 @@ export default function ProductGallery({ articleNumber, canUseAi = false }: { ar
     : null;
 
   return (
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.5rem' }}>
-              <h4 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)', opacity: 0.75, margin: 0, whiteSpace: 'nowrap' }}>Product Afbeeldingen</h4>
-              <label className="btn" style={{ padding: '0.2rem 0.65rem', fontSize: '0.76rem', fontWeight: 600, backgroundColor: 'var(--surface-hover)', cursor: isPending ? 'wait' : 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius)', opacity: isPending ? 0.7 : 1, whiteSpace: 'nowrap' }}>
-                {isPending ? 'Bezig...' : '+ Upload Foto'}
-                <input type="file" multiple accept="image/*" style={{ display: 'none' }} onChange={handleFileUpload} disabled={isPending} />
-              </label>
-            </div>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.5rem' }}>
+          <h4 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)', opacity: 0.75, margin: 0, whiteSpace: 'nowrap' }}>Product Afbeeldingen</h4>
+          {!readOnly && (
+            <label className="btn" style={{ padding: '0.2rem 0.65rem', fontSize: '0.76rem', fontWeight: 600, backgroundColor: 'var(--surface-hover)', cursor: isPending ? 'wait' : 'pointer', border: '1px solid var(--border)', borderRadius: 'var(--radius)', opacity: isPending ? 0.7 : 1, whiteSpace: 'nowrap' }}>
+              {isPending ? 'Bezig...' : '+ Upload Foto'}
+              <input type="file" multiple accept="image/*" style={{ display: 'none' }} onChange={handleFileUpload} disabled={isPending} />
+            </label>
+          )}
+        </div>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
-              {images.map((img, idx) => (
-                <div
-                  key={img.name}
-                  style={{ position: 'relative', display: 'inline-block' }}
-                >
-                  <div
-                    onClick={() => setLightboxIndex(idx)}
-                    style={{ width: '80px', height: '80px', borderRadius: 'var(--radius)', overflow: 'hidden', border: '1px solid var(--border)', cursor: 'pointer', position: 'relative', transition: 'transform 0.2s', backgroundColor: 'var(--surface-hover)' }}
-                    onMouseOver={e => (e.currentTarget.style.transform = 'scale(1.05)')}
-                    onMouseOut={e => (e.currentTarget.style.transform = 'scale(1)')}
-                  >
-                    <img src={img.url} alt={`Product thumb ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    <button
-                      type="button"
-                      onClick={e => handleDeleteClick(e, img.name)}
-                      style={{ position: 'absolute', top: '4px', right: '4px', width: '22px', height: '22px', backgroundColor: 'rgba(255,255,255,0.95)', color: 'var(--error)', border: 'none', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 2px 5px rgba(0,0,0,0.2)', paddingBottom: '2px' }}
-                      title="Verwijderen"
-                      disabled={isPending}
-                    >✕</button>
-                  </div>
-                  {/* AI edit button below thumbnail */}
-                  {canUseAi && (
-                    <button
-                      type="button"
-                      onClick={e => openAiPanel(e, img.name)}
-                      title="AI Bewerking"
-                      style={{
-                        marginTop: '4px',
-                        width: '80px',
-                        padding: '0.2rem 0',
-                        fontSize: '0.65rem',
-                        fontWeight: 600,
-                        backgroundColor: 'rgba(99,102,241,0.1)',
-                        color: 'var(--primary)',
-                        border: '1px solid rgba(99,102,241,0.25)',
-                        borderRadius: 'var(--radius)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '0.2rem',
-                        transition: 'all 0.15s',
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(99,102,241,0.18)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(99,102,241,0.1)'; }}
-                    >
-                      🤖 AI Edit
-                    </button>
-                  )}
-                </div>
-              ))}
-              {images.length === 0 && !isPending && (
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Nog geen foto&apos;s geüpload.</span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+        {images.map((img, idx) => (
+          <div
+            key={img.name}
+            style={{ position: 'relative', display: 'inline-block' }}
+          >
+            <div
+              onClick={() => setLightboxIndex(idx)}
+              style={{ width: '80px', height: '80px', borderRadius: 'var(--radius)', overflow: 'hidden', border: '1px solid var(--border)', cursor: 'pointer', position: 'relative', transition: 'transform 0.2s', backgroundColor: 'var(--surface-hover)' }}
+              onMouseOver={e => (e.currentTarget.style.transform = 'scale(1.05)')}
+              onMouseOut={e => (e.currentTarget.style.transform = 'scale(1)')}
+            >
+              <img src={img.url} alt={`Product thumb ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={e => handleDeleteClick(e, img.name)}
+                  style={{ position: 'absolute', top: '4px', right: '4px', width: '22px', height: '22px', backgroundColor: 'rgba(255,255,255,0.95)', color: 'var(--error)', border: 'none', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 2px 5px rgba(0,0,0,0.2)', paddingBottom: '2px' }}
+                  title="Verwijderen"
+                  disabled={isPending}
+                >✕</button>
               )}
             </div>
-
-            {lightbox}
-            {deleteDialog}
-            {aiPanel}
-            <style>{`@keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }`}</style>
+            {/* AI edit button below thumbnail */}
+            {canUseAi && !readOnly && (
+              <button
+                type="button"
+                onClick={e => openAiPanel(e, img.name)}
+                title="AI Bewerking"
+                style={{
+                  marginTop: '4px',
+                  width: '80px',
+                  padding: '0.2rem 0',
+                  fontSize: '0.65rem',
+                  fontWeight: 600,
+                  backgroundColor: 'rgba(99,102,241,0.1)',
+                  color: 'var(--primary)',
+                  border: '1px solid rgba(99,102,241,0.25)',
+                  borderRadius: 'var(--radius)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.2rem',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(99,102,241,0.18)'; }}
+                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(99,102,241,0.1)'; }}
+              >
+                🤖 AI Edit
+              </button>
+            )}
           </div>
-          );
+        ))}
+        {images.length === 0 && !isPending && (
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Nog geen foto&apos;s geüpload.</span>
+        )}
+      </div>
+
+        {lightbox}
+        {deleteDialog}
+        {aiPanel}
+        <style>{`@keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }`}</style>
+      </div>
+      );
 }

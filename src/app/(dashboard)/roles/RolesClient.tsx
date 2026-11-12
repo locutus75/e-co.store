@@ -8,9 +8,10 @@ import { isReadOnlyProductField } from '@/lib/constants';
 const MENU_MODULES = [
   { module: 'MENU:dashboard', label: 'Dashboard' },
   { module: 'MENU:products', label: 'Producten' },
+  { module: 'MENU:view_role_peers', label: '👁️ Producten van collega\'s met dezelfde rol bekijken (Alleen lezen)' },
   { module: 'MENU:messages', label: 'Berichten' },
-  { module: 'MENU:empco_approve', label: '⚖️ EmpCo (Voorstellen bekijken & accorderen)' },
-  { module: 'MENU:ai', label: '🤖 AI Assistent (Nieuwe AI & EmpCo analyses starten)' },
+  { module: 'MENU:empco_approve', label: '⚖️✨ EmpCo & Formateringsregels (Klaargezette voorstellen beoordelen & accorderen)' },
+  { module: 'MENU:ai', label: '🤖 AI Assistent (Nieuwe AI, EmpCo & Formateringsregels genereren)' },
   { module: 'MENU:categories', label: 'Categorieën' },
   { module: 'MENU:assignments', label: 'Toewijzingen' },
   { module: 'MENU:users', label: 'Team & Gebruikers' },

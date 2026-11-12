@@ -21,6 +21,18 @@ export interface FormattingRule {
   updatedAt: string;
 }
 
+export interface PendingFormattingFieldProposal {
+  fieldKey: string;
+  fieldLabel: string;
+  originalValue: string;
+  suggestedValue: string;
+  ruleId?: string;
+  ruleName: string;
+  sectionId?: string;
+  stagedAt: string;
+  stagedByEmail?: string;
+}
+
 const SETTING_KEY = 'formatting_rules';
 
 const DEFAULT_FORMATTING_RULES: FormattingRule[] = [
@@ -267,6 +279,10 @@ export interface ProductFieldPreview {
   originalValue: string;
   suggestedValue: string;
   hasChanged: boolean;
+  ruleId?: string;
+  ruleName?: string;
+  stagedAt?: string;
+  stagedByEmail?: string;
 }
 
 export interface ProductRulePreview {
@@ -411,6 +427,8 @@ Geen markdown code-blocks (\`\`\`json), geen toelichting, alleen de pure JSON st
               originalValue: f.currentValue,
               suggestedValue: suggested,
               hasChanged: f.currentValue.trim() !== suggested.trim(),
+              ruleId: rule.id,
+              ruleName: rule.name,
             });
           }
         } else {
@@ -422,6 +440,8 @@ Geen markdown code-blocks (\`\`\`json), geen toelichting, alleen de pure JSON st
               originalValue: f.currentValue,
               suggestedValue: f.currentValue,
               hasChanged: false,
+              ruleId: rule.id,
+              ruleName: rule.name,
             });
           }
         }
@@ -434,6 +454,8 @@ Geen markdown code-blocks (\`\`\`json), geen toelichting, alleen de pure JSON st
             originalValue: f.currentValue,
             suggestedValue: f.currentValue,
             hasChanged: false,
+            ruleId: rule.id,
+            ruleName: rule.name,
           });
         }
       }
@@ -451,6 +473,261 @@ Geen markdown code-blocks (\`\`\`json), geen toelichting, alleen de pure JSON st
   } catch (e: any) {
     console.error('Failed to preview formatting rule:', e);
     return { success: false, error: e.message || 'Onbekende fout bij preview genereren.' };
+  }
+}
+
+// ── Stage Proposals for Editor Review ("Klaarzetten voor review") ────────────
+
+export interface StageRuleItem {
+  articleNumber: string;
+  changes: {
+    fieldKey: string;
+    fieldLabel?: string;
+    oldValue?: string;
+    newValue: string;
+    ruleId?: string;
+    ruleName?: string;
+  }[];
+}
+
+export async function stageFormattingRuleProposalsAction(params: {
+  items: StageRuleItem[];
+  ruleId?: string;
+  ruleName?: string;
+  sectionId?: string;
+}): Promise<{ success: boolean; stagedProductCount: number; stagedFieldCount: number; error?: string }> {
+  const { items, ruleId, ruleName = 'Formateringsregel', sectionId } = params;
+
+  if (!items || items.length === 0) {
+    return { success: false, stagedProductCount: 0, stagedFieldCount: 0, error: 'Geen voorstellen geselecteerd om klaar te zetten.' };
+  }
+
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return { success: false, stagedProductCount: 0, stagedFieldCount: 0, error: 'Niet ingelogd.' };
+  }
+  const userId = (session.user as any).id as string;
+  const userEmail = (session.user as any).email as string;
+  const now = new Date().toISOString();
+
+  try {
+    let stagedProductCount = 0;
+    let stagedFieldCount = 0;
+
+    for (const item of items) {
+      if (!item.changes || item.changes.length === 0) continue;
+
+      const existing = await prisma.product.findUnique({
+        where: { internalArticleNumber: item.articleNumber },
+        select: { customData: true },
+      });
+      if (!existing) continue;
+
+      const currentCustom: Record<string, any> =
+        existing.customData && typeof existing.customData === 'object'
+          ? { ...(existing.customData as Record<string, any>) }
+          : {};
+
+      const pendingMap: Record<string, PendingFormattingFieldProposal> =
+        currentCustom._pendingFormatting && typeof currentCustom._pendingFormatting === 'object'
+          ? { ...(currentCustom._pendingFormatting as Record<string, PendingFormattingFieldProposal>) }
+          : {};
+
+      for (const ch of item.changes) {
+        pendingMap[ch.fieldKey] = {
+          fieldKey: ch.fieldKey,
+          fieldLabel: ch.fieldLabel || FIELD_LABELS[ch.fieldKey] || ch.fieldKey,
+          originalValue: ch.oldValue ?? '',
+          suggestedValue: ch.newValue,
+          ruleId: ch.ruleId || ruleId,
+          ruleName: ch.ruleName || ruleName,
+          sectionId,
+          stagedAt: now,
+          stagedByEmail: userEmail || undefined,
+        };
+        stagedFieldCount++;
+      }
+
+      currentCustom._pendingFormatting = pendingMap;
+
+      await prisma.product.update({
+        where: { internalArticleNumber: item.articleNumber },
+        data: { customData: currentCustom },
+      });
+      stagedProductCount++;
+
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'FORMATTING_RULE_STAGE',
+          entity: 'Product',
+          entityId: item.articleNumber,
+          changes: `Voorstellen klaargezet voor review (${ruleName}): ${item.changes.map(c => c.fieldKey).join(', ')}`,
+        },
+      }).catch(() => {});
+    }
+
+    revalidatePath('/products');
+    revalidatePath('/assignments');
+    revalidatePath('/', 'layout');
+
+    return { success: true, stagedProductCount, stagedFieldCount };
+  } catch (e: any) {
+    console.error('Failed to stage formatting proposals:', e);
+    return { success: false, stagedProductCount: 0, stagedFieldCount: 0, error: e.message || 'Fout bij klaarzetten voor review.' };
+  }
+}
+
+export async function getStagedFormattingProposalsAction(params: {
+  articleNumbers: string[];
+}): Promise<{ success: boolean; previews: ProductRulePreview[]; totalProposalCount: number; error?: string }> {
+  const { articleNumbers } = params;
+  if (!articleNumbers || articleNumbers.length === 0) {
+    return { success: true, previews: [], totalProposalCount: 0 };
+  }
+
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return { success: false, previews: [], totalProposalCount: 0, error: 'Niet ingelogd.' };
+  }
+
+  try {
+    const products = await prisma.product.findMany({
+      where: { internalArticleNumber: { in: articleNumbers } },
+      include: { brand: true, supplier: true },
+    });
+
+    // Preserve requested order where possible
+    const orderMap = new Map(articleNumbers.map((a, idx) => [a, idx]));
+    products.sort((a, b) => (orderMap.get(a.internalArticleNumber) ?? 0) - (orderMap.get(b.internalArticleNumber) ?? 0));
+
+    const previews: ProductRulePreview[] = [];
+    let totalProposalCount = 0;
+
+    for (const product of products) {
+      const customObj =
+        product.customData && typeof product.customData === 'object'
+          ? (product.customData as Record<string, any>)
+          : {};
+      const pendingMap =
+        customObj._pendingFormatting && typeof customObj._pendingFormatting === 'object'
+          ? (customObj._pendingFormatting as Record<string, PendingFormattingFieldProposal>)
+          : {};
+
+      const entries = Object.values(pendingMap).filter(p => p && typeof p.fieldKey === 'string');
+      if (entries.length === 0) continue;
+
+      const fields: ProductFieldPreview[] = entries.map(entry => {
+        const actualKey = entry.fieldKey;
+        const liveVal =
+          (product as any)[actualKey] ??
+          (customObj[actualKey] !== undefined ? customObj[actualKey] : null) ??
+          '';
+        const currentStr = String(liveVal || '');
+        const suggestedStr = String(entry.suggestedValue ?? '');
+
+        totalProposalCount++;
+        return {
+          fieldKey: actualKey,
+          fieldLabel: entry.fieldLabel || FIELD_LABELS[actualKey] || actualKey,
+          originalValue: currentStr,
+          suggestedValue: suggestedStr,
+          hasChanged: currentStr.trim() !== suggestedStr.trim(),
+          ruleId: entry.ruleId,
+          ruleName: entry.ruleName,
+          stagedAt: entry.stagedAt,
+          stagedByEmail: entry.stagedByEmail,
+        };
+      });
+
+      previews.push({
+        articleNumber: product.internalArticleNumber,
+        title: product.title,
+        brand: product.brand?.name,
+        supplier: product.supplier?.name,
+        fields,
+      });
+    }
+
+    return { success: true, previews, totalProposalCount };
+  } catch (e: any) {
+    console.error('Failed to get staged formatting proposals:', e);
+    return { success: false, previews: [], totalProposalCount: 0, error: e.message || 'Fout bij ophalen van klaargezette voorstellen.' };
+  }
+}
+
+export async function dismissStagedFormattingProposalsAction(params: {
+  items: { articleNumber: string; fieldKeys: string[] }[];
+}): Promise<{ success: boolean; dismissedCount: number; error?: string }> {
+  const { items } = params;
+  if (!items || items.length === 0) {
+    return { success: false, dismissedCount: 0, error: 'Geen voorstellen geselecteerd.' };
+  }
+
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return { success: false, dismissedCount: 0, error: 'Niet ingelogd.' };
+  }
+  const userId = (session.user as any).id as string;
+
+  try {
+    let dismissedCount = 0;
+
+    for (const item of items) {
+      if (!item.fieldKeys || item.fieldKeys.length === 0) continue;
+      const existing = await prisma.product.findUnique({
+        where: { internalArticleNumber: item.articleNumber },
+        select: { customData: true },
+      });
+      if (!existing?.customData || typeof existing.customData !== 'object') continue;
+
+      const currentCustom: Record<string, any> = { ...(existing.customData as Record<string, any>) };
+      const pendingMap: Record<string, any> =
+        currentCustom._pendingFormatting && typeof currentCustom._pendingFormatting === 'object'
+          ? { ...(currentCustom._pendingFormatting as Record<string, any>) }
+          : {};
+
+      let changed = false;
+      for (const fk of item.fieldKeys) {
+        if (pendingMap[fk] !== undefined) {
+          delete pendingMap[fk];
+          dismissedCount++;
+          changed = true;
+        }
+      }
+
+      if (!changed) continue;
+
+      if (Object.keys(pendingMap).length === 0) {
+        delete currentCustom._pendingFormatting;
+      } else {
+        currentCustom._pendingFormatting = pendingMap;
+      }
+
+      await prisma.product.update({
+        where: { internalArticleNumber: item.articleNumber },
+        data: { customData: currentCustom },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'FORMATTING_RULE_DISMISS',
+          entity: 'Product',
+          entityId: item.articleNumber,
+          changes: `Klaargezette formateringsvoorstellen afgewezen/gewist: ${item.fieldKeys.join(', ')}`,
+        },
+      }).catch(() => {});
+    }
+
+    revalidatePath('/products');
+    revalidatePath('/assignments');
+    revalidatePath('/', 'layout');
+
+    return { success: true, dismissedCount };
+  } catch (e: any) {
+    console.error('Failed to dismiss staged formatting proposals:', e);
+    return { success: false, dismissedCount: 0, error: e.message || 'Fout bij wissen van voorstellen.' };
   }
 }
 
@@ -521,13 +798,44 @@ export async function applyFormattingRuleAction(params: {
         });
       }
 
+      const existing = await prisma.product.findUnique({
+        where: { internalArticleNumber: item.articleNumber },
+        select: { customData: true },
+      });
+
+      const currentCustom: Record<string, any> =
+        existing?.customData && typeof existing.customData === 'object'
+          ? { ...(existing.customData as Record<string, any>) }
+          : {};
+
+      let customChanged = false;
       if (Object.keys(customDataUpdates).length > 0) {
-        const existing = await prisma.product.findUnique({
-          where: { internalArticleNumber: item.articleNumber },
-          select: { customData: true },
-        });
-        const currentCustom = (existing?.customData && typeof existing.customData === 'object') ? (existing.customData as Record<string, any>) : {};
-        updateData.customData = { ...currentCustom, ...customDataUpdates };
+        Object.assign(currentCustom, customDataUpdates);
+        customChanged = true;
+      }
+
+      // Clean up any staged formatting proposals for the applied fields
+      if (currentCustom._pendingFormatting && typeof currentCustom._pendingFormatting === 'object') {
+        const pendingMap: Record<string, any> = { ...(currentCustom._pendingFormatting as Record<string, any>) };
+        let pendingRemoved = false;
+        for (const ch of item.changes) {
+          if (pendingMap[ch.fieldKey] !== undefined) {
+            delete pendingMap[ch.fieldKey];
+            pendingRemoved = true;
+          }
+        }
+        if (pendingRemoved) {
+          if (Object.keys(pendingMap).length === 0) {
+            delete currentCustom._pendingFormatting;
+          } else {
+            currentCustom._pendingFormatting = pendingMap;
+          }
+          customChanged = true;
+        }
+      }
+
+      if (customChanged) {
+        updateData.customData = currentCustom;
       }
 
       if (Object.keys(updateData).length > 0) {

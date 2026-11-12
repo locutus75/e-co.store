@@ -34,16 +34,28 @@ async function assertEmpcoReadyAllowed(internalIds: string[], status: string) {
 async function assertProductLock(internalId: string) {
   const session = await getServerSession(authOptions);
   const roles = (session?.user as any)?.roles || [];
+  const userId = (session?.user as any)?.id as string | undefined;
   const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
 
   if (isAdmin) return; // Admins bypass locks
 
+  let hasAssignmentsRight = false;
+  if (roles.length > 0) {
+    const perms = await prisma.rolePermission.findMany({
+      where: { role: { name: { in: roles } }, module: 'MENU:assignments', action: 'ALLOW' }
+    });
+    hasAssignmentsRight = perms.length > 0;
+  }
+
   const existingProduct = await prisma.product.findUnique({
     where: { internalArticleNumber: internalId },
-    select: { readyForImport: true }
+    select: { readyForImport: true, assignedUserId: true }
   });
 
   if (existingProduct) {
+    if (!hasAssignmentsRight && existingProduct.assignedUserId !== userId) {
+      throw new Error('Unauthorized: Dit product is toegewezen aan een collega en is alleen-lezen.');
+    }
     const readyStatus = (existingProduct.readyForImport || '').toUpperCase();
     if (readyStatus === 'JA' || readyStatus === 'REVIEW' || readyStatus === 'R' || readyStatus === 'Y') {
       throw new Error('Unauthorized: Product is locked for review/export and cannot be modified.');
@@ -242,10 +254,9 @@ export async function bulkAssignAction(internalIds: string[], userId: string) {
       }
     });
 
-    // Option: Insert History tracking into ProductAssignment here if desired.
     if (userId !== 'NONE') {
       const histories = internalIds.map(pid => ({
-        productId: pid, // wait, product has an internal article number, but the relation might be the CUID. Let's just blindly update `assignedUserId` on the Product directly, which is clean.
+        productId: pid,
       }))
     }
 
@@ -715,7 +726,16 @@ export async function bulkUpdateProductStatusAction(internalIds: string[], statu
   try {
     const session = await getServerSession(authOptions);
     const roles = (session?.user as any)?.roles || [];
+    const userId = (session?.user as any)?.id as string | undefined;
     const isAdmin = roles.some((r: string) => r.toUpperCase() === 'ADMIN');
+
+    let hasAssignmentsRight = false;
+    if (!isAdmin && roles.length > 0) {
+      const perms = await prisma.rolePermission.findMany({
+        where: { role: { name: { in: roles } }, module: 'MENU:assignments', action: 'ALLOW' }
+      });
+      hasAssignmentsRight = perms.length > 0;
+    }
 
     const whereClause: any = {
       internalArticleNumber: {
@@ -729,6 +749,9 @@ export async function bulkUpdateProductStatusAction(internalIds: string[], statu
           in: ['JA', 'REVIEW', 'R', 'Y', 'ja', 'review'],
         },
       };
+      if (!hasAssignmentsRight) {
+        whereClause.assignedUserId = userId;
+      }
     }
 
     const res = await prisma.product.updateMany({
