@@ -11,6 +11,8 @@ import EmpcoBulkFixModal from '@/components/EmpcoBulkFixModal';
 import TransferSupplierModal from '@/components/TransferSupplierModal';
 import FormattingRulePreviewModal from '@/components/FormattingRulePreviewModal';
 import EcoPosSyncModal from '@/components/EcoPosSyncModal';
+import CategoryCheckModal, { isCategoryCheckValidForProduct } from '@/components/CategoryCheckModal';
+import { ProductCategoryCheck } from '@/app/actions/categories';
 import { triggerAutoEcoPosSyncIfDueAction } from '@/app/actions/ecopos';
 import { confirmEmpcoReady } from '@/lib/empcoGateClient';
 import { deleteProductsAction, updateReadyForImportAction, updateProductStatusAction, bulkUpdateProductStatusAction, bulkAssignAction, bulkUpdateReadyForImportAction } from '@/app/actions/product';
@@ -21,6 +23,16 @@ function getPendingFormattingCount(product: any): number {
   const pf = product?.customData?._pendingFormatting;
   if (!pf || typeof pf !== 'object' || Array.isArray(pf)) return 0;
   return Object.keys(pf).length;
+}
+
+function getActiveCategoryIssue(product: any): ProductCategoryCheck | null {
+  const check = product?.customData?._categoryCheck as ProductCategoryCheck | undefined;
+  if (!isCategoryCheckValidForProduct(product, check)) return null;
+  if (check.dismissed) return null;
+  if (check.status === 'MISMATCH' || check.status === 'WARNING') {
+    return check;
+  }
+  return null;
 }
 
 // ── Completeness helpers ────────────────────────────────────────────────────
@@ -317,7 +329,7 @@ function getPageNumbers(currentPage: number, totalPages: number) {
 
 export default function ProductsClient({
   initialProducts, systemUsers = [], isAdmin = false, canAssignProducts = false, canViewRolePeers = false, canEditRolePeers = false, canUseAi = false, canApproveEmpco = true, fieldPermissions = {}, layout = [], currentUserId = '', currentUserChatColor = null, currentUserAutoMarkRemarksAsRead = true, aiScoreMap = {}, imageCountMap = {}, empcoMap = {}, allSuppliers = []
-}: { initialProducts: any[], systemUsers ?: any[], isAdmin ?: boolean, canAssignProducts ?: boolean, canViewRolePeers ?: boolean, canEditRolePeers ?: boolean, canUseAi ?: boolean, canApproveEmpco ?: boolean, fieldPermissions ?: Record<string, string>, layout ?: any[], currentUserId ?: string, currentUserChatColor ?: string | null, currentUserAutoMarkRemarksAsRead ?: boolean, aiScoreMap ?: Record<string, number | null>, imageCountMap ?: Record<string, number>, empcoMap ?: Record<string, EmpcoMapEntry>, allSuppliers ?: { id: string; name: string }[] }) {
+}: { initialProducts: any[], systemUsers?: any[], isAdmin?: boolean, canAssignProducts?: boolean, canViewRolePeers?: boolean, canEditRolePeers?: boolean, canUseAi?: boolean, canApproveEmpco?: boolean, fieldPermissions?: Record<string, string>, layout?: any[], currentUserId?: string, currentUserChatColor?: string | null, currentUserAutoMarkRemarksAsRead?: boolean, aiScoreMap?: Record<string, number | null>, imageCountMap?: Record<string, number>, empcoMap?: Record<string, EmpcoMapEntry>, allSuppliers?: { id: string; name: string }[] }) {
   const router = useRouter();
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
@@ -331,414 +343,423 @@ export default function ProductsClient({
   const [formattingArticles, setFormattingArticles] = useState<string[] | null>(null);
   const [showEcoPosModal, setShowEcoPosModal] = useState(false);
   const [ecoPosArticles, setEcoPosArticles] = useState<string[] | undefined>(undefined);
+  const [showCategoryCheckModal, setShowCategoryCheckModal] = useState(false);
+  const [categoryCheckArticles, setCategoryCheckArticles] = useState<string[] | null>(null);
+  const [categoryCheckAutoStart, setCategoryCheckAutoStart] = useState(false);
 
   // Whether a product is read-only for the current user because it is assigned to a colleague
   const isProductReadOnlyForUser = useCallback((p: any): boolean => {
     if (isAdmin || canAssignProducts || canEditRolePeers) return false;
     if (!p || !currentUserId) return false;
     return p.assignedUserId !== currentUserId;
-}, [isAdmin, canAssignProducts, canEditRolePeers, currentUserId]);
+  }, [isAdmin, canAssignProducts, canEditRolePeers, currentUserId]);
 
-// ── Suppliers state & transfer modal (Admin only) ────────────────────────
-const [suppliersList, setSuppliersList] = useState<{ id: string; name: string }[]>(allSuppliers);
-const [showTransferSupplierModal, setShowTransferSupplierModal] = useState(false);
-const [preselectedTransferSupplierId, setPreselectedTransferSupplierId] = useState<string>('');
-const [transferSuccessMessage, setTransferSuccessMessage] = useState<string | null>(null);
+  // ── Suppliers state & transfer modal (Admin only) ────────────────────────
+  const [suppliersList, setSuppliersList] = useState<{ id: string; name: string }[]>(allSuppliers);
+  const [showTransferSupplierModal, setShowTransferSupplierModal] = useState(false);
+  const [preselectedTransferSupplierId, setPreselectedTransferSupplierId] = useState<string>('');
+  const [transferSuccessMessage, setTransferSuccessMessage] = useState<string | null>(null);
 
-useEffect(() => {
-  if (allSuppliers) setSuppliersList(allSuppliers);
-}, [allSuppliers]);
+  useEffect(() => {
+    if (allSuppliers) setSuppliersList(allSuppliers);
+  }, [allSuppliers]);
 
-const handleSupplierTransferSuccess = (targetSupplier: { id: string; name: string }, count: number) => {
-  setSuppliersList(prev => {
-    if (prev.some(s => s.id === targetSupplier.id)) return prev;
-    return [...prev, targetSupplier].sort((a, b) => a.name.localeCompare(b.name));
-  });
-  setSelectedIds(new Set());
-  setTransferSuccessMessage(`${count} product(en) succesvol omgezet naar leverancier "${targetSupplier.name}".`);
-  setTimeout(() => setTransferSuccessMessage(null), 6000);
-  router.refresh();
-};
-
-// ── Unread messages indicator ──────────────────────────────────────────
-const [unreadProducts, setUnreadProducts] = useState<Set<string>>(new Set());
-
-// Memoised so it re-creates (and re-fires effects) when initialProducts
-// changes — i.e. after every router.refresh() cycle below.
-const checkUnreadProducts = useCallback(() => {
-  if (typeof window === 'undefined') return;
-  const unread = new Set<string>();
-  for (const product of initialProducts) {
-    const latestRemark = product.remarks?.[0];
-    if (!latestRemark) continue;
-    if (latestRemark.userId === currentUserId) continue; // own message
-    const key = `chat_last_seen_${currentUserId}_${product.internalArticleNumber}`;
-    const lastSeen = localStorage.getItem(key);
-    const seenDate = lastSeen ? new Date(lastSeen) : null;
-    if (!seenDate || new Date(latestRemark.createdAt) > seenDate) {
-      unread.add(product.internalArticleNumber);
-    }
-  }
-  setUnreadProducts(unread);
-}, [initialProducts, currentUserId]);
-
-// Runs on mount AND whenever initialProducts is refreshed by the auto-sync below
-useEffect(() => { checkUnreadProducts(); }, [checkUnreadProducts]);
-
-// Re-check when drawer closes (chat has updated localStorage)
-useEffect(() => {
-  if (!selectedProduct) checkUnreadProducts();
-}, [selectedProduct, checkUnreadProducts]);
-
-// Real-time synchronization when a chat is marked read or unread
-useEffect(() => {
-  const handleSeenUpdated = () => checkUnreadProducts();
-  window.addEventListener('chat_seen_updated', handleSeenUpdated);
-  window.addEventListener('storage', handleSeenUpdated);
-  return () => {
-    window.removeEventListener('chat_seen_updated', handleSeenUpdated);
-    window.removeEventListener('storage', handleSeenUpdated);
-  };
-}, [checkUnreadProducts]);
-
-const getLayoutLabel = (fieldId: string, defaultLabel: string) => {
-  if (!layout) return defaultLabel;
-  for (const section of layout) {
-    if (!section.fields) continue;
-    const field = section.fields.find((f: any) => f.id === fieldId);
-    if (field && field.label) return field.label;
-  }
-  return defaultLabel;
-};
-
-// Auto-Sync Background Engine — also triggers checkUnreadProducts via the
-// useCallback dependency chain when fresh initialProducts arrive.
-useEffect(() => {
-  const interval = setInterval(() => {
+  const handleSupplierTransferSuccess = (targetSupplier: { id: string; name: string }, count: number) => {
+    setSuppliersList(prev => {
+      if (prev.some(s => s.id === targetSupplier.id)) return prev;
+      return [...prev, targetSupplier].sort((a, b) => a.name.localeCompare(b.name));
+    });
+    setSelectedIds(new Set());
+    setTransferSuccessMessage(`${count} product(en) succesvol omgezet naar leverancier "${targetSupplier.name}".`);
+    setTimeout(() => setTransferSuccessMessage(null), 6000);
     router.refresh();
-  }, 10000); // 10 seconds — balanced for near-real-time badge updates
-  return () => clearInterval(interval);
-}, [router]);
+  };
 
-useEffect(() => {
-  triggerAutoEcoPosSyncIfDueAction().then(res => {
-    if (res.triggered && res.result?.ok) router.refresh();
-  }).catch(() => { });
-  const ecoInterval = setInterval(() => {
+  // ── Unread messages indicator ──────────────────────────────────────────
+  const [unreadProducts, setUnreadProducts] = useState<Set<string>>(new Set());
+
+  // Memoised so it re-creates (and re-fires effects) when initialProducts
+  // changes — i.e. after every router.refresh() cycle below.
+  const checkUnreadProducts = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const unread = new Set<string>();
+    for (const product of initialProducts) {
+      const latestRemark = product.remarks?.[0];
+      if (!latestRemark) continue;
+      if (latestRemark.userId === currentUserId) continue; // own message
+      const key = `chat_last_seen_${currentUserId}_${product.internalArticleNumber}`;
+      const lastSeen = localStorage.getItem(key);
+      const seenDate = lastSeen ? new Date(lastSeen) : null;
+      if (!seenDate || new Date(latestRemark.createdAt) > seenDate) {
+        unread.add(product.internalArticleNumber);
+      }
+    }
+    setUnreadProducts(unread);
+  }, [initialProducts, currentUserId]);
+
+  // Runs on mount AND whenever initialProducts is refreshed by the auto-sync below
+  useEffect(() => { checkUnreadProducts(); }, [checkUnreadProducts]);
+
+  // Re-check when drawer closes (chat has updated localStorage)
+  useEffect(() => {
+    if (!selectedProduct) checkUnreadProducts();
+  }, [selectedProduct, checkUnreadProducts]);
+
+  // Real-time synchronization when a chat is marked read or unread
+  useEffect(() => {
+    const handleSeenUpdated = () => checkUnreadProducts();
+    window.addEventListener('chat_seen_updated', handleSeenUpdated);
+    window.addEventListener('storage', handleSeenUpdated);
+    return () => {
+      window.removeEventListener('chat_seen_updated', handleSeenUpdated);
+      window.removeEventListener('storage', handleSeenUpdated);
+    };
+  }, [checkUnreadProducts]);
+
+  const getLayoutLabel = (fieldId: string, defaultLabel: string) => {
+    if (!layout) return defaultLabel;
+    for (const section of layout) {
+      if (!section.fields) continue;
+      const field = section.fields.find((f: any) => f.id === fieldId);
+      if (field && field.label) return field.label;
+    }
+    return defaultLabel;
+  };
+
+  // Auto-Sync Background Engine — also triggers checkUnreadProducts via the
+  // useCallback dependency chain when fresh initialProducts arrive.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      router.refresh();
+    }, 10000); // 10 seconds — balanced for near-real-time badge updates
+    return () => clearInterval(interval);
+  }, [router]);
+
+  useEffect(() => {
     triggerAutoEcoPosSyncIfDueAction().then(res => {
       if (res.triggered && res.result?.ok) router.refresh();
     }).catch(() => { });
-  }, 60000);
-  return () => clearInterval(ecoInterval);
-}, [router]);
+    const ecoInterval = setInterval(() => {
+      triggerAutoEcoPosSyncIfDueAction().then(res => {
+        if (res.triggered && res.result?.ok) router.refresh();
+      }).catch(() => { });
+    }, 60000);
+    return () => clearInterval(ecoInterval);
+  }, [router]);
 
-// Search & Filter State
-const [searchQuery, setSearchQuery] = useState('');
-const [supplierFilter, setSupplierFilter] = useState('');
-const [brandFilter, setBrandFilter] = useState('');
-const [categoryFilter, setCategoryFilter] = useState('');
-const [statusFilter, setStatusFilter] = useState('');
-const [webshopActiveFilter, setWebshopActiveFilter] = useState('');
-const [webshopReadyFilter, setWebshopReadyFilter] = useState('');
-const [assignedUserFilter, setAssignedUserFilter] = useState('');
-const [aiScoreFilter, setAiScoreFilter] = useState('');
-const [unreadFilter, setUnreadFilter] = useState('');
-const [empcoFilter, setEmpcoFilter] = useState('');
-const [liveEmpcoMap, setLiveEmpcoMap] = useState<Record<string, EmpcoMapEntry>>(empcoMap);
-useEffect(() => { setLiveEmpcoMap(empcoMap); }, [empcoMap]);
+  // Search & Filter State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [supplierFilter, setSupplierFilter] = useState('');
+  const [brandFilter, setBrandFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [webshopActiveFilter, setWebshopActiveFilter] = useState('');
+  const [webshopReadyFilter, setWebshopReadyFilter] = useState('');
+  const [assignedUserFilter, setAssignedUserFilter] = useState('');
+  const [aiScoreFilter, setAiScoreFilter] = useState('');
+  const [unreadFilter, setUnreadFilter] = useState('');
+  const [empcoFilter, setEmpcoFilter] = useState('');
+  const [liveEmpcoMap, setLiveEmpcoMap] = useState<Record<string, EmpcoMapEntry>>(empcoMap);
+  useEffect(() => { setLiveEmpcoMap(empcoMap); }, [empcoMap]);
 
-// Read ?category= query parameter on mount (e.g. when navigating from /categories)
-useEffect(() => {
-  if (typeof window !== 'undefined') {
-    const params = new URLSearchParams(window.location.search);
-    const catParam = params.get('category');
-    if (catParam) setCategoryFilter(catParam);
-  }
-}, []);
-
-// Pagination State
-const [currentPage, setCurrentPage] = useState(1);
-const [pageSize, setPageSize] = useState<number | 'ALL'>(50);
-
-// Reset page to 1 when filters or search query change
-useEffect(() => {
-  setCurrentPage(1);
-}, [searchQuery, supplierFilter, brandFilter, categoryFilter, statusFilter, webshopActiveFilter, webshopReadyFilter, assignedUserFilter, aiScoreFilter, unreadFilter, empcoFilter]);
-
-// Multi-select State
-const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-
-// Extract subcategory/group names for a product (ignoring MplusWebshops root)
-const getProductSubcategoryNames = useCallback((p: any): string[] => {
-  const rawSub = p.subcategory?.name?.trim() || '';
-  const rawCat = p.category?.name?.trim() || '';
-  const effective = (rawSub && rawSub.toLowerCase() !== 'mpluswebshops')
-    ? rawSub
-    : (rawCat && rawCat.toLowerCase() !== 'mpluswebshops' ? rawCat : '');
-  if (!effective) return [];
-  return effective.split(',').map((s: string) => s.trim()).filter(Boolean);
-}, []);
-
-// Unique Lists for Dropdowns
-// Helper match functions for each filter (reused for dynamic option filtering)
-const matchSearch = useCallback((p: any) => searchQuery === '' ||
-  p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-  p.internalArticleNumber.toLowerCase().includes(searchQuery.toLowerCase()), [searchQuery]);
-
-const matchSupplier = useCallback((p: any) => supplierFilter === '' || p.supplier?.name === supplierFilter, [supplierFilter]);
-const matchBrand = useCallback((p: any) => brandFilter === '' || p.brand?.name === brandFilter, [brandFilter]);
-const matchCategory = useCallback((p: any) => {
-  if (categoryFilter === '') return true;
-  const names = getProductSubcategoryNames(p);
-  if (categoryFilter === 'UNCATEGORIZED') return names.length === 0;
-  return names.includes(categoryFilter) || p.category?.name === categoryFilter;
-}, [categoryFilter, getProductSubcategoryNames]);
-const matchStatus = useCallback((p: any) => statusFilter === '' || (p.status || 'NEW').toUpperCase() === statusFilter, [statusFilter]);
-const matchWebshopActive = useCallback((p: any) => {
-  if (webshopActiveFilter === '') return true;
-  return webshopActiveFilter === 'JA' ? Boolean(p.webshopActive) : !p.webshopActive;
-}, [webshopActiveFilter]);
-const matchReady = useCallback((p: any) => webshopReadyFilter === '' || (p.readyForImport || 'NEE').toUpperCase() === webshopReadyFilter, [webshopReadyFilter]);
-const matchAssigned = useCallback((p: any) => {
-  if (assignedUserFilter === '') return true;
-  if (assignedUserFilter === 'UNASSIGNED') return !p.assignedUserId;
-  if (assignedUserFilter === 'MY_PRODUCTS') return p.assignedUserId === currentUserId;
-  if (assignedUserFilter === 'PEER_PRODUCTS') return Boolean(p.assignedUserId) && p.assignedUserId !== currentUserId;
-  return p.assignedUserId === assignedUserFilter;
-}, [assignedUserFilter, currentUserId]);
-const matchScore = useCallback((p: any) => aiScoreFilter === '' || (aiScoreFilter === 'WITH_SCORE' ? aiScoreMap[p.internalArticleNumber] != null : aiScoreMap[p.internalArticleNumber] == null), [aiScoreFilter, aiScoreMap]);
-const matchUnread = useCallback((p: any) => unreadFilter === '' || (unreadFilter === 'UNREAD' ? unreadProducts.has(p.internalArticleNumber) : !unreadProducts.has(p.internalArticleNumber)), [unreadFilter, unreadProducts]);
-const empcoStateOf = useCallback((p: any): string => {
-  const e = liveEmpcoMap[p.internalArticleNumber];
-  if (!e) return 'NONE';
-  return e.stale ? 'STALE' : e.status;
-}, [liveEmpcoMap]);
-const matchEmpco = useCallback((p: any) => {
-  if (empcoFilter === '') return true;
-  if (empcoFilter === 'PENDING_FORMATTING') return getPendingFormattingCount(p) > 0;
-  const s = empcoStateOf(p);
-  if (empcoFilter === 'TODO') return s === 'NONE' || s === 'STALE'; // needs (re)check
-  if (empcoFilter === 'ISSUES') return s === 'FAIL' || s === 'WARNING';
-  return s === empcoFilter;
-}, [empcoFilter, empcoStateOf]);
-
-// Unique Lists for Dropdowns based on "all other filters except itself" (faceted search)
-const uniqueSuppliers = useMemo(() => {
-  const subset = initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchBrand(p) &&
-    matchStatus(p) &&
-    matchReady(p) &&
-    matchAssigned(p) &&
-    matchScore(p) &&
-    matchUnread(p)
-  );
-  const names = subset.map(p => p.supplier?.name).filter(Boolean);
-  return Array.from(new Set(names)).sort();
-}, [initialProducts, matchSearch, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread]);
-
-const uniqueBrands = useMemo(() => {
-  const subset = initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchSupplier(p) &&
-    matchStatus(p) &&
-    matchReady(p) &&
-    matchAssigned(p) &&
-    matchScore(p) &&
-    matchUnread(p)
-  );
-  const names = subset.map(p => p.brand?.name).filter(Boolean);
-  return Array.from(new Set(names)).sort();
-}, [initialProducts, matchSearch, matchSupplier, matchStatus, matchReady, matchAssigned, matchScore, matchUnread]);
-
-const availableStatuses = useMemo(() => {
-  const subset = initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchSupplier(p) &&
-    matchBrand(p) &&
-    matchReady(p) &&
-    matchAssigned(p) &&
-    matchScore(p) &&
-    matchUnread(p)
-  );
-  const statuses = subset.map(p => (p.status || 'NEW').toUpperCase());
-  return Array.from(new Set(statuses));
-}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchReady, matchAssigned, matchScore, matchUnread]);
-
-const availableReadiness = useMemo(() => {
-  const subset = initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchSupplier(p) &&
-    matchBrand(p) &&
-    matchStatus(p) &&
-    matchAssigned(p) &&
-    matchScore(p) &&
-    matchUnread(p)
-  );
-  const readyValues = subset.map(p => (p.readyForImport || 'NEE').toUpperCase());
-  return Array.from(new Set(readyValues));
-}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchAssigned, matchScore, matchUnread]);
-
-const availableAiScores = useMemo(() => {
-  const subset = initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchSupplier(p) &&
-    matchBrand(p) &&
-    matchStatus(p) &&
-    matchReady(p) &&
-    matchAssigned(p) &&
-    matchUnread(p)
-  );
-  const scores = new Set<string>();
-  subset.forEach(p => {
-    if (aiScoreMap[p.internalArticleNumber] != null) {
-      scores.add('WITH_SCORE');
-    } else {
-      scores.add('WITHOUT_SCORE');
+  // Read ?category= query parameter on mount (e.g. when navigating from /categories)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const catParam = params.get('category');
+      if (catParam) setCategoryFilter(catParam);
     }
-  });
-  return Array.from(scores);
-}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchUnread, aiScoreMap]);
+  }, []);
 
-const availableUnreadFilters = useMemo(() => {
-  const subset = initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchSupplier(p) &&
-    matchBrand(p) &&
-    matchStatus(p) &&
-    matchReady(p) &&
-    matchAssigned(p) &&
-    matchScore(p)
-  );
-  const unreadOpts = new Set<string>();
-  subset.forEach(p => {
-    if (unreadProducts.has(p.internalArticleNumber)) {
-      unreadOpts.add('UNREAD');
-    } else {
-      unreadOpts.add('READ');
-    }
-  });
-  return Array.from(unreadOpts);
-}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, unreadProducts]);
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'ALL'>(50);
 
-const availableAssignedUsers = useMemo(() => {
-  const subset = initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchSupplier(p) &&
-    matchBrand(p) &&
-    matchStatus(p) &&
-    matchReady(p) &&
-    matchScore(p) &&
-    matchUnread(p)
-  );
-  const userIds = new Set<string>();
-  let hasUnassigned = false;
-  let hasMine = false;
-  let hasPeers = false;
-  subset.forEach(p => {
-    if (p.assignedUserId) {
-      userIds.add(p.assignedUserId);
-      if (p.assignedUserId === currentUserId) hasMine = true;
-      else hasPeers = true;
-    } else {
-      hasUnassigned = true;
-    }
-  });
-  return {
-    userIds: Array.from(userIds),
-    hasUnassigned,
-    hasMine,
-    hasPeers,
-  };
+  // Reset page to 1 when filters or search query change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, supplierFilter, brandFilter, categoryFilter, statusFilter, webshopActiveFilter, webshopReadyFilter, assignedUserFilter, aiScoreFilter, unreadFilter, empcoFilter]);
+
+  // Multi-select State
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Extract subcategory/group names for a product (ignoring MplusWebshops root)
+  const getProductSubcategoryNames = useCallback((p: any): string[] => {
+    const rawSub = p.subcategory?.name?.trim() || '';
+    const rawCat = p.category?.name?.trim() || '';
+    const effective = (rawSub && rawSub.toLowerCase() !== 'mpluswebshops')
+      ? rawSub
+      : (rawCat && rawCat.toLowerCase() !== 'mpluswebshops' ? rawCat : '');
+    if (!effective) return [];
+    return effective.split(',').map((s: string) => s.trim()).filter(Boolean);
+  }, []);
+
+  // Unique Lists for Dropdowns
+  // Helper match functions for each filter (reused for dynamic option filtering)
+  const matchSearch = useCallback((p: any) => searchQuery === '' ||
+    p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    p.internalArticleNumber.toLowerCase().includes(searchQuery.toLowerCase()), [searchQuery]);
+
+  const matchSupplier = useCallback((p: any) => supplierFilter === '' || p.supplier?.name === supplierFilter, [supplierFilter]);
+  const matchBrand = useCallback((p: any) => brandFilter === '' || p.brand?.name === brandFilter, [brandFilter]);
+  const matchCategory = useCallback((p: any) => {
+    if (categoryFilter === '') return true;
+    if (categoryFilter === 'CATEGORY_ISSUES') return Boolean(getActiveCategoryIssue(p));
+    const names = getProductSubcategoryNames(p);
+    if (categoryFilter === 'UNCATEGORIZED') return names.length === 0;
+    return names.includes(categoryFilter) || p.category?.name === categoryFilter;
+  }, [categoryFilter, getProductSubcategoryNames]);
+  const matchStatus = useCallback((p: any) => statusFilter === '' || (p.status || 'NEW').toUpperCase() === statusFilter, [statusFilter]);
+  const matchWebshopActive = useCallback((p: any) => {
+    if (webshopActiveFilter === '') return true;
+    return webshopActiveFilter === 'JA' ? Boolean(p.webshopActive) : !p.webshopActive;
+  }, [webshopActiveFilter]);
+  const matchReady = useCallback((p: any) => webshopReadyFilter === '' || (p.readyForImport || 'NEE').toUpperCase() === webshopReadyFilter, [webshopReadyFilter]);
+  const matchAssigned = useCallback((p: any) => {
+    if (assignedUserFilter === '') return true;
+    if (assignedUserFilter === 'UNASSIGNED') return !p.assignedUserId;
+    if (assignedUserFilter === 'MY_PRODUCTS') return p.assignedUserId === currentUserId;
+    if (assignedUserFilter === 'PEER_PRODUCTS') return Boolean(p.assignedUserId) && p.assignedUserId !== currentUserId;
+    return p.assignedUserId === assignedUserFilter;
+  }, [assignedUserFilter, currentUserId]);
+  const matchScore = useCallback((p: any) => aiScoreFilter === '' || (aiScoreFilter === 'WITH_SCORE' ? aiScoreMap[p.internalArticleNumber] != null : aiScoreMap[p.internalArticleNumber] == null), [aiScoreFilter, aiScoreMap]);
+  const matchUnread = useCallback((p: any) => unreadFilter === '' || (unreadFilter === 'UNREAD' ? unreadProducts.has(p.internalArticleNumber) : !unreadProducts.has(p.internalArticleNumber)), [unreadFilter, unreadProducts]);
+  const empcoStateOf = useCallback((p: any): string => {
+    const e = liveEmpcoMap[p.internalArticleNumber];
+    if (!e) return 'NONE';
+    return e.stale ? 'STALE' : e.status;
+  }, [liveEmpcoMap]);
+  const matchEmpco = useCallback((p: any) => {
+    if (empcoFilter === '') return true;
+    if (empcoFilter === 'PENDING_FORMATTING') return getPendingFormattingCount(p) > 0;
+    const s = empcoStateOf(p);
+    if (empcoFilter === 'TODO') return s === 'NONE' || s === 'STALE'; // needs (re)check
+    if (empcoFilter === 'ISSUES') return s === 'FAIL' || s === 'WARNING';
+    return s === empcoFilter;
+  }, [empcoFilter, empcoStateOf]);
+
+  // Unique Lists for Dropdowns based on "all other filters except itself" (faceted search)
+  const uniqueSuppliers = useMemo(() => {
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchScore(p) &&
+      matchUnread(p)
+    );
+    const names = subset.map(p => p.supplier?.name).filter(Boolean);
+    return Array.from(new Set(names)).sort();
+  }, [initialProducts, matchSearch, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread]);
+
+  const uniqueBrands = useMemo(() => {
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchScore(p) &&
+      matchUnread(p)
+    );
+    const names = subset.map(p => p.brand?.name).filter(Boolean);
+    return Array.from(new Set(names)).sort();
+  }, [initialProducts, matchSearch, matchSupplier, matchStatus, matchReady, matchAssigned, matchScore, matchUnread]);
+
+  const availableStatuses = useMemo(() => {
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchScore(p) &&
+      matchUnread(p)
+    );
+    const statuses = subset.map(p => (p.status || 'NEW').toUpperCase());
+    return Array.from(new Set(statuses));
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchReady, matchAssigned, matchScore, matchUnread]);
+
+  const availableReadiness = useMemo(() => {
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchAssigned(p) &&
+      matchScore(p) &&
+      matchUnread(p)
+    );
+    const readyValues = subset.map(p => (p.readyForImport || 'NEE').toUpperCase());
+    return Array.from(new Set(readyValues));
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchAssigned, matchScore, matchUnread]);
+
+  const availableAiScores = useMemo(() => {
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchUnread(p)
+    );
+    const scores = new Set<string>();
+    subset.forEach(p => {
+      if (aiScoreMap[p.internalArticleNumber] != null) {
+        scores.add('WITH_SCORE');
+      } else {
+        scores.add('WITHOUT_SCORE');
+      }
+    });
+    return Array.from(scores);
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchUnread, aiScoreMap]);
+
+  const availableUnreadFilters = useMemo(() => {
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchScore(p)
+    );
+    const unreadOpts = new Set<string>();
+    subset.forEach(p => {
+      if (unreadProducts.has(p.internalArticleNumber)) {
+        unreadOpts.add('UNREAD');
+      } else {
+        unreadOpts.add('READ');
+      }
+    });
+    return Array.from(unreadOpts);
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, unreadProducts]);
+
+  const availableAssignedUsers = useMemo(() => {
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchScore(p) &&
+      matchUnread(p)
+    );
+    const userIds = new Set<string>();
+    let hasUnassigned = false;
+    let hasMine = false;
+    let hasPeers = false;
+    subset.forEach(p => {
+      if (p.assignedUserId) {
+        userIds.add(p.assignedUserId);
+        if (p.assignedUserId === currentUserId) hasMine = true;
+        else hasPeers = true;
+      } else {
+        hasUnassigned = true;
+      }
+    });
+    return {
+      userIds: Array.from(userIds),
+      hasUnassigned,
+      hasMine,
+      hasPeers,
+    };
   }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchScore, matchUnread, currentUserId]);
 
-const uniqueCategories = useMemo(() => {
-  const subset = initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchSupplier(p) &&
-    matchBrand(p) &&
-    matchStatus(p) &&
-    matchReady(p) &&
-    matchAssigned(p) &&
-    matchScore(p) &&
-    matchUnread(p)
-  );
-  const catSet = new Set<string>();
-  let hasUncategorized = false;
-  subset.forEach(p => {
-    const names = getProductSubcategoryNames(p);
-    if (names.length === 0) {
-      hasUncategorized = true;
-    } else {
-      names.forEach(n => catSet.add(n));
-    }
-  });
-  return {
-    names: Array.from(catSet).sort((a, b) => a.localeCompare(b, 'nl')),
-    hasUncategorized,
-  };
-}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread, getProductSubcategoryNames]);
+  const uniqueCategories = useMemo(() => {
+    const subset = initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchStatus(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchScore(p) &&
+      matchUnread(p)
+    );
+    const catSet = new Set<string>();
+    let hasUncategorized = false;
+    let hasCategoryIssues = false;
+    subset.forEach(p => {
+      if (getActiveCategoryIssue(p)) {
+        hasCategoryIssues = true;
+      }
+      const names = getProductSubcategoryNames(p);
+      if (names.length === 0) {
+        hasUncategorized = true;
+      } else {
+        names.forEach(n => catSet.add(n));
+      }
+    });
+    return {
+      names: Array.from(catSet).sort((a, b) => a.localeCompare(b, 'nl')),
+      hasUncategorized,
+      hasCategoryIssues,
+    };
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchStatus, matchReady, matchAssigned, matchScore, matchUnread, getProductSubcategoryNames]);
 
-// Filtered resulting list (uses all filters)
-const filteredProducts = useMemo(() => {
-  return initialProducts.filter(p =>
-    matchSearch(p) &&
-    matchSupplier(p) &&
-    matchBrand(p) &&
-    matchCategory(p) &&
-    matchStatus(p) &&
-    matchWebshopActive(p) &&
-    matchReady(p) &&
-    matchAssigned(p) &&
-    matchScore(p) &&
-    matchUnread(p) &&
-    matchEmpco(p)
-  );
-}, [initialProducts, matchSearch, matchSupplier, matchBrand, matchCategory, matchStatus, matchWebshopActive, matchReady, matchAssigned, matchScore, matchUnread, matchEmpco]);
+  // Filtered resulting list (uses all filters)
+  const filteredProducts = useMemo(() => {
+    return initialProducts.filter(p =>
+      matchSearch(p) &&
+      matchSupplier(p) &&
+      matchBrand(p) &&
+      matchCategory(p) &&
+      matchStatus(p) &&
+      matchWebshopActive(p) &&
+      matchReady(p) &&
+      matchAssigned(p) &&
+      matchScore(p) &&
+      matchUnread(p) &&
+      matchEmpco(p)
+    );
+  }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchCategory, matchStatus, matchWebshopActive, matchReady, matchAssigned, matchScore, matchUnread, matchEmpco]);
 
-        // EmpCo filter option counts (based on all other filters)
-        const empcoCounts = useMemo(() => {
-          const c: Record<string, number> = { NONE: 0, STALE: 0, PASS: 0, WARNING: 0, FAIL: 0, PENDING_FORMATTING: 0 };
-          initialProducts.forEach(p => {
-            if (matchSearch(p) && matchSupplier(p) && matchBrand(p) && matchCategory(p) && matchStatus(p) && matchReady(p) && matchAssigned(p) && matchScore(p) && matchUnread(p)) {
-              const s = empcoStateOf(p);
-              c[s] = (c[s] ?? 0) + 1;
-              if (getPendingFormattingCount(p) > 0) {
-                c.PENDING_FORMATTING = (c.PENDING_FORMATTING ?? 0) + 1;
-              }
-            }
-});
-return c;
+  // EmpCo filter option counts (based on all other filters)
+  const empcoCounts = useMemo(() => {
+    const c: Record<string, number> = { NONE: 0, STALE: 0, PASS: 0, WARNING: 0, FAIL: 0, PENDING_FORMATTING: 0 };
+    initialProducts.forEach(p => {
+      if (matchSearch(p) && matchSupplier(p) && matchBrand(p) && matchCategory(p) && matchStatus(p) && matchReady(p) && matchAssigned(p) && matchScore(p) && matchUnread(p)) {
+        const s = empcoStateOf(p);
+        c[s] = (c[s] ?? 0) + 1;
+        if (getPendingFormattingCount(p) > 0) {
+          c.PENDING_FORMATTING = (c.PENDING_FORMATTING ?? 0) + 1;
+        }
+      }
+    });
+    return c;
   }, [initialProducts, matchSearch, matchSupplier, matchBrand, matchCategory, matchStatus, matchReady, matchAssigned, matchScore, matchUnread, empcoStateOf]);
 
-const totalPages = useMemo(() => {
-  if (pageSize === 'ALL') return 1;
-  return Math.ceil(filteredProducts.length / pageSize) || 1;
-}, [filteredProducts.length, pageSize]);
+  const totalPages = useMemo(() => {
+    if (pageSize === 'ALL') return 1;
+    return Math.ceil(filteredProducts.length / pageSize) || 1;
+  }, [filteredProducts.length, pageSize]);
 
-const paginatedProducts = useMemo(() => {
-  if (pageSize === 'ALL') return filteredProducts;
-  const startIndex = (currentPage - 1) * pageSize;
-  return filteredProducts.slice(startIndex, startIndex + pageSize);
-}, [filteredProducts, currentPage, pageSize]);
+  const paginatedProducts = useMemo(() => {
+    if (pageSize === 'ALL') return filteredProducts;
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredProducts.slice(startIndex, startIndex + pageSize);
+  }, [filteredProducts, currentPage, pageSize]);
 
-        // Auto-sync currentPage when selectedProduct changes to a product on another page
-        useEffect(() => {
-          if (selectedProduct && pageSize !== 'ALL') {
-            const idx = filteredProducts.findIndex(p => p.internalArticleNumber === selectedProduct.internalArticleNumber);
-            if (idx !== -1) {
-              const expectedPage = Math.floor(idx / pageSize) + 1;
-              if (expectedPage !== currentPage) {
-                setCurrentPage(expectedPage);
-              }
-            }
-          }
+  // Auto-sync currentPage when selectedProduct changes to a product on another page
+  useEffect(() => {
+    if (selectedProduct && pageSize !== 'ALL') {
+      const idx = filteredProducts.findIndex(p => p.internalArticleNumber === selectedProduct.internalArticleNumber);
+      if (idx !== -1) {
+        const expectedPage = Math.floor(idx / pageSize) + 1;
+        if (expectedPage !== currentPage) {
+          setCurrentPage(expectedPage);
+        }
+      }
+    }
   }, [selectedProduct, filteredProducts, pageSize, currentPage]);
 
-const editableFilteredProducts = useMemo(
-  () => filteredProducts.filter(p => !isProductReadOnlyForUser(p)),
-  [filteredProducts, isProductReadOnlyForUser]
-);
+  const editableFilteredProducts = useMemo(
+    () => filteredProducts.filter(p => !isProductReadOnlyForUser(p)),
+    [filteredProducts, isProductReadOnlyForUser]
+  );
 
   const toggleSelectAll = () => {
     if (selectedIds.size === editableFilteredProducts.length && editableFilteredProducts.length > 0) {
@@ -886,6 +907,24 @@ const editableFilteredProducts = useMemo(
           }}
         />
       )}
+      {showCategoryCheckModal && (
+        <CategoryCheckModal
+          isOpen={showCategoryCheckModal}
+          onClose={() => {
+            setShowCategoryCheckModal(false);
+            setCategoryCheckArticles(null);
+          }}
+          products={
+            categoryCheckArticles
+              ? initialProducts.filter(p => categoryCheckArticles.includes(p.internalArticleNumber))
+              : initialProducts.filter(p => selectedIds.has(p.internalArticleNumber))
+          }
+          autoStartUnchecked={categoryCheckAutoStart}
+          onComplete={() => {
+            router.refresh();
+          }}
+        />
+      )}
       {transferSuccessMessage && (
         <div
           style={{
@@ -1005,12 +1044,15 @@ const editableFilteredProducts = useMemo(
           {(uniqueCategories.hasUncategorized || categoryFilter === 'UNCATEGORIZED') && (
             <option value="UNCATEGORIZED">[ Geen Categorie ]</option>
           )}
+          {(uniqueCategories.hasCategoryIssues || categoryFilter === 'CATEGORY_ISSUES') && (
+            <option value="CATEGORY_ISSUES">[ 🏷️ Met categorie-advies ]</option>
+          )}
           {uniqueCategories.names.map(cat => (
             <option key={cat} value={cat}>{cat}</option>
           ))}
-          {categoryFilter && categoryFilter !== 'UNCATEGORIZED' && !uniqueCategories.names.includes(categoryFilter) && (
-            <option value={categoryFilter}>{categoryFilter}</option>
-          )}
+            { categoryFilter && categoryFilter !== 'UNCATEGORIZED' && categoryFilter !== 'CATEGORY_ISSUES' && !uniqueCategories.names.includes(categoryFilter) && (
+              <option value={categoryFilter}>{categoryFilter}</option>
+            )}
         </select>
         <select
           className="input"
@@ -1427,6 +1469,36 @@ const editableFilteredProducts = useMemo(
               </button>
             )}
 
+            {canUseAi && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setCategoryCheckArticles(Array.from(selectedIds));
+                  setCategoryCheckAutoStart(true);
+                  setShowCategoryCheckModal(true);
+                }}
+                style={{
+                  height: '34px',
+                  padding: '0 0.75rem',
+                  fontSize: '0.82rem',
+                  backgroundColor: 'white',
+                  border: '1.5px solid #7c3aed',
+                  color: '#6d28d9',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontWeight: 600,
+                  borderRadius: 'var(--radius)',
+                  whiteSpace: 'nowrap',
+                }}
+                title={`Controleer of de ${selectedIds.size} geselecteerde producten in de juiste bestaande categorie zijn ingedeeld`}
+              >
+                🏷️ Categorie-check ({selectedIds.size})
+              </button>
+            )}
+
             <button
               type="button"
               className="btn"
@@ -1522,253 +1594,287 @@ const editableFilteredProducts = useMemo(
             </tr>
           </thead>
           <tbody>
-                {
-                  paginatedProducts.map(product => {
-                    const isPeerReadOnly = isProductReadOnlyForUser(product);
-                    const isEditablePeerProduct = !isAdmin && !canAssignProducts && canEditRolePeers && Boolean(currentUserId) && Boolean(product.assignedUserId) && product.assignedUserId !== currentUserId;
-                    return (
-                      <tr
-                        key={product.id}
-                        onClick={() => setSelectedProduct(product)}
-                        style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background-color 0.2s', backgroundColor: selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'transparent' }}
-                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'var(--surface-hover)'}
-                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'transparent'}
-                      >
-                        <td
-                          style={{ padding: '1rem 0.75rem 1rem 1.25rem', width: '48px', textAlign: 'center', verticalAlign: 'middle', cursor: isPeerReadOnly ? 'not-allowed' : 'pointer' }}
-                          onClick={e => {
+            {
+              paginatedProducts.map(product => {
+                const isPeerReadOnly = isProductReadOnlyForUser(product);
+                const isEditablePeerProduct = !isAdmin && !canAssignProducts && canEditRolePeers && Boolean(currentUserId) && Boolean(product.assignedUserId) && product.assignedUserId !== currentUserId;
+                return (
+                  <tr
+                    key={product.id}
+                    onClick={() => setSelectedProduct(product)}
+                    style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background-color 0.2s', backgroundColor: selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'transparent' }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'var(--surface-hover)'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = selectedIds.has(product.internalArticleNumber) ? 'var(--primary-glow)' : 'transparent'}
+                  >
+                    <td
+                      style={{ padding: '1rem 0.75rem 1rem 1.25rem', width: '48px', textAlign: 'center', verticalAlign: 'middle', cursor: isPeerReadOnly ? 'not-allowed' : 'pointer' }}
+                      onClick={e => {
+                        e.stopPropagation();
+                        if (!isPeerReadOnly) toggleSelect(product.internalArticleNumber);
+                      }}
+                      title={isPeerReadOnly ? 'Alleen lezen — product is toegewezen aan een collega' : 'Selecteer product'}
+                    >
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <input
+                          type="checkbox"
+                          disabled={isPeerReadOnly}
+                          checked={selectedIds.has(product.internalArticleNumber)}
+                          onChange={e => {
                             e.stopPropagation();
                             if (!isPeerReadOnly) toggleSelect(product.internalArticleNumber);
                           }}
-                          title={isPeerReadOnly ? 'Alleen lezen — product is toegewezen aan een collega' : 'Selecteer product'}
-                        >
-                          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <input
-                              type="checkbox"
-                              disabled={isPeerReadOnly}
-                              checked={selectedIds.has(product.internalArticleNumber)}
-                              onChange={e => {
-                                e.stopPropagation();
-                                if (!isPeerReadOnly) toggleSelect(product.internalArticleNumber);
-                              }}
-                              onClick={e => e.stopPropagation()}
-                              style={{
-                                width: '20px',
-                                height: '20px',
-                                cursor: isPeerReadOnly ? 'not-allowed' : 'pointer',
-                                opacity: isPeerReadOnly ? 0.35 : 1,
-                                accentColor: 'var(--primary)',
-                                borderRadius: '4px'
-                              }}
-                            />
-                          </div>
-                        </td>
-                        <td style={{ padding: '1.25rem', fontWeight: 600, color: 'var(--text)' }}>
-                          {(() => {
-                            const googleUrl = buildGoogleSearchUrl(product, layout);
-                            if (!googleUrl) return product.internalArticleNumber;
+                          onClick={e => e.stopPropagation()}
+                          style={{
+                            width: '20px',
+                            height: '20px',
+                            cursor: isPeerReadOnly ? 'not-allowed' : 'pointer',
+                            opacity: isPeerReadOnly ? 0.35 : 1,
+                            accentColor: 'var(--primary)',
+                            borderRadius: '4px'
+                          }}
+                        />
+                      </div>
+                    </td>
+                    <td style={{ padding: '1.25rem', fontWeight: 600, color: 'var(--text)' }}>
+                      {(() => {
+                        const googleUrl = buildGoogleSearchUrl(product, layout);
+                        if (!googleUrl) return product.internalArticleNumber;
+                        return (
+                          <a
+                            href={googleUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            title="Google zoeken op basis van gemarkeerde velden"
+                            style={{
+                              color: 'var(--primary)',
+                              textDecoration: 'none',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.3rem',
+                              borderBottom: '1px dashed var(--primary)',
+                              paddingBottom: '1px',
+                              transition: 'opacity 0.15s',
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.opacity = '0.7')}
+                            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+                          >
+                            {product.internalArticleNumber}
+                            <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>🌐</span>
+                          </a>
+                        );
+                      })()}
+                    </td>
+                    {(isAdmin || canAssignProducts || canViewRolePeers) && (
+                      <td style={{ padding: '1.25rem' }} onClick={e => { if (isAdmin || canAssignProducts) e.stopPropagation(); }}>
+                        {(isAdmin || canAssignProducts) ? (
+                          <select
+                            value={product.assignedUserId || 'NONE'}
+                            onChange={(e) => {
+                              startTransition(async () => { await bulkAssignAction([product.internalArticleNumber], e.target.value); });
+                            }}
+                            style={{ border: 'none', backgroundColor: 'transparent', color: product.assignedUserId ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
+                          >
+                            <option value="NONE">-</option>
+                            {systemUsers.map(su => (
+                              <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>
+                            ))}
+                          </select>
+                        ) : isPeerReadOnly ? (
+                          <span
+                            title="Alleen lezen — dit product is toegewezen aan een collega met dezelfde rol"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              padding: '0.18rem 0.55rem',
+                              borderRadius: '999px',
+                              backgroundColor: '#f1f5f9',
+                              border: '1px solid #cbd5e1',
+                              color: '#475569',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            👁️ {product.assignedUser?.email?.split('@')[0] || '-'}
+                          </span>
+                        ) : isEditablePeerProduct ? (
+                          <span
+                            title="Product van een collega met dezelfde rol (je hebt bewerkrechten)"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              padding: '0.18rem 0.55rem',
+                              borderRadius: '999px',
+                              backgroundColor: '#eef2ff',
+                              border: '1px solid #c7d2fe',
+                              color: '#4338ca',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            ✏️ {product.assignedUser?.email?.split('@')[0] || '-'}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--primary)', fontWeight: 600, fontSize: '0.8rem' }}>
+                            {product.assignedUser?.email?.split('@')[0] || '-'}
+                          </span>
+                        )}
+                      </td>
+                    )}
+                    <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.supplier?.name || '-'}</td>
+                    <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.brand?.name || '-'}</td>
+                    <td style={{ padding: '1.25rem', color: 'var(--text)', fontWeight: 500 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span>{product.title}</span>
+                        {unreadProducts.has(product.internalArticleNumber) && (
+                          <span
+                            title="Ongelezen berichten in interne communicatie"
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
+                              backgroundColor: '#ef4444', color: 'white',
+                              fontSize: '0.6rem', fontWeight: 800,
+                              padding: '0.1rem 0.45rem', borderRadius: '1rem',
+                              flexShrink: 0, animation: 'chat-unread-pulse 2s ease-in-out infinite',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            💬 nieuw
+                          </span>
+                        )}
+                        {(() => {
+                          const fmtCount = getPendingFormattingCount(product);
+                          if (fmtCount <= 0 || (!canApproveEmpco && !canUseAi)) return null;
+                          if (isPeerReadOnly) {
                             return (
-                              <a
-                                href={googleUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={e => e.stopPropagation()}
-                                title="Google zoeken op basis van gemarkeerde velden"
-                                style={{
-                                  color: 'var(--primary)',
-                                  textDecoration: 'none',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.3rem',
-                                  borderBottom: '1px dashed var(--primary)',
-                                  paddingBottom: '1px',
-                                  transition: 'opacity 0.15s',
-                                }}
-                                onMouseEnter={e => (e.currentTarget.style.opacity = '0.7')}
-                                onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-                              >
-                                {product.internalArticleNumber}
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>🌐</span>
-                              </a>
-                            );
-                          })()}
-                        </td>
-                        {(isAdmin || canAssignProducts || canViewRolePeers) && (
-                          <td style={{ padding: '1.25rem' }} onClick={e => { if (isAdmin || canAssignProducts) e.stopPropagation(); }}>
-                            {(isAdmin || canAssignProducts) ? (
-                              <select
-                                value={product.assignedUserId || 'NONE'}
-                                onChange={(e) => {
-                                  startTransition(async () => { await bulkAssignAction([product.internalArticleNumber], e.target.value); });
-                                }}
-                                style={{ border: 'none', backgroundColor: 'transparent', color: product.assignedUserId ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
-                              >
-                                <option value="NONE">-</option>
-                                {systemUsers.map(su => (
-                                  <option key={su.id} value={su.id}>{su.email.split('@')[0]}</option>
-                                ))}
-                              </select>
-                            ) : isPeerReadOnly ? (
                               <span
-                                title="Alleen lezen — dit product is toegewezen aan een collega met dezelfde rol"
+                                title={`${fmtCount} klaargezette tekst-/formateringsvoorstel(len) (alleen lezen)`}
                                 style={{
                                   display: 'inline-flex',
                                   alignItems: 'center',
                                   gap: '0.25rem',
-                                  padding: '0.18rem 0.55rem',
-                                  borderRadius: '999px',
-                                  backgroundColor: '#f1f5f9',
-                                  border: '1px solid #cbd5e1',
-                                  color: '#475569',
-                                  fontSize: '0.75rem',
-                                  fontWeight: 600,
+                                  backgroundColor: '#f3f4f6',
+                                  color: '#6b7280',
+                                  border: '1px solid #d1d5db',
+                                  fontSize: '0.65rem',
+                                  fontWeight: 700,
+                                  padding: '0.12rem 0.5rem',
+                                  borderRadius: '1rem',
+                                  flexShrink: 0,
                                   whiteSpace: 'nowrap',
                                 }}
                               >
-                          👁️ {product.assignedUser?.email?.split('@')[0] || '-'}
-                          </span>
-                        ) : isEditablePeerProduct ? (
-                        <span
-                          title="Product van een collega met dezelfde rol (je hebt bewerkrechten)"
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.25rem',
-                            padding: '0.18rem 0.55rem',
-                            borderRadius: '999px',
-                            backgroundColor: '#eef2ff',
-                            border: '1px solid #c7d2fe',
-                            color: '#4338ca',
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          ✏️ {product.assignedUser?.email?.split('@')[0] || '-'}
-                        </span>
-                        ) : (
-                        <span style={{ color: 'var(--primary)', fontWeight: 600, fontSize: '0.8rem' }}>
-                          {product.assignedUser?.email?.split('@')[0] || '-'}
-                        </span>
-                      )}
-                    </td>
-                  )}
-                  <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.supplier?.name || '-'}</td>
-                  <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{product.brand?.name || '-'}</td>
-                  <td style={{ padding: '1.25rem', color: 'var(--text)', fontWeight: 500 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <span>{product.title}</span>
-                      {unreadProducts.has(product.internalArticleNumber) && (
-                        <span
-                          title="Ongelezen berichten in interne communicatie"
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '0.2rem',
-                            backgroundColor: '#ef4444', color: 'white',
-                            fontSize: '0.6rem', fontWeight: 800,
-                            padding: '0.1rem 0.45rem', borderRadius: '1rem',
-                            flexShrink: 0, animation: 'chat-unread-pulse 2s ease-in-out infinite',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          💬 nieuw
-                        </span>
-                      )}
-                      {(() => {
-                        const fmtCount = getPendingFormattingCount(product);
-                        if (fmtCount <= 0 || (!canApproveEmpco && !canUseAi)) return null;
-                        if (isPeerReadOnly) {
+                                ✨ {fmtCount} {fmtCount === 1 ? 'voorstel' : 'voorstellen'}
+                              </span>
+                            );
+                          }
                           return (
-                            <span
-                              title={`${fmtCount} klaargezette tekst-/formateringsvoorstel(len) (alleen lezen)`}
+                            <button
+                              type="button"
+                              onClick={e => {
+                                e.stopPropagation();
+                                setFormattingModalMode('review');
+                                setFormattingArticles([product.internalArticleNumber]);
+                                setShowFormattingModal(true);
+                              }}
+                              title={`${fmtCount} klaargezette tekst-/formateringsvoorstel(len) bekijken, aanpassen of doorvoeren`}
                               style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '0.25rem',
-                                backgroundColor: '#f3f4f6',
-                                color: '#6b7280',
-                                border: '1px solid #d1d5db',
+                                backgroundColor: '#ede9fe',
+                                color: '#6d28d9',
+                                border: '1px solid #c4b5fd',
                                 fontSize: '0.65rem',
                                 fontWeight: 700,
                                 padding: '0.12rem 0.5rem',
                                 borderRadius: '1rem',
                                 flexShrink: 0,
+                                cursor: 'pointer',
                                 whiteSpace: 'nowrap',
                               }}
                             >
                               ✨ {fmtCount} {fmtCount === 1 ? 'voorstel' : 'voorstellen'}
-                            </span>
+                            </button>
                           );
-                        }
-                        return (
-                          <button
-                            type="button"
-                            onClick={e => {
-                              e.stopPropagation();
-                              setFormattingModalMode('review');
-                              setFormattingArticles([product.internalArticleNumber]);
-                              setShowFormattingModal(true);
-                            }}
-                            title={`${fmtCount} klaargezette tekst-/formateringsvoorstel(len) bekijken, aanpassen of doorvoeren`}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.25rem',
-                              backgroundColor: '#ede9fe',
-                              color: '#6d28d9',
-                              border: '1px solid #c4b5fd',
-                              fontSize: '0.65rem',
-                              fontWeight: 700,
-                              padding: '0.12rem 0.5rem',
-                              borderRadius: '1rem',
-                              flexShrink: 0,
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            ✨ {fmtCount} {fmtCount === 1 ? 'voorstel' : 'voorstellen'}
-                          </button>
-                        );
-                      })()}
-                    </div>
-                  </td>
-                  <td style={{ padding: '1.25rem' }}>
-                    <InlineStatusToggle
-                      product={product}
-                      isAdmin={isAdmin}
-                      isPeerReadOnly={isPeerReadOnly}
-                      selectedIds={selectedIds}
-                      onBulkStatusChange={handleBulkStatusChange}
-                    />
-                  </td>
-                  <td style={{ padding: '0.6rem 1.25rem' }}>
-                    <CompletenessCell product={product} layout={layout} imageCount={imageCountMap[product.internalArticleNumber] ?? 0} />
-                  </td>
-                  <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
-                    <AiAnalysisViewer
-                      articleNumber={product.internalArticleNumber}
-                      productTitle={product.title}
-                      score={aiScoreMap[product.internalArticleNumber] ?? null}
-                      canUseAi={canUseAi}
-                    />
-                  </td>
-                  <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
-                    <EmpcoViewer
-                      articleNumber={product.internalArticleNumber}
-                      productTitle={product.title}
-                      status={liveEmpcoMap[product.internalArticleNumber]?.status ?? null}
-                      stale={liveEmpcoMap[product.internalArticleNumber]?.stale ?? false}
-                      issueCount={liveEmpcoMap[product.internalArticleNumber]?.issueCount ?? 0}
-                      onOpenProduct={() => setSelectedProduct(product)}
-                      canApprove={canApproveEmpco && !isPeerReadOnly}
-                      isAdmin={isAdmin}
-                    />
-                  </td>
-                  <td style={{ padding: '1.25rem' }}>
-                    <InlineReadyToggle product={product} isAdmin={isAdmin} />
-                  </td>
-                </tr>
-            );
-            })}
+                        })()}
+                        {(() => {
+                          const catIssue = getActiveCategoryIssue(product);
+                          if (!catIssue) return null;
+                          return (
+                            <button
+                              type="button"
+                              onClick={e => {
+                                e.stopPropagation();
+                                if (isPeerReadOnly) return;
+                                setCategoryCheckArticles([product.internalArticleNumber]);
+                                setCategoryCheckAutoStart(false);
+                                setShowCategoryCheckModal(true);
+                              }}
+                              title={`Categorie-advies: ${catIssue.explanation}`}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                backgroundColor: catIssue.status === 'MISMATCH' ? '#fee2e2' : '#fef3c7',
+                                color: catIssue.status === 'MISMATCH' ? '#991b1b' : '#92400e',
+                                border: `1px solid ${catIssue.status === 'MISMATCH' ? '#fca5a5' : '#fcd34d'}`,
+                                fontSize: '0.65rem',
+                                fontWeight: 700,
+                                padding: '0.12rem 0.5rem',
+                                borderRadius: '1rem',
+                                flexShrink: 0,
+                                cursor: isPeerReadOnly ? 'default' : 'pointer',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              🏷️ → {catIssue.suggestedCategoryName || 'Andere categorie'}
+                            </button>
+                          );
+                        })()}
+                      </div>
+                    </td>
+                    <td style={{ padding: '1.25rem' }}>
+                      <InlineStatusToggle
+                        product={product}
+                        isAdmin={isAdmin}
+                        isPeerReadOnly={isPeerReadOnly}
+                        selectedIds={selectedIds}
+                        onBulkStatusChange={handleBulkStatusChange}
+                      />
+                    </td>
+                    <td style={{ padding: '0.6rem 1.25rem' }}>
+                      <CompletenessCell product={product} layout={layout} imageCount={imageCountMap[product.internalArticleNumber] ?? 0} />
+                    </td>
+                    <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
+                      <AiAnalysisViewer
+                        articleNumber={product.internalArticleNumber}
+                        productTitle={product.title}
+                        score={aiScoreMap[product.internalArticleNumber] ?? null}
+                        canUseAi={canUseAi}
+                      />
+                    </td>
+                    <td style={{ padding: '1.25rem' }} onClick={e => e.stopPropagation()}>
+                      <EmpcoViewer
+                        articleNumber={product.internalArticleNumber}
+                        productTitle={product.title}
+                        status={liveEmpcoMap[product.internalArticleNumber]?.status ?? null}
+                        stale={liveEmpcoMap[product.internalArticleNumber]?.stale ?? false}
+                        issueCount={liveEmpcoMap[product.internalArticleNumber]?.issueCount ?? 0}
+                        onOpenProduct={() => setSelectedProduct(product)}
+                        canApprove={canApproveEmpco && !isPeerReadOnly}
+                        isAdmin={isAdmin}
+                      />
+                    </td>
+                    <td style={{ padding: '1.25rem' }}>
+                      <InlineReadyToggle product={product} isAdmin={isAdmin} />
+                    </td>
+                  </tr>
+                );
+              })}
             {filteredProducts.length === 0 && (
               <tr>
                 <td colSpan={11} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>Geen producten gevonden die voldoen aan je filters.</td>
@@ -1829,19 +1935,19 @@ const editableFilteredProducts = useMemo(
                 disabled={currentPage === 1}
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
               >
-                  Vorige
+                Vorige
               </button>
 
               {getPageNumbers(currentPage, totalPages).map((p, idx) => {
-                    if (p === '...') {
-                      return (
-                        <span key={`dots-${idx}`} style={{ padding: '0.25rem 0.5rem', color: 'var(--text-muted)' }}>
-                          ...
-                        </span>
-                      );
-                    }
-                    const isSelected = p === currentPage;
-                    return (
+                if (p === '...') {
+                  return (
+                    <span key={`dots-${idx}`} style={{ padding: '0.25rem 0.5rem', color: 'var(--text-muted)' }}>
+                      ...
+                    </span>
+                  );
+                }
+                const isSelected = p === currentPage;
+                return (
                   <button
                     key={p}
                     className="btn"
@@ -1859,9 +1965,9 @@ const editableFilteredProducts = useMemo(
                     }}
                     onClick={() => setCurrentPage(p as number)}
                   >
-                    { p }
+                    {p}
                   </button>
-      );
+                );
               })}
 
               <button
@@ -1880,18 +1986,18 @@ const editableFilteredProducts = useMemo(
               >
                 Volgende
               </button>
-        </div>
-      )}
+            </div>
+          )}
 
-      {/* Right section: Info text */}
-      <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-        Weergave {Math.min(filteredProducts.length, (currentPage - 1) * (pageSize === 'ALL' ? filteredProducts.length : pageSize) + 1)}-
-        {Math.min(filteredProducts.length, currentPage * (pageSize === 'ALL' ? filteredProducts.length : pageSize))} van{' '}
-        <strong>{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'product' : 'producten'}
-      </div>
-    </div>
-  )
-}
+          {/* Right section: Info text */}
+          <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+            Weergave {Math.min(filteredProducts.length, (currentPage - 1) * (pageSize === 'ALL' ? filteredProducts.length : pageSize) + 1)}-
+            {Math.min(filteredProducts.length, currentPage * (pageSize === 'ALL' ? filteredProducts.length : pageSize))} van{' '}
+            <strong>{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'product' : 'producten'}
+          </div>
+        </div>
+      )
+      }
 
       <ProductDrawer
         product={selectedProduct}

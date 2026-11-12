@@ -4,11 +4,13 @@ import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
+  ProductCategoryCheck,
   cleanupUnusedCategoriesAction,
   deleteCategoryAction,
   renameCategoryAction,
   syncCategoriesFromEcoPosAction,
 } from '@/app/actions/categories';
+import CategoryCheckModal, { isCategoryCheckValidForProduct } from '@/components/CategoryCheckModal';
 
 interface CategoryRecord {
   id: string;
@@ -49,10 +51,21 @@ interface SubcategoryStats {
   webshopActiveCount: number;
   inStockCount: number;
   empcoIssueCount: number;
+  categoryIssueCount: number;
 }
 
 function isMplusRoot(name?: string | null): boolean {
   return !name || name.trim().toLowerCase() === 'mpluswebshops';
+}
+
+function hasActiveCategoryIssue(p: ProductItem): ProductCategoryCheck | null {
+  const check = p.customData?._categoryCheck as ProductCategoryCheck | undefined;
+  if (!isCategoryCheckValidForProduct(p, check)) return null;
+  if (check.dismissed) return null;
+  if (check.status === 'MISMATCH' || check.status === 'WARNING') {
+    return check;
+  }
+  return null;
 }
 
 export default function CategoriesClient({
@@ -68,7 +81,9 @@ export default function CategoriesClient({
 }) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterMode, setFilterMode] = useState<'all' | 'with_products' | 'empco_issues' | 'uncategorized'>('all');
+  const [filterMode, setFilterMode] = useState<
+    'all' | 'with_products' | 'empco_issues' | 'category_issues' | 'uncategorized'
+  >('all');
   const [expandedSubcats, setExpandedSubcats] = useState<Set<string>>(new Set());
   const [collapsedParents, setCollapsedParents] = useState<Set<string>>(new Set());
 
@@ -80,10 +95,24 @@ export default function CategoriesClient({
   const [editingName, setEditingName] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
+  const [checkModalOpen, setCheckModalOpen] = useState(false);
+  const [checkModalProducts, setCheckModalProducts] = useState<ProductItem[]>([]);
+  const [checkModalTitle, setCheckModalTitle] = useState<string>('');
+  const [checkModalAutoStart, setCheckModalAutoStart] = useState<boolean>(false);
+
+  const openCategoryCheck = (productsToCheck: ProductItem[], title: string, autoStart = false) => {
+    setCheckModalProducts(productsToCheck);
+    setCheckModalTitle(title);
+    setCheckModalAutoStart(autoStart);
+    setCheckModalOpen(true);
+  };
+
   // Build hierarchical groups (Main Category -> Subcategory/Group -> Products)
   const {
     parentGroups,
     uncategorizedProducts,
+    categoryIssueProducts,
+    checkedProductsCount,
     totalCategorizedProducts,
     totalSubcategories,
     multiGroupProductCount,
@@ -102,7 +131,6 @@ export default function CategoriesClient({
     const catById = new Map(initialCategories.map((c) => [c.id, c]));
     for (const cat of initialCategories) {
       if (isMplusRoot(cat.name)) continue;
-      // If this category is purely a parent container for other categories, don't add it as a leaf unless products point to it
       const hasChildren = initialCategories.some((other) => other.parentId === cat.id && !isMplusRoot(other.name));
       if (!hasChildren) {
         const parentObj = cat.parentId ? catById.get(cat.parentId) : null;
@@ -121,10 +149,20 @@ export default function CategoriesClient({
     }
 
     const uncategorized: ProductItem[] = [];
+    const catIssues: ProductItem[] = [];
+    let checkedCount = 0;
     let categorizedCount = 0;
     let multiGroupCount = 0;
 
     for (const p of initialProducts) {
+      const check = p.customData?._categoryCheck as ProductCategoryCheck | undefined;
+      if (isCategoryCheckValidForProduct(p, check)) {
+        checkedCount++;
+        if (!check.dismissed && (check.status === 'MISMATCH' || check.status === 'WARNING')) {
+          catIssues.push(p);
+        }
+      }
+
       const rawSubName =
         p.subcategory?.name && !isMplusRoot(p.subcategory.name)
           ? p.subcategory.name.trim()
@@ -194,6 +232,7 @@ export default function CategoriesClient({
       let webshopActiveCount = 0;
       let inStockCount = 0;
       let empcoIssueCount = 0;
+      let categoryIssueCount = 0;
 
       for (const p of entry.products) {
         const st = (p.status || 'NEW').toUpperCase();
@@ -211,6 +250,10 @@ export default function CategoriesClient({
         if (emp && (emp.status === 'FAIL' || emp.status === 'WARNING')) {
           empcoIssueCount++;
         }
+
+        if (hasActiveCategoryIssue(p)) {
+          categoryIssueCount++;
+        }
       }
 
       const stat: SubcategoryStats = {
@@ -227,6 +270,7 @@ export default function CategoriesClient({
         webshopActiveCount,
         inStockCount,
         empcoIssueCount,
+        categoryIssueCount,
       };
 
       const list = byParent.get(entry.parentName) ?? [];
@@ -249,6 +293,8 @@ export default function CategoriesClient({
     return {
       parentGroups: sortedParents,
       uncategorizedProducts: uncategorized,
+      categoryIssueProducts: catIssues,
+      checkedProductsCount: checkedCount,
       totalCategorizedProducts: categorizedCount,
       totalSubcategories: subcatMap.size,
       multiGroupProductCount: multiGroupCount,
@@ -265,6 +311,7 @@ export default function CategoriesClient({
         const matchingSubcats = pg.subcats.filter((sc) => {
           if (filterMode === 'with_products' && sc.totalCount === 0) return false;
           if (filterMode === 'empco_issues' && sc.empcoIssueCount === 0) return false;
+          if (filterMode === 'category_issues' && sc.categoryIssueCount === 0) return false;
           if (!q) return true;
           if (sc.name.toLowerCase().includes(q) || pg.parentName.toLowerCase().includes(q)) {
             return true;
@@ -371,50 +418,77 @@ export default function CategoriesClient({
             Categorieën & Productgroepen
           </h1>
           <p style={{ margin: '0.25rem 0 0', fontSize: '0.88rem', color: 'var(--text-muted)' }}>
-            Overzicht van alle MplusKassa / EcoPos productgroepen, content-voortgang en producten zonder categorie.
+            Overzicht van alle MplusKassa / EcoPos productgroepen, categorie-indeling controle en producten zonder categorie.
           </p>
         </div>
 
-        {isAdmin && (
-          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className="btn"
-              onClick={handleCleanup}
-              disabled={cleaning || syncing}
-              style={{
-                padding: '0.55rem 1rem',
-                fontSize: '0.86rem',
-                backgroundColor: 'var(--surface)',
-                border: '1px solid var(--border)',
-                color: 'var(--text)',
-                fontWeight: 600,
-                cursor: cleaning ? 'wait' : 'pointer',
-              }}
-              title="Verwijder lege categorieën en oude MplusWebshops-hoofdcategorieën"
-            >
-              {cleaning ? 'Bezig...' : '🧹 Lege categorieën opschonen'}
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={handleSyncFromEcoPos}
-              disabled={syncing || cleaning}
-              style={{
-                padding: '0.55rem 1.1rem',
-                fontSize: '0.86rem',
-                backgroundColor: '#0284c7',
-                border: 'none',
-                color: 'white',
-                fontWeight: 700,
-                cursor: syncing ? 'wait' : 'pointer',
-              }}
-              title="Haal voor alle producten de actuele categorie en subcategorie op uit EcoPos"
-            >
-              {syncing ? '🔄 Bezig met ophalen...' : '🔄 Categorieën ophalen uit EcoPos'}
-            </button>
-          </div>
-        )}
+        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() =>
+              openCategoryCheck(
+                initialProducts,
+                `Alle producten (${initialProducts.length} artikelen)`,
+                false
+              )
+            }
+            style={{
+              padding: '0.55rem 1.05rem',
+              fontSize: '0.86rem',
+              backgroundColor: '#7c3aed',
+              border: 'none',
+              color: 'white',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+            title="Controleer of producten in de juiste bestaande categorie zijn ingedeeld (bedenkt geen eigen categorieën)"
+          >
+            🏷️ Categorie-check uitvoeren
+            {categoryIssueProducts.length > 0 ? ` (${categoryIssueProducts.length} voorstellen)` : ''}
+          </button>
+
+          {isAdmin && (
+            <>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleCleanup}
+                disabled={cleaning || syncing}
+                style={{
+                  padding: '0.55rem 1rem',
+                  fontSize: '0.86rem',
+                  backgroundColor: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text)',
+                  fontWeight: 600,
+                  cursor: cleaning ? 'wait' : 'pointer',
+                }}
+                title="Verwijder lege categorieën en oude MplusWebshops-hoofdcategorieën"
+              >
+                {cleaning ? 'Bezig...' : '🧹 Lege categorieën opschonen'}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleSyncFromEcoPos}
+                disabled={syncing || cleaning}
+                style={{
+                  padding: '0.55rem 1.1rem',
+                  fontSize: '0.86rem',
+                  backgroundColor: '#0284c7',
+                  border: 'none',
+                  color: 'white',
+                  fontWeight: 700,
+                  cursor: syncing ? 'wait' : 'pointer',
+                }}
+                title="Haal voor alle producten de actuele categorie en subcategorie op uit EcoPos"
+              >
+                {syncing ? '🔄 Bezig met ophalen...' : '🔄 Categorieën ophalen uit EcoPos'}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Feedback Banner */}
@@ -471,6 +545,46 @@ export default function CategoriesClient({
 
         <div
           className="glass"
+          onClick={() => {
+            if (categoryIssueProducts.length > 0) {
+              openCategoryCheck(
+                categoryIssueProducts,
+                `Producten met categorie-voorstel (${categoryIssueProducts.length})`,
+                false
+              );
+            } else {
+              openCategoryCheck(
+                initialProducts,
+                `Alle producten (${initialProducts.length})`,
+                false
+              );
+            }
+          }}
+          style={{
+            padding: '1.1rem 1.25rem',
+            borderRadius: 'var(--radius)',
+            border:
+              filterMode === 'category_issues'
+                ? '2px solid #7c3aed'
+                : categoryIssueProducts.length > 0
+                  ? '1px solid #c4b5fd'
+                  : '1px solid var(--border)',
+            cursor: 'pointer',
+          }}
+        >
+          <div style={{ fontSize: '0.78rem', color: '#6d28d9', fontWeight: 600 }}>
+            🏷️ Categorie-adviezen
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#7c3aed', marginTop: '0.2rem' }}>
+            {categoryIssueProducts.length}
+          </div>
+          <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+            {checkedProductsCount} gecontroleerd • Klik om voorstellen te bekijken
+          </div>
+        </div>
+
+        <div
+          className="glass"
           onClick={() => setFilterMode(filterMode === 'uncategorized' ? 'all' : 'uncategorized')}
           style={{
             padding: '1.1rem 1.25rem',
@@ -516,6 +630,7 @@ export default function CategoriesClient({
           {[
             { id: 'all', label: `Alle groepen (${totalSubcategories})` },
             { id: 'with_products', label: 'Alleen met producten' },
+            { id: 'category_issues', label: `🏷️ Categorie-adviezen (${categoryIssueProducts.length})` },
             { id: 'empco_issues', label: '🚩 Met EmpCo-bevindingen' },
             { id: 'uncategorized', label: `⚠️ Zonder categorie (${uncategorizedProducts.length})` },
           ].map((tab) => {
@@ -558,8 +673,17 @@ export default function CategoriesClient({
                 color: 'var(--text-muted)',
               }}
             >
-              Geen categorieën gevonden voor deze zoekopdracht. Klik rechtsboven op{' '}
-              <strong>🔄 Categorieën ophalen uit EcoPos</strong> om de categorieboom in te laden.
+              {filterMode === 'category_issues' ? (
+                <>
+                  Geen categorie-afwijkingen gevonden. Klik rechtsboven op{' '}
+                  <strong>🏷️ Categorie-check uitvoeren</strong> om producten te controleren tegen de bestaande categorieën.
+                </>
+              ) : (
+                <>
+                  Geen categorieën gevonden voor deze zoekopdracht. Klik rechtsboven op{' '}
+                  <strong>🔄 Categorieën ophalen uit EcoPos</strong> om de categorieboom in te laden.
+                </>
+              )}
             </div>
           ) : (
             filteredParentGroups.map((pg) => {
@@ -753,6 +877,33 @@ export default function CategoriesClient({
                                   ✓ Ready: <strong>{sc.readyCount}</strong>
                                 </span>
 
+                                {sc.categoryIssueCount > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      openCategoryCheck(
+                                        sc.products,
+                                        `${pg.parentName} › ${sc.name}`,
+                                        false
+                                      )
+                                    }
+                                    style={{
+                                      fontSize: '0.74rem',
+                                      fontWeight: 700,
+                                      padding: '0.15rem 0.55rem',
+                                      borderRadius: '999px',
+                                      backgroundColor: '#f5f3ff',
+                                      color: '#6d28d9',
+                                      border: '1px solid #ddd6fe',
+                                      whiteSpace: 'nowrap',
+                                      cursor: 'pointer',
+                                    }}
+                                    title="Bekijk categorie-voorstellen in deze subcategorie"
+                                  >
+                                    🏷️ {sc.categoryIssueCount} andere categorie
+                                  </button>
+                                )}
+
                                 {sc.empcoIssueCount > 0 && (
                                   <span
                                     style={{
@@ -798,158 +949,255 @@ export default function CategoriesClient({
                               </div>
 
                               {/* Right: Action buttons */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <button
-                                  type="button"
-                                  className="btn"
-                                  onClick={() => toggleSubcatExpand(sc.name)}
-                                  style={{
-                                    padding: '0.35rem 0.7rem',
-                                    fontSize: '0.78rem',
-                                    backgroundColor: 'var(--surface)',
-                                    border: '1px solid var(--border)',
-                                    color: 'var(--text)',
-                                    fontWeight: 600,
-                                    whiteSpace: 'nowrap',
-                                  }}
-                                >
-                                  {isExpanded ? 'Verberg lijst' : 'Toon artikelen'}
-                                </button>
-                                <Link
-                                  href={`/products?category=${encodeURIComponent(sc.name)}`}
-                                  className="btn"
-                                  style={{
-                                    padding: '0.35rem 0.75rem',
-                                    fontSize: '0.78rem',
-                                    backgroundColor: '#eff6ff',
-                                    border: '1px solid #bfdbfe',
-                                    color: '#1d4ed8',
-                                    fontWeight: 600,
-                                    textDecoration: 'none',
-                                    whiteSpace: 'nowrap',
-                                  }}
-                                >
-                                  📦 Open in Producten →
-                                </Link>
-                              </div>
-                            </div>
-
-                            {/* Expanded Product Table */}
-                            {isExpanded && sc.products.length > 0 && (
-                              <div style={{ padding: '0 1.25rem 1rem 2.25rem' }}>
-                                <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'var(--surface)' }}>
-                                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', textAlign: 'left' }}>
-                                    <thead>
-                                      <tr style={{ backgroundColor: 'var(--background)', borderBottom: '1px solid var(--border)' }}>
-                                        <th style={{ padding: '0.5rem 0.75rem' }}>Nummer</th>
-                                        <th style={{ padding: '0.5rem 0.75rem' }}>Merk</th>
-                                        <th style={{ padding: '0.5rem 0.75rem' }}>Titel</th>
-                                        <th style={{ padding: '0.5rem 0.75rem' }}>Prijs</th>
-                                        <th style={{ padding: '0.5rem 0.75rem' }}>Voorraad</th>
-                                        <th style={{ padding: '0.5rem 0.75rem' }}>Status</th>
-                                        <th style={{ padding: '0.5rem 0.75rem' }}>Webshop</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {sc.products.slice(0, 100).map((p) => {
-                                        const stock = p.customData?.ecoposStock;
-                                        return (
-                                          <tr key={p.internalArticleNumber} style={{ borderBottom: '1px solid var(--border)' }}>
-                                            <td style={{ padding: '0.45rem 0.75rem', fontWeight: 700 }}>
-                                              #{p.internalArticleNumber}
-                                            </td>
-                                            <td style={{ padding: '0.45rem 0.75rem', color: 'var(--text-muted)' }}>
-                                              {p.brand?.name || '—'}
-                                            </td>
-                                            <td style={{ padding: '0.45rem 0.75rem', fontWeight: 500 }}>
-                                              {p.title}
-                                            </td>
-                                            <td style={{ padding: '0.45rem 0.75rem' }}>
-                                              {p.basePrice != null ? `€ ${Number(p.basePrice).toFixed(2).replace('.', ',')}` : '—'}
-                                            </td>
-                                            <td style={{ padding: '0.45rem 0.75rem' }}>
-                                              {stock !== undefined && stock !== null ? stock : '—'}
-                                            </td>
-                                            <td style={{ padding: '0.45rem 0.75rem' }}>
-                                              <span
-                                                style={{
-                                                  fontSize: '0.7rem',
-                                                  fontWeight: 700,
-                                                  padding: '0.15rem 0.45rem',
-                                                  borderRadius: '999px',
-                                                  backgroundColor: 'var(--surface-hover)',
-                                                }}
-                                              >
-                                                {(p.status || 'NEW').toUpperCase()}
-                                              </span>
-                                            </td>
-                                            <td style={{ padding: '0.45rem 0.75rem' }}>
-                                              {p.webshopActive ? '✅ Ja' : 'Nee'}
-                                            </td>
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                  </table>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                                  {sc.products.length > 0 && (
+                                    <button
+                                      type="button"
+                                      className="btn"
+                                      onClick={() =>
+                                        openCategoryCheck(
+                                          sc.products,
+                                          `${pg.parentName} › ${sc.name} (${sc.products.length} producten)`,
+                                          true
+                                        )
+                                      }
+                                      style={{
+                                        padding: '0.35rem 0.65rem',
+                                        fontSize: '0.76rem',
+                                        backgroundColor: '#f5f3ff',
+                                        border: '1px solid #ddd6fe',
+                                        color: '#6d28d9',
+                                        fontWeight: 700,
+                                        whiteSpace: 'nowrap',
+                                        cursor: 'pointer',
+                                      }}
+                                      title="Controleer of alle producten in deze groep in de juiste categorie staan"
+                                    >
+                                      🏷️ Check
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    onClick={() => toggleSubcatExpand(sc.name)}
+                                    style={{
+                                      padding: '0.35rem 0.7rem',
+                                      fontSize: '0.78rem',
+                                      backgroundColor: 'var(--surface)',
+                                      border: '1px solid var(--border)',
+                                      color: 'var(--text)',
+                                      fontWeight: 600,
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    {isExpanded ? 'Verberg lijst' : 'Toon artikelen'}
+                                  </button>
+                                  <Link
+                                    href={`/products?category=${encodeURIComponent(sc.name)}`}
+                                    className="btn"
+                                    style={{
+                                      padding: '0.35rem 0.75rem',
+                                      fontSize: '0.78rem',
+                                      backgroundColor: '#eff6ff',
+                                      border: '1px solid #bfdbfe',
+                                      color: '#1d4ed8',
+                                      fontWeight: 600,
+                                      textDecoration: 'none',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    📦 Open in Producten →
+                                  </Link>
                                 </div>
                               </div>
-                            )}
-                          </div>
-                        );
+
+                              {/* Expanded Product Table */}
+                              {isExpanded && sc.products.length > 0 && (
+                                <div style={{ padding: '0 1.25rem 1rem 2.25rem' }}>
+                                  <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'var(--surface)' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', textAlign: 'left' }}>
+                                      <thead>
+                                        <tr style={{ backgroundColor: 'var(--background)', borderBottom: '1px solid var(--border)' }}>
+                                          <th style={{ padding: '0.5rem 0.75rem' }}>Nummer</th>
+                                          <th style={{ padding: '0.5rem 0.75rem' }}>Merk</th>
+                                          <th style={{ padding: '0.5rem 0.75rem' }}>Titel</th>
+                                          <th style={{ padding: '0.5rem 0.75rem' }}>Categorie-check</th>
+                                          <th style={{ padding: '0.5rem 0.75rem' }}>Prijs</th>
+                                          <th style={{ padding: '0.5rem 0.75rem' }}>Voorraad</th>
+                                          <th style={{ padding: '0.5rem 0.75rem' }}>Status</th>
+                                          <th style={{ padding: '0.5rem 0.75rem' }}>Webshop</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {sc.products.slice(0, 100).map((p) => {
+                                          const stock = p.customData?.ecoposStock;
+                                          const catIssue = hasActiveCategoryIssue(p);
+                                          const validCheck = isCategoryCheckValidForProduct(p, p.customData?._categoryCheck)
+                                            ? (p.customData._categoryCheck as ProductCategoryCheck)
+                                            : null;
+                                          return (
+                                            <tr key={p.internalArticleNumber} style={{ borderBottom: '1px solid var(--border)' }}>
+                                              <td style={{ padding: '0.45rem 0.75rem', fontWeight: 700 }}>
+                                                #{p.internalArticleNumber}
+                                              </td>
+                                              <td style={{ padding: '0.45rem 0.75rem', color: 'var(--text-muted)' }}>
+                                                {p.brand?.name || '—'}
+                                              </td>
+                                              <td style={{ padding: '0.45rem 0.75rem', fontWeight: 500 }}>
+                                                {p.title}
+                                              </td>
+                                              <td style={{ padding: '0.45rem 0.75rem' }}>
+                                                {catIssue ? (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => openCategoryCheck([p], `Product #${p.internalArticleNumber}`, false)}
+                                                    style={{
+                                                      fontSize: '0.72rem',
+                                                      fontWeight: 700,
+                                                      padding: '0.15rem 0.5rem',
+                                                      borderRadius: '999px',
+                                                      backgroundColor: catIssue.status === 'MISMATCH' ? '#fee2e2' : '#fef3c7',
+                                                      color: catIssue.status === 'MISMATCH' ? '#991b1b' : '#92400e',
+                                                      border: 'none',
+                                                      cursor: 'pointer',
+                                                    }}
+                                                    title={catIssue.explanation}
+                                                  >
+                                                    🏷️ → {catIssue.suggestedCategoryName || 'Zie voorstel'}
+                                                  </button>
+                                                ) : validCheck ? (
+                                                  <span style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 600 }}>
+                                                    ✅ Klopt
+                                                  </span>
+                                                ) : (
+                                                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>—</span>
+                                                )}
+                                              </td>
+                                              <td style={{ padding: '0.45rem 0.75rem' }}>
+                                                {p.basePrice != null ? `€ ${Number(p.basePrice).toFixed(2).replace('.', ',')}` : '—'}
+                                              </td>
+                                              <td style={{ padding: '0.45rem 0.75rem' }}>
+                                                {stock !== undefined && stock !== null ? stock : '—'}
+                                              </td>
+                                              <td style={{ padding: '0.45rem 0.75rem' }}>
+                                                <span
+                                                  style={{
+                                                    fontSize: '0.7rem',
+                                                    fontWeight: 700,
+                                                    padding: '0.15rem 0.45rem',
+                                                    borderRadius: '999px',
+                                                    backgroundColor: 'var(--surface-hover)',
+                                                  }}
+                                                >
+                                                  {(p.status || 'NEW').toUpperCase()}
+                                                </span>
+                                              </td>
+                                              <td style={{ padding: '0.45rem 0.75rem' }}>
+                                                {p.webshopActive ? '✅ Ja' : 'Nee'}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            );
                       })}
-                    </div>
-                  )}
+                          </div>
+                        )
+                      }
                 </div>
-              );
+                  );
             })
           )}
-        </div>
-      )}
+                </div>
+              )
+            }
 
-      {/* Uncategorized Products Section */}
+      {/* Uncategorized Products Section */ }
       {(filterMode === 'uncategorized' || (filterMode === 'all' && uncategorizedProducts.length > 0)) && (
-        <div
-          className="glass"
-          style={{
-            borderRadius: 'var(--radius-lg)',
-            border: '1px solid #fcd34d',
-            backgroundColor: '#fffbeb',
-            padding: '1.1rem 1.25rem',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '1rem',
-          }}
-        >
-          <div>
-            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#92400e' }}>
-              ⚠️ Producten zonder categorie ({uncategorizedProducts.length})
-            </h3>
-            <p style={{ margin: '0.25rem 0 0', fontSize: '0.82rem', color: '#b45309' }}>
-              Deze producten zijn in MplusKassa / EcoPos nog niet aan een productgroep gekoppeld (of nog niet gesynchroniseerd).
-            </p>
-          </div>
-          <Link
-            href="/products?category=UNCATEGORIZED"
-            className="btn"
-            style={{
-              padding: '0.45rem 0.9rem',
-              fontSize: '0.84rem',
-              fontWeight: 700,
-              backgroundColor: '#d97706',
-              color: 'white',
-              border: 'none',
-              borderRadius: 'var(--radius)',
-              textDecoration: 'none',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            📦 Bekijk {uncategorizedProducts.length} producten zonder categorie →
-          </Link>
-        </div>
-      )}
-    </div>
-  );
-}
+                <div
+                  className="glass"
+                  style={{
+                    borderRadius: 'var(--radius-lg)',
+                    border: '1px solid #fcd34d',
+                    backgroundColor: '#fffbeb',
+                    padding: '1.1rem 1.25rem',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '1rem',
+                  }}
+                >
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#92400e' }}>
+                      ⚠️ Producten zonder categorie ({uncategorizedProducts.length})
+                    </h3>
+                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.82rem', color: '#b45309' }}>
+                      Deze producten zijn nog niet aan een productgroep gekoppeld. Gebruik de Categorie-check om ze automatisch in een bestaande categorie in te delen.
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                    {uncategorizedProducts.length > 0 && (
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() =>
+                          openCategoryCheck(
+                            uncategorizedProducts,
+                            `Producten zonder categorie (${uncategorizedProducts.length})`,
+                            true
+                          )
+                        }
+                        style={{
+                          padding: '0.45rem 0.9rem',
+                          fontSize: '0.84rem',
+                          fontWeight: 700,
+                          backgroundColor: '#7c3aed',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: 'var(--radius)',
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        🏷️ Categorie voorstellen voor {uncategorizedProducts.length} producten
+                      </button>
+                    )}
+                    <Link
+                      href="/products?category=UNCATEGORIZED"
+                      className="btn"
+                      style={{
+                        padding: '0.45rem 0.9rem',
+                        fontSize: '0.84rem',
+                        fontWeight: 700,
+                        backgroundColor: '#d97706',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: 'var(--radius)',
+                        textDecoration: 'none',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      📦 Bekijk in Producten →
+                    </Link>
+                  </div>
+                </div>
+              )}
 
+          {/* Category Check Modal */}
+          <CategoryCheckModal
+            isOpen={checkModalOpen}
+            onClose={() => setCheckModalOpen(false)}
+            products={checkModalProducts}
+            titleLabel={checkModalTitle}
+            autoStartUnchecked={checkModalAutoStart}
+            onComplete={() => router.refresh()}
+          />
+        </div>
+      );
+}
