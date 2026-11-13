@@ -147,7 +147,6 @@ export default function CategoryCheckModal({
     abortRef.current = false;
     setProgress({ done: 0, total: targetProducts.length });
 
-    const batchSize = 8;
     const batchSize = 12;
     let processed = 0;
     let newIssuesFound = 0;
@@ -158,7 +157,6 @@ export default function CategoryCheckModal({
         if (abortRef.current) break;
         const chunk = targetProducts.slice(i, i + batchSize);
         const articleNumbers = chunk.map((p) => p.internalArticleNumber);
-        const res = await runCategoryCheckBatchAction(articleNumbers);
         const res = await runCategoryCheckBatchAction(
           articleNumbers,
           sessionExamples.length > 0 ? sessionExamples : undefined
