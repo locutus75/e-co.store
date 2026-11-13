@@ -346,532 +346,564 @@ export async function previewFormattingRuleAction(params: {
     }
 
     const previews: ProductRulePreview[] = [];
+    const hasLongDesc = rule.targetFields.some(f => f === 'longDescription' || f === 'description');
+    const batchSize = hasLongDesc ? 5 : 10;
 
-    // Process each product through the formatting rule
-    for (const product of products) {
-      const fieldPreviews: ProductFieldPreview[] = [];
-
-      // Collect product context
-      const specs: string[] = [];
-      if (product.title) specs.push(`Huidige titel: "${product.title}"`);
-      if (product.brand?.name) specs.push(`Merk: ${product.brand.name}`);
-      if (product.supplier?.name) specs.push(`Leverancier: ${product.supplier.name}`);
-      if (product.category?.name) specs.push(`Categorie: ${product.category.name}`);
-      if (product.subcategory?.name) specs.push(`Subcategorie: ${product.subcategory.name}`);
-      if (product.color) specs.push(`Kleur: ${product.color}`);
-      if (product.size) specs.push(`Maat: ${product.size}`);
-      if (product.material) specs.push(`Materiaal: ${product.material}`);
-      if (product.mainMaterial) specs.push(`Hoofdmateriaal: ${product.mainMaterial}`);
-      if (product.ingredients) specs.push(`Ingrediënten: ${product.ingredients}`);
-      if (product.allergens) specs.push(`Allergenen: ${product.allergens}`);
-      if (product.weightGr) specs.push(`Gewicht: ${product.weightGr}g`);
-
-      // Current field values to format
-      const fieldsToFormat = rule.targetFields.map(fieldKey => {
-        let actualKey = fieldKey;
-        if (fieldKey === 'description') actualKey = 'longDescription';
-        if (fieldKey === 'price') actualKey = 'basePrice';
-
-        const originalVal = (product as any)[actualKey] ?? (product.customData ? (product.customData as any)[actualKey] : null) ?? '';
-        return {
-          key: actualKey,
-          label: FIELD_LABELS[actualKey] || actualKey,
-          currentValue: String(originalVal || ''),
-        };
-      });
+      // Preserve the caller's articleNumbers order
+      const productByArt = new Map(products.map(p => [p.internalArticleNumber, p]));
+      const orderedProducts = articleNumbers
+        .map(art => productByArt.get(art))
+        .filter((p): p is NonNullable<typeof p> => Boolean(p));
 
       const systemPrompt = `Je bent een ervaren e-commerce tekstredacteur en contentspecialist voor e-co.store.
 Jouw taak is om productteksten te harmoniseren, uniform te formateren en af te stemmen conform strikte standaarden.
-Geef UITSLUITEND een valide JSON object terug waarin de keys exact overeenkomen met de gevraagde velden, en de values de nieuwe, geformatteerde teksten zijn.
-Voorbeeld: {"title": "Nieuwe geformatteerde titel", "shortDescription": "Twee uniforme zinnen..."}.
-Geen markdown code-blocks (\`\`\`json), geen toelichting, alleen de pure JSON string.`;
+BELANGRIJK VOOR CONSISTENTIE:
+- Behandel alle producten in de batch op EXACT dezelfde consistente manier (zelfde eenheidsnotatie, hoofdlettergebruik, volgorde, leestekens en opbouw).
+- Geef UITSLUITEND een valide JSON object terug in het formaat:
+  {"items": [{"articleNumber": "<artikelnummer>", "<veldKey>": "<geformatteerde tekst>", ...}]}
+- Geen markdown code-blocks (\`\`\`json), geen toelichting, alleen de pure JSON string.`;
 
-      const promptLines = [
-        `REGELNAAM: "${rule.name}"`,
-        `DOELSECTIE: ${rule.sectionTitle || 'Algemeen'}`,
-        rule.toneOfVoice ? `TOON VAN DE TEKST: ${rule.toneOfVoice}` : null,
-        `\nSTANDAARD REGELS & FORMATTERINGSRICHTLIJNEN:\n${rule.instruction}`,
-        customInstruction ? `\nAANVULLENDE AANWIJZING VOOR DEZE RUN:\n${customInstruction}` : null,
-        `\nPRODUCTSPECIFICATIES:\n${specs.join('\n')}`,
-        `\nTE FORMATTEREN VELDEN:\n${fieldsToFormat.map(f => `- Veld "${f.key}" (${f.label}): huidige tekst:\n"""\n${f.currentValue}\n"""`).join('\n\n')}`,
-        `\nHerschrijf en formatteer deze velden conform de regels. Behoud correcte feitelijke informatie en pas de gevraagde uniformiteit en opbouw toe. Geef ALLEEN JSON terug.`
-      ].filter(Boolean).join('\n');
+        // Carry over 1-2 formatted examples from batch 1 to subsequent batches for cross-batch consistency
+        let referenceExamples: { articleNumber: string; output: Record<string, string> }[] = [];
+
+        for (let i = 0; i < orderedProducts.length; i += batchSize) {
+          const batch = orderedProducts.slice(i, i + batchSize);
+
+          const batchPayload = batch.map(product => {
+            const specs: Record<string, any> = {};
+            if (product.brand?.name) specs.merk = product.brand.name;
+            if (product.supplier?.name) specs.leverancier = product.supplier.name;
+            if (product.category?.name) specs.categorie = product.category.name;
+            if (product.subcategory?.name) specs.subcategorie = product.subcategory.name;
+            if (product.color) specs.kleur = product.color;
+            if (product.size) specs.maat = product.size;
+            if (product.material) specs.materiaal = product.material;
+            if (product.mainMaterial) specs.hoofdmateriaal = product.mainMaterial;
+            if (product.ingredients) specs.ingredienten = product.ingredients;
+            if (product.allergens) specs.allergenen = product.allergens;
+            if (product.weightGr) specs.gewichtGr = product.weightGr;
+
+            const fields: Record<string, string> = {};
+            for (const fieldKey of rule.targetFields) {
+              let actualKey = fieldKey;
+              if (fieldKey === 'description') actualKey = 'longDescription';
+              if (fieldKey === 'price') actualKey = 'basePrice';
+              const originalVal = (product as any)[actualKey] ?? (product.customData ? (product.customData as any)[actualKey] : null) ?? '';
+              fields[actualKey] = String(originalVal || '');
+            }
+
+            return {
+              articleNumber: product.internalArticleNumber,
+              currentTitle: product.title,
+              specs,
+              fieldsToFormat: fields,
+            };
+          });
+
+          const referenceBlock = referenceExamples.length > 0
+            ? `\nREFERENTIE-VOORBEELDEN UIT EERDERE PRODUCTEN IN DEZE BATCH (HOUD EXACT DEZELFDE STIJL EN NOTATIE AAN):\n${JSON.stringify(referenceExamples)}`
+            : '';
+
+          const promptLines = [
+            `REGELNAAM: "${rule.name}" | DOELSECTIE: ${rule.sectionTitle || 'Algemeen'}`,
+            rule.toneOfVoice ? `TOON: ${rule.toneOfVoice}` : null,
+            `\nSTANDAARD REGELS & FORMATTERINGSRICHTLIJNEN:\n${rule.instruction}`,
+        customInstruction ? `\nAANVULLENDE AANWIJZING:\n${customInstruction}` : null,
+            referenceBlock || null,
+            `\nTE FORMATTEREN PRODUCTEN (${batch.length} stuks):\n${JSON.stringify(batchPayload)}`,
+            `\nFormatteer alle ${batch.length} producten conform de regels met 100% onderlinge consistentie. Geef ALLEEN het JSON-object terug: {"items": [{"articleNumber": "...", ...}]}.`
+          ].filter(Boolean).join('\n');
+
+          const parsedByArticle = new Map<string, Record<string, string>>();
+
+          try {
+            const result = await callLlm({
+              provider,
+              prompt: promptLines,
+              systemPrompt,
+              moduleId: 'assistant',
+              userId,
+              context: 'formatting-rule-preview-batch',
+            });
+
+            if (result.success) {
+              const cleaned = result.response
+                .trim()
+                .replace(/^```json\s*/i, '')
+                .replace(/^```\s*/i, '')
+                .replace(/\s*```$/i, '')
+                .trim();
+              const firstBrace = cleaned.indexOf('{');
+              const lastBrace = cleaned.lastIndexOf('}');
+              const jsonSlice = firstBrace >= 0 && lastBrace > firstBrace ? cleaned.slice(firstBrace, lastBrace + 1) : cleaned;
+
+              try {
+                const parsed = JSON.parse(jsonSlice);
+                const items: any[] = Array.isArray(parsed?.items) ? parsed.items : Array.isArray(parsed) ? parsed : [];
+                for (const item of items) {
+                  if (item && item.articleNumber) {
+                    parsedByArticle.set(String(item.articleNumber), item);
+                  }
+                }
+              } catch {
+                console.error('Failed to parse batch formatting rule JSON response:', cleaned.slice(0, 400));
+              }
+            }
+          } catch (err: any) {
+            console.error(`Error batch-formatting products:`, err);
+          }
+
+            for (const product of batch) {
+              const aiItem = parsedByArticle.get(product.internalArticleNumber);
+              const fieldPreviews: ProductFieldPreview[] = [];
+              const exampleOutput: Record<string, string> = {};
+
+            for (const fieldKey of rule.targetFields) {
+              let actualKey = fieldKey;
+              if (fieldKey === 'description') actualKey = 'longDescription';
+              if (fieldKey === 'price') actualKey = 'basePrice';
+
+              const originalVal = String(
+                (product as any)[actualKey] ?? (product.customData ? (product.customData as any)[actualKey] : null) ?? ''
+              );
+              const suggested =
+                aiItem && aiItem[actualKey] !== undefined && aiItem[actualKey] !== null
+                  ? String(aiItem[actualKey]).trim()
+                  : originalVal;
+
+              exampleOutput[actualKey] = suggested;
+
+              fieldPreviews.push({
+                fieldKey: actualKey,
+                fieldLabel: FIELD_LABELS[actualKey] || actualKey,
+                originalValue: originalVal,
+                suggestedValue: suggested,
+                hasChanged: originalVal.trim() !== suggested.trim(),
+                ruleId: rule.id,
+                ruleName: rule.name,
+              });
+            }
+
+            if (referenceExamples.length < 2 && aiItem) {
+              referenceExamples.push({
+                articleNumber: product.internalArticleNumber,
+                output: exampleOutput,
+              });
+            }
+
+            previews.push({
+              articleNumber: product.internalArticleNumber,
+              title: product.title,
+              brand: product.brand?.name,
+              supplier: product.supplier?.name,
+              fields: fieldPreviews,
+            });
+          }
+        }
+
+        return { success: true, previews };
+      } catch (e: any) {
+        console.error('Failed to preview formatting rule:', e);
+        return { success: false, error: e.message || 'Onbekende fout bij preview genereren.' };
+      }
+    }
+
+    // ── Stage Proposals for Editor Review ("Klaarzetten voor review") ────────────
+
+    export interface StageRuleItem {
+      articleNumber: string;
+      changes: {
+        fieldKey: string;
+        fieldLabel?: string;
+        oldValue?: string;
+        newValue: string;
+        ruleId?: string;
+        ruleName?: string;
+      }[];
+    }
+
+    export async function stageFormattingRuleProposalsAction(params: {
+      items: StageRuleItem[];
+      ruleId?: string;
+      ruleName?: string;
+      sectionId?: string;
+    }): Promise<{ success: boolean; stagedProductCount: number; stagedFieldCount: number; error?: string }> {
+      const { items, ruleId, ruleName = 'Formateringsregel', sectionId } = params;
+
+      if (!items || items.length === 0) {
+        return { success: false, stagedProductCount: 0, stagedFieldCount: 0, error: 'Geen voorstellen geselecteerd om klaar te zetten.' };
+      }
+
+      const session = await getServerSession(authOptions);
+      if (!session?.user) {
+        return { success: false, stagedProductCount: 0, stagedFieldCount: 0, error: 'Niet ingelogd.' };
+      }
+      const userId = (session.user as any).id as string;
+      const userEmail = (session.user as any).email as string;
+      const now = new Date().toISOString();
 
       try {
-        const result = await callLlm({
-          provider,
-          prompt: promptLines,
-          systemPrompt,
-          moduleId: 'assistant',
-          userId,
-          context: 'formatting-rule-preview',
+        let stagedProductCount = 0;
+        let stagedFieldCount = 0;
+
+        for (const item of items) {
+          if (!item.changes || item.changes.length === 0) continue;
+
+          const existing = await prisma.product.findUnique({
+            where: { internalArticleNumber: item.articleNumber },
+            select: { customData: true },
+          });
+          if (!existing) continue;
+
+          const currentCustom: Record<string, any> =
+            existing.customData && typeof existing.customData === 'object'
+              ? { ...(existing.customData as Record<string, any>) }
+              : {};
+
+          const pendingMap: Record<string, PendingFormattingFieldProposal> =
+            currentCustom._pendingFormatting && typeof currentCustom._pendingFormatting === 'object'
+              ? { ...(currentCustom._pendingFormatting as Record<string, PendingFormattingFieldProposal>) }
+              : {};
+
+          for (const ch of item.changes) {
+            pendingMap[ch.fieldKey] = {
+              fieldKey: ch.fieldKey,
+              fieldLabel: ch.fieldLabel || FIELD_LABELS[ch.fieldKey] || ch.fieldKey,
+              originalValue: ch.oldValue ?? '',
+              suggestedValue: ch.newValue,
+              ruleId: ch.ruleId || ruleId,
+              ruleName: ch.ruleName || ruleName,
+              sectionId,
+              stagedAt: now,
+              stagedByEmail: userEmail || undefined,
+            };
+            stagedFieldCount++;
+          }
+
+          currentCustom._pendingFormatting = pendingMap;
+
+          await prisma.product.update({
+            where: { internalArticleNumber: item.articleNumber },
+            data: { customData: currentCustom },
+          });
+          stagedProductCount++;
+
+          await prisma.auditLog.create({
+            data: {
+              userId,
+              action: 'FORMATTING_RULE_STAGE',
+              entity: 'Product',
+              entityId: item.articleNumber,
+              changes: `Voorstellen klaargezet voor review (${ruleName}): ${item.changes.map(c => c.fieldKey).join(', ')}`,
+            },
+          }).catch(() => { });
+        }
+
+        revalidatePath('/products');
+        revalidatePath('/assignments');
+        revalidatePath('/', 'layout');
+
+        return { success: true, stagedProductCount, stagedFieldCount };
+      } catch (e: any) {
+        console.error('Failed to stage formatting proposals:', e);
+        return { success: false, stagedProductCount: 0, stagedFieldCount: 0, error: e.message || 'Fout bij klaarzetten voor review.' };
+      }
+    }
+
+    export async function getStagedFormattingProposalsAction(params: {
+      articleNumbers: string[];
+    }): Promise<{ success: boolean; previews: ProductRulePreview[]; totalProposalCount: number; error?: string }> {
+      const { articleNumbers } = params;
+      if (!articleNumbers || articleNumbers.length === 0) {
+        return { success: true, previews: [], totalProposalCount: 0 };
+      }
+
+      const session = await getServerSession(authOptions);
+      if (!session?.user) {
+        return { success: false, previews: [], totalProposalCount: 0, error: 'Niet ingelogd.' };
+      }
+
+      try {
+        const products = await prisma.product.findMany({
+          where: { internalArticleNumber: { in: articleNumbers } },
+          include: { brand: true, supplier: true },
         });
 
-        if (result.success) {
-          const raw = result.response.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
-          let parsed: Record<string, string> = {};
-          try {
-            parsed = JSON.parse(raw);
-          } catch (jsonErr) {
-            console.error('Failed to parse formatting rule JSON response:', raw);
-          }
+        // Preserve requested order where possible
+        const orderMap = new Map(articleNumbers.map((a, idx) => [a, idx]));
+        products.sort((a, b) => (orderMap.get(a.internalArticleNumber) ?? 0) - (orderMap.get(b.internalArticleNumber) ?? 0));
 
-          for (const f of fieldsToFormat) {
-            const suggested = (parsed[f.key] !== undefined && parsed[f.key] !== null)
-              ? String(parsed[f.key]).trim()
-              : f.currentValue;
+        const previews: ProductRulePreview[] = [];
+        let totalProposalCount = 0;
 
-            fieldPreviews.push({
-              fieldKey: f.key,
-              fieldLabel: f.label,
-              originalValue: f.currentValue,
-              suggestedValue: suggested,
-              hasChanged: f.currentValue.trim() !== suggested.trim(),
-              ruleId: rule.id,
-              ruleName: rule.name,
-            });
-          }
-        } else {
-          // If LLM failed, fallback to original values with note
-          for (const f of fieldsToFormat) {
-            fieldPreviews.push({
-              fieldKey: f.key,
-              fieldLabel: f.label,
-              originalValue: f.currentValue,
-              suggestedValue: f.currentValue,
-              hasChanged: false,
-              ruleId: rule.id,
-              ruleName: rule.name,
-            });
-          }
-        }
-      } catch (err: any) {
-        console.error(`Error formatting product ${product.internalArticleNumber}:`, err);
-        for (const f of fieldsToFormat) {
-          fieldPreviews.push({
-            fieldKey: f.key,
-            fieldLabel: f.label,
-            originalValue: f.currentValue,
-            suggestedValue: f.currentValue,
-            hasChanged: false,
-            ruleId: rule.id,
-            ruleName: rule.name,
+        for (const product of products) {
+          const customObj =
+            product.customData && typeof product.customData === 'object'
+              ? (product.customData as Record<string, any>)
+              : {};
+          const pendingMap =
+            customObj._pendingFormatting && typeof customObj._pendingFormatting === 'object'
+              ? (customObj._pendingFormatting as Record<string, PendingFormattingFieldProposal>)
+              : {};
+
+          const entries = Object.values(pendingMap).filter(p => p && typeof p.fieldKey === 'string');
+          if (entries.length === 0) continue;
+
+          const fields: ProductFieldPreview[] = entries.map(entry => {
+            const actualKey = entry.fieldKey;
+            const liveVal =
+              (product as any)[actualKey] ??
+              (customObj[actualKey] !== undefined ? customObj[actualKey] : null) ??
+              '';
+            const currentStr = String(liveVal || '');
+            const suggestedStr = String(entry.suggestedValue ?? '');
+
+            totalProposalCount++;
+            return {
+              fieldKey: actualKey,
+              fieldLabel: entry.fieldLabel || FIELD_LABELS[actualKey] || actualKey,
+              originalValue: currentStr,
+              suggestedValue: suggestedStr,
+              hasChanged: currentStr.trim() !== suggestedStr.trim(),
+              ruleId: entry.ruleId,
+              ruleName: entry.ruleName,
+              stagedAt: entry.stagedAt,
+              stagedByEmail: entry.stagedByEmail,
+            };
+          });
+
+          previews.push({
+            articleNumber: product.internalArticleNumber,
+            title: product.title,
+            brand: product.brand?.name,
+            supplier: product.supplier?.name,
+            fields,
           });
         }
-      }
 
-      previews.push({
-        articleNumber: product.internalArticleNumber,
-        title: product.title,
-        brand: product.brand?.name,
-        supplier: product.supplier?.name,
-        fields: fieldPreviews,
-      });
+        return { success: true, previews, totalProposalCount };
+      } catch (e: any) {
+        console.error('Failed to get staged formatting proposals:', e);
+        return { success: false, previews: [], totalProposalCount: 0, error: e.message || 'Fout bij ophalen van klaargezette voorstellen.' };
+      }
     }
 
-    return { success: true, previews };
-  } catch (e: any) {
-    console.error('Failed to preview formatting rule:', e);
-    return { success: false, error: e.message || 'Onbekende fout bij preview genereren.' };
-  }
-}
-
-// ── Stage Proposals for Editor Review ("Klaarzetten voor review") ────────────
-
-export interface StageRuleItem {
-  articleNumber: string;
-  changes: {
-    fieldKey: string;
-    fieldLabel?: string;
-    oldValue?: string;
-    newValue: string;
-    ruleId?: string;
-    ruleName?: string;
-  }[];
-}
-
-export async function stageFormattingRuleProposalsAction(params: {
-  items: StageRuleItem[];
-  ruleId?: string;
-  ruleName?: string;
-  sectionId?: string;
-}): Promise<{ success: boolean; stagedProductCount: number; stagedFieldCount: number; error?: string }> {
-  const { items, ruleId, ruleName = 'Formateringsregel', sectionId } = params;
-
-  if (!items || items.length === 0) {
-    return { success: false, stagedProductCount: 0, stagedFieldCount: 0, error: 'Geen voorstellen geselecteerd om klaar te zetten.' };
-  }
-
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return { success: false, stagedProductCount: 0, stagedFieldCount: 0, error: 'Niet ingelogd.' };
-  }
-  const userId = (session.user as any).id as string;
-  const userEmail = (session.user as any).email as string;
-  const now = new Date().toISOString();
-
-  try {
-    let stagedProductCount = 0;
-    let stagedFieldCount = 0;
-
-    for (const item of items) {
-      if (!item.changes || item.changes.length === 0) continue;
-
-      const existing = await prisma.product.findUnique({
-        where: { internalArticleNumber: item.articleNumber },
-        select: { customData: true },
-      });
-      if (!existing) continue;
-
-      const currentCustom: Record<string, any> =
-        existing.customData && typeof existing.customData === 'object'
-          ? { ...(existing.customData as Record<string, any>) }
-          : {};
-
-      const pendingMap: Record<string, PendingFormattingFieldProposal> =
-        currentCustom._pendingFormatting && typeof currentCustom._pendingFormatting === 'object'
-          ? { ...(currentCustom._pendingFormatting as Record<string, PendingFormattingFieldProposal>) }
-          : {};
-
-      for (const ch of item.changes) {
-        pendingMap[ch.fieldKey] = {
-          fieldKey: ch.fieldKey,
-          fieldLabel: ch.fieldLabel || FIELD_LABELS[ch.fieldKey] || ch.fieldKey,
-          originalValue: ch.oldValue ?? '',
-          suggestedValue: ch.newValue,
-          ruleId: ch.ruleId || ruleId,
-          ruleName: ch.ruleName || ruleName,
-          sectionId,
-          stagedAt: now,
-          stagedByEmail: userEmail || undefined,
-        };
-        stagedFieldCount++;
+    export async function dismissStagedFormattingProposalsAction(params: {
+      items: { articleNumber: string; fieldKeys: string[] }[];
+    }): Promise<{ success: boolean; dismissedCount: number; error?: string }> {
+      const { items } = params;
+      if (!items || items.length === 0) {
+        return { success: false, dismissedCount: 0, error: 'Geen voorstellen geselecteerd.' };
       }
 
-      currentCustom._pendingFormatting = pendingMap;
-
-      await prisma.product.update({
-        where: { internalArticleNumber: item.articleNumber },
-        data: { customData: currentCustom },
-      });
-      stagedProductCount++;
-
-      await prisma.auditLog.create({
-        data: {
-          userId,
-          action: 'FORMATTING_RULE_STAGE',
-          entity: 'Product',
-          entityId: item.articleNumber,
-          changes: `Voorstellen klaargezet voor review (${ruleName}): ${item.changes.map(c => c.fieldKey).join(', ')}`,
-        },
-      }).catch(() => {});
-    }
-
-    revalidatePath('/products');
-    revalidatePath('/assignments');
-    revalidatePath('/', 'layout');
-
-    return { success: true, stagedProductCount, stagedFieldCount };
-  } catch (e: any) {
-    console.error('Failed to stage formatting proposals:', e);
-    return { success: false, stagedProductCount: 0, stagedFieldCount: 0, error: e.message || 'Fout bij klaarzetten voor review.' };
-  }
-}
-
-export async function getStagedFormattingProposalsAction(params: {
-  articleNumbers: string[];
-}): Promise<{ success: boolean; previews: ProductRulePreview[]; totalProposalCount: number; error?: string }> {
-  const { articleNumbers } = params;
-  if (!articleNumbers || articleNumbers.length === 0) {
-    return { success: true, previews: [], totalProposalCount: 0 };
-  }
-
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return { success: false, previews: [], totalProposalCount: 0, error: 'Niet ingelogd.' };
-  }
-
-  try {
-    const products = await prisma.product.findMany({
-      where: { internalArticleNumber: { in: articleNumbers } },
-      include: { brand: true, supplier: true },
-    });
-
-    // Preserve requested order where possible
-    const orderMap = new Map(articleNumbers.map((a, idx) => [a, idx]));
-    products.sort((a, b) => (orderMap.get(a.internalArticleNumber) ?? 0) - (orderMap.get(b.internalArticleNumber) ?? 0));
-
-    const previews: ProductRulePreview[] = [];
-    let totalProposalCount = 0;
-
-    for (const product of products) {
-      const customObj =
-        product.customData && typeof product.customData === 'object'
-          ? (product.customData as Record<string, any>)
-          : {};
-      const pendingMap =
-        customObj._pendingFormatting && typeof customObj._pendingFormatting === 'object'
-          ? (customObj._pendingFormatting as Record<string, PendingFormattingFieldProposal>)
-          : {};
-
-      const entries = Object.values(pendingMap).filter(p => p && typeof p.fieldKey === 'string');
-      if (entries.length === 0) continue;
-
-      const fields: ProductFieldPreview[] = entries.map(entry => {
-        const actualKey = entry.fieldKey;
-        const liveVal =
-          (product as any)[actualKey] ??
-          (customObj[actualKey] !== undefined ? customObj[actualKey] : null) ??
-          '';
-        const currentStr = String(liveVal || '');
-        const suggestedStr = String(entry.suggestedValue ?? '');
-
-        totalProposalCount++;
-        return {
-          fieldKey: actualKey,
-          fieldLabel: entry.fieldLabel || FIELD_LABELS[actualKey] || actualKey,
-          originalValue: currentStr,
-          suggestedValue: suggestedStr,
-          hasChanged: currentStr.trim() !== suggestedStr.trim(),
-          ruleId: entry.ruleId,
-          ruleName: entry.ruleName,
-          stagedAt: entry.stagedAt,
-          stagedByEmail: entry.stagedByEmail,
-        };
-      });
-
-      previews.push({
-        articleNumber: product.internalArticleNumber,
-        title: product.title,
-        brand: product.brand?.name,
-        supplier: product.supplier?.name,
-        fields,
-      });
-    }
-
-    return { success: true, previews, totalProposalCount };
-  } catch (e: any) {
-    console.error('Failed to get staged formatting proposals:', e);
-    return { success: false, previews: [], totalProposalCount: 0, error: e.message || 'Fout bij ophalen van klaargezette voorstellen.' };
-  }
-}
-
-export async function dismissStagedFormattingProposalsAction(params: {
-  items: { articleNumber: string; fieldKeys: string[] }[];
-}): Promise<{ success: boolean; dismissedCount: number; error?: string }> {
-  const { items } = params;
-  if (!items || items.length === 0) {
-    return { success: false, dismissedCount: 0, error: 'Geen voorstellen geselecteerd.' };
-  }
-
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return { success: false, dismissedCount: 0, error: 'Niet ingelogd.' };
-  }
-  const userId = (session.user as any).id as string;
-
-  try {
-    let dismissedCount = 0;
-
-    for (const item of items) {
-      if (!item.fieldKeys || item.fieldKeys.length === 0) continue;
-      const existing = await prisma.product.findUnique({
-        where: { internalArticleNumber: item.articleNumber },
-        select: { customData: true },
-      });
-      if (!existing?.customData || typeof existing.customData !== 'object') continue;
-
-      const currentCustom: Record<string, any> = { ...(existing.customData as Record<string, any>) };
-      const pendingMap: Record<string, any> =
-        currentCustom._pendingFormatting && typeof currentCustom._pendingFormatting === 'object'
-          ? { ...(currentCustom._pendingFormatting as Record<string, any>) }
-          : {};
-
-      let changed = false;
-      for (const fk of item.fieldKeys) {
-        if (pendingMap[fk] !== undefined) {
-          delete pendingMap[fk];
-          dismissedCount++;
-          changed = true;
-        }
+      const session = await getServerSession(authOptions);
+      if (!session?.user) {
+        return { success: false, dismissedCount: 0, error: 'Niet ingelogd.' };
       }
+      const userId = (session.user as any).id as string;
 
-      if (!changed) continue;
+      try {
+        let dismissedCount = 0;
 
-      if (Object.keys(pendingMap).length === 0) {
-        delete currentCustom._pendingFormatting;
-      } else {
-        currentCustom._pendingFormatting = pendingMap;
-      }
+        for (const item of items) {
+          if (!item.fieldKeys || item.fieldKeys.length === 0) continue;
+          const existing = await prisma.product.findUnique({
+            where: { internalArticleNumber: item.articleNumber },
+            select: { customData: true },
+          });
+          if (!existing?.customData || typeof existing.customData !== 'object') continue;
 
-      await prisma.product.update({
-        where: { internalArticleNumber: item.articleNumber },
-        data: { customData: currentCustom },
-      });
+          const currentCustom: Record<string, any> = { ...(existing.customData as Record<string, any>) };
+          const pendingMap: Record<string, any> =
+            currentCustom._pendingFormatting && typeof currentCustom._pendingFormatting === 'object'
+              ? { ...(currentCustom._pendingFormatting as Record<string, any>) }
+              : {};
 
-      await prisma.auditLog.create({
-        data: {
-          userId,
-          action: 'FORMATTING_RULE_DISMISS',
-          entity: 'Product',
-          entityId: item.articleNumber,
-          changes: `Klaargezette formateringsvoorstellen afgewezen/gewist: ${item.fieldKeys.join(', ')}`,
-        },
-      }).catch(() => {});
-    }
-
-    revalidatePath('/products');
-    revalidatePath('/assignments');
-    revalidatePath('/', 'layout');
-
-    return { success: true, dismissedCount };
-  } catch (e: any) {
-    console.error('Failed to dismiss staged formatting proposals:', e);
-    return { success: false, dismissedCount: 0, error: e.message || 'Fout bij wissen van voorstellen.' };
-  }
-}
-
-// ── Apply Approved Changes ───────────────────────────────────────────────────
-
-export interface ApplyItemChange {
-  fieldKey: string;
-  fieldLabel?: string;
-  oldValue?: string;
-  newValue: string;
-}
-
-export interface ApplyRuleItem {
-  articleNumber: string;
-  changes: ApplyItemChange[];
-}
-
-export async function applyFormattingRuleAction(params: {
-  items: ApplyRuleItem[];
-  ruleName?: string;
-}): Promise<{ success: boolean; updatedCount: number; error?: string }> {
-  const { items, ruleName = 'Formateringsregel' } = params;
-
-  if (!items || items.length === 0) {
-    return { success: false, updatedCount: 0, error: 'Geen wijzigingen om door te voeren.' };
-  }
-
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return { success: false, updatedCount: 0, error: 'Niet ingelogd.' };
-  }
-  const userId = (session.user as any).id as string;
-  const userEmail = (session.user as any).email as string;
-
-  try {
-    let updatedCount = 0;
-    const historyRows: any[] = [];
-
-    for (const item of items) {
-      if (!item.changes || item.changes.length === 0) continue;
-
-      const updateData: Record<string, any> = {};
-      const customDataUpdates: Record<string, any> = {};
-
-      const knownColumns = new Set([
-        'title', 'shortDescription', 'longDescription', 'seoTitle', 'seoMetaDescription',
-        'color', 'size', 'material', 'mainMaterial', 'tags', 'ingredients', 'allergens',
-        'critCircular', 'critOther'
-      ]);
-
-      for (const ch of item.changes) {
-        if (knownColumns.has(ch.fieldKey)) {
-          updateData[ch.fieldKey] = ch.newValue;
-        } else {
-          customDataUpdates[ch.fieldKey] = ch.newValue;
-        }
-
-        // Record history entry
-        historyRows.push({
-          articleNumber: item.articleNumber,
-          fieldKey: ch.fieldKey,
-          fieldLabel: ch.fieldLabel || FIELD_LABELS[ch.fieldKey] || ch.fieldKey,
-          oldValue: ch.oldValue ?? null,
-          newValue: ch.newValue,
-          source: 'FORMAT_RULE',
-          userId: userId || null,
-          userEmail: userEmail || null,
-        });
-      }
-
-      const existing = await prisma.product.findUnique({
-        where: { internalArticleNumber: item.articleNumber },
-        select: { customData: true },
-      });
-
-      const currentCustom: Record<string, any> =
-        existing?.customData && typeof existing.customData === 'object'
-          ? { ...(existing.customData as Record<string, any>) }
-          : {};
-
-      let customChanged = false;
-      if (Object.keys(customDataUpdates).length > 0) {
-        Object.assign(currentCustom, customDataUpdates);
-        customChanged = true;
-      }
-
-      // Clean up any staged formatting proposals for the applied fields
-      if (currentCustom._pendingFormatting && typeof currentCustom._pendingFormatting === 'object') {
-        const pendingMap: Record<string, any> = { ...(currentCustom._pendingFormatting as Record<string, any>) };
-        let pendingRemoved = false;
-        for (const ch of item.changes) {
-          if (pendingMap[ch.fieldKey] !== undefined) {
-            delete pendingMap[ch.fieldKey];
-            pendingRemoved = true;
+          let changed = false;
+          for (const fk of item.fieldKeys) {
+            if (pendingMap[fk] !== undefined) {
+              delete pendingMap[fk];
+              dismissedCount++;
+              changed = true;
+            }
           }
-        }
-        if (pendingRemoved) {
+
+          if (!changed) continue;
+
           if (Object.keys(pendingMap).length === 0) {
             delete currentCustom._pendingFormatting;
           } else {
             currentCustom._pendingFormatting = pendingMap;
           }
-          customChanged = true;
+
+          await prisma.product.update({
+            where: { internalArticleNumber: item.articleNumber },
+            data: { customData: currentCustom },
+          });
+
+          await prisma.auditLog.create({
+            data: {
+              userId,
+              action: 'FORMATTING_RULE_DISMISS',
+              entity: 'Product',
+              entityId: item.articleNumber,
+              changes: `Klaargezette formateringsvoorstellen afgewezen/gewist: ${item.fieldKeys.join(', ')}`,
+            },
+          }).catch(() => { });
         }
-      }
 
-      if (customChanged) {
-        updateData.customData = currentCustom;
-      }
+        revalidatePath('/products');
+        revalidatePath('/assignments');
+        revalidatePath('/', 'layout');
 
-      if (Object.keys(updateData).length > 0) {
-        updateData.lastEditedByUserId = userId;
-        await prisma.product.update({
-          where: { internalArticleNumber: item.articleNumber },
-          data: updateData,
-        });
-        updatedCount++;
-
-        // Audit log
-        await prisma.auditLog.create({
-          data: {
-            userId,
-            action: 'FORMATTING_RULE_APPLY',
-            entity: 'Product',
-            entityId: item.articleNumber,
-            changes: `Toegepaste regel: "${ruleName}" op velden: ${item.changes.map(c => c.fieldKey).join(', ')}`,
-          },
-        }).catch(() => { });
+        return { success: true, dismissedCount };
+      } catch (e: any) {
+        console.error('Failed to dismiss staged formatting proposals:', e);
+        return { success: false, dismissedCount: 0, error: e.message || 'Fout bij wissen van voorstellen.' };
       }
     }
 
-    if (historyRows.length > 0) {
-      await prisma.productFieldHistory.createMany({
-        data: historyRows,
-      }).catch(err => console.error('Field history write error:', err));
+    // ── Apply Approved Changes ───────────────────────────────────────────────────
+
+    export interface ApplyItemChange {
+      fieldKey: string;
+      fieldLabel?: string;
+      oldValue?: string;
+      newValue: string;
     }
 
-    revalidatePath('/products');
-    revalidatePath('/assignments');
-    revalidatePath('/', 'layout');
+    export interface ApplyRuleItem {
+      articleNumber: string;
+      changes: ApplyItemChange[];
+    }
 
-    return { success: true, updatedCount };
-  } catch (e: any) {
-    console.error('Failed to apply formatting rules:', e);
-    return { success: false, updatedCount: 0, error: e.message || 'Fout bij opslaan.' };
-  }
-}
+    export async function applyFormattingRuleAction(params: {
+      items: ApplyRuleItem[];
+      ruleName?: string;
+    }): Promise<{ success: boolean; updatedCount: number; error?: string }> {
+      const { items, ruleName = 'Formateringsregel' } = params;
+
+      if (!items || items.length === 0) {
+        return { success: false, updatedCount: 0, error: 'Geen wijzigingen om door te voeren.' };
+      }
+
+      const session = await getServerSession(authOptions);
+      if (!session?.user) {
+        return { success: false, updatedCount: 0, error: 'Niet ingelogd.' };
+      }
+      const userId = (session.user as any).id as string;
+      const userEmail = (session.user as any).email as string;
+
+      try {
+        let updatedCount = 0;
+        const historyRows: any[] = [];
+
+        for (const item of items) {
+          if (!item.changes || item.changes.length === 0) continue;
+
+          const updateData: Record<string, any> = {};
+          const customDataUpdates: Record<string, any> = {};
+
+          const knownColumns = new Set([
+            'title', 'shortDescription', 'longDescription', 'seoTitle', 'seoMetaDescription',
+            'color', 'size', 'material', 'mainMaterial', 'tags', 'ingredients', 'allergens',
+            'critCircular', 'critOther'
+          ]);
+
+          for (const ch of item.changes) {
+            if (knownColumns.has(ch.fieldKey)) {
+              updateData[ch.fieldKey] = ch.newValue;
+            } else {
+              customDataUpdates[ch.fieldKey] = ch.newValue;
+            }
+
+            // Record history entry
+            historyRows.push({
+              articleNumber: item.articleNumber,
+              fieldKey: ch.fieldKey,
+              fieldLabel: ch.fieldLabel || FIELD_LABELS[ch.fieldKey] || ch.fieldKey,
+              oldValue: ch.oldValue ?? null,
+              newValue: ch.newValue,
+              source: 'FORMAT_RULE',
+              userId: userId || null,
+              userEmail: userEmail || null,
+            });
+          }
+
+          const existing = await prisma.product.findUnique({
+            where: { internalArticleNumber: item.articleNumber },
+            select: { customData: true },
+          });
+
+          const currentCustom: Record<string, any> =
+            existing?.customData && typeof existing.customData === 'object'
+              ? { ...(existing.customData as Record<string, any>) }
+              : {};
+
+          let customChanged = false;
+          if (Object.keys(customDataUpdates).length > 0) {
+            Object.assign(currentCustom, customDataUpdates);
+            customChanged = true;
+          }
+
+          // Clean up any staged formatting proposals for the applied fields
+          if (currentCustom._pendingFormatting && typeof currentCustom._pendingFormatting === 'object') {
+            const pendingMap: Record<string, any> = { ...(currentCustom._pendingFormatting as Record<string, any>) };
+            let pendingRemoved = false;
+            for (const ch of item.changes) {
+              if (pendingMap[ch.fieldKey] !== undefined) {
+                delete pendingMap[ch.fieldKey];
+                pendingRemoved = true;
+              }
+            }
+            if (pendingRemoved) {
+              if (Object.keys(pendingMap).length === 0) {
+                delete currentCustom._pendingFormatting;
+              } else {
+                currentCustom._pendingFormatting = pendingMap;
+              }
+              customChanged = true;
+            }
+          }
+
+          if (customChanged) {
+            updateData.customData = currentCustom;
+          }
+
+          if (Object.keys(updateData).length > 0) {
+            updateData.lastEditedByUserId = userId;
+            await prisma.product.update({
+              where: { internalArticleNumber: item.articleNumber },
+              data: updateData,
+            });
+            updatedCount++;
+
+            // Audit log
+            await prisma.auditLog.create({
+              data: {
+                userId,
+                action: 'FORMATTING_RULE_APPLY',
+                entity: 'Product',
+                entityId: item.articleNumber,
+                changes: `Toegepaste regel: "${ruleName}" op velden: ${item.changes.map(c => c.fieldKey).join(', ')}`,
+              },
+            }).catch(() => { });
+          }
+        }
+
+        if (historyRows.length > 0) {
+          await prisma.productFieldHistory.createMany({
+            data: historyRows,
+          }).catch(err => console.error('Field history write error:', err));
+        }
+
+        revalidatePath('/products');
+        revalidatePath('/assignments');
+        revalidatePath('/', 'layout');
+
+        return { success: true, updatedCount };
+      } catch (e: any) {
+        console.error('Failed to apply formatting rules:', e);
+        return { success: false, updatedCount: 0, error: e.message || 'Fout bij opslaan.' };
+      }
+    }
