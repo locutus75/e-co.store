@@ -175,7 +175,10 @@ export async function getAvailableCategoriesForCheckAction(): Promise<AvailableC
  * Runs an AI-assisted category check for a batch of products, strictly constrained
  * to the existing categories in the database and enriched with learned user feedback.
  */
-export async function runCategoryCheckBatchAction(articleNumbers: string[]): Promise<{
+export async function runCategoryCheckBatchAction(
+  articleNumbers: string[],
+  sessionExamples?: { articleNumber: string; title: string; chosenCategory: string }[]
+): Promise<{
   ok: boolean;
   error?: string;
   results: Record<string, ProductCategoryCheck>;
@@ -225,8 +228,16 @@ export async function runCategoryCheckBatchAction(articleNumbers: string[]): Pro
     const catByLowerFull = new Map(availableCategories.map((c) => [c.fullLabel.toLowerCase(), c]));
 
     const categoryCatalogText = availableCategories
-      .map((c) => `- ID="${c.id}" | Categorie="${c.name}" | Hoofdgroep="${c.parentName}"`)
+      .map((c) => `${c.id}|${c.fullLabel}`)
       .join('\n');
+
+    const sessionRefSection =
+      sessionExamples && sessionExamples.length > 0
+        ? `\nEERDERE INDELINGEN IN DEZE SESSIE (HOUD DEZELFDE LIJN AAN):\n${sessionExamples
+          .slice(0, 4)
+          .map((e) => `- #${e.articleNumber} "${e.title}" -> ${e.chosenCategory}`)
+          .join('\n')}\n`
+        : '';
 
     const learnedFeedbackSection =
       feedbackRules.length > 0
@@ -292,8 +303,8 @@ STRIKTE REGELS (ZEER BELANGRIJK):
    - Of als het product nu "GEEN CATEGORIE" heeft en er wél een passende categorie in de bestaande lijst staat.
 6. Wanneer geef je "status": "WARNING"?
    - Als de huidige categorie te algemeen is (zoals "Accessoires") of twijfelachtig is, terwijl er in de bestaande lijst een duidelijk betere, specifiekere categorie bestaat.
-${learnedFeedbackSection}
-BESTAANDE CATEGORIEËN IN HET SYSTEEM (ENIGE TOEGESTANE KEUZES):
+${learnedFeedbackSection}${sessionRefSection}
+BESTAANDE CATEGORIEËN IN HET SYSTEEM (formaat: ID|Categorie):
 ${categoryCatalogText}
 
 Antwoord UITSLUITEND met een geldig JSON-object (zonder markdown-codeblokken of extra tekst) in exact dit formaat:
@@ -445,139 +456,139 @@ Antwoord UITSLUITEND met een geldig JSON-object (zonder markdown-codeblokken of 
  * and stores any provided user feedback reason as a learned rule for future checks.
  */
 export async function applyCategorySuggestionsAction(
-  items: { articleNumber: string; targetCategoryId: string; feedbackReason ?: string } []
-): Promise < { ok: boolean; updatedCount: number; learnedRulesCount: number; error?: string } > {
-    try {
-      const { userId, email, canApplyCategory } = await getSessionPermissions();
-      if(!userId || !canApplyCategory) {
-    return { ok: false, updatedCount: 0, learnedRulesCount: 0, error: 'Geen rechten om categoriewijzigingen door te voeren.' };
-  }
-  if (!items || items.length === 0) {
-    return { ok: true, updatedCount: 0, learnedRulesCount: 0 };
-  }
-
-  const availableCategories = await getAvailableCategoriesForCheckAction();
-  const catById = new Map(availableCategories.map((c) => [c.id, c]));
-
-  let updatedCount = 0;
-  const historyRows: any[] = [];
-  const newFeedbackRules: CategoryFeedbackRule[] = [];
-
-  for (const item of items) {
-    const targetCat = catById.get(item.targetCategoryId);
-    if (!targetCat) continue; // Guardrail: only existing categories allowed
-
-    const product = await prisma.product.findUnique({
-      where: { internalArticleNumber: item.articleNumber },
-      include: {
-        category: { select: { id: true, name: true } },
-        subcategory: { select: { id: true, name: true } },
-      },
-    });
-    if (!product) continue;
-
-    const oldCatName =
-      product.subcategory?.name
-        ? product.category?.name && product.category.name !== product.subcategory.name
-          ? `${product.category.name} › ${product.subcategory.name}`
-          : product.subcategory.name
-        : product.category?.name || 'Geen categorie';
-
-    const newCategoryId = targetCat.parentId ?? targetCat.id;
-    const newSubcategoryId = targetCat.id;
-    const reasonTrimmed = (item.feedbackReason || '').trim();
-
-    const currentCustom: Record<string, any> =
-      product.customData && typeof product.customData === 'object' && !Array.isArray(product.customData)
-        ? { ...(product.customData as Record<string, any>) }
-        : {};
-
-    currentCustom._categoryCheck = {
-      status: 'OK',
-      currentCategory: targetCat.fullLabel,
-      suggestedCategoryId: null,
-      suggestedCategoryName: null,
-      suggestedParentName: null,
-      explanation: reasonTrimmed
-        ? `Ingedeeld in "${targetCat.fullLabel}" (Reden: ${reasonTrimmed}).`
-        : `Ingedeeld in "${targetCat.fullLabel}".`,
-      checkedAt: new Date().toISOString(),
-      checkedCategoryId: newCategoryId,
-      checkedSubcategoryId: newSubcategoryId,
-      dismissed: false,
-    } satisfies ProductCategoryCheck;
-
-    await prisma.product.update({
-      where: { internalArticleNumber: item.articleNumber },
-      data: {
-        categoryId: newCategoryId,
-        subcategoryId: newSubcategoryId,
-        customData: currentCustom,
-        lastEditedByUserId: userId,
-      },
-    });
-
-    historyRows.push({
-      articleNumber: item.articleNumber,
-      fieldKey: 'subcategoryId',
-      fieldLabel: 'Categorie / Productgroep',
-      oldValue: oldCatName,
-      newValue: reasonTrimmed ? `${targetCat.fullLabel} (${reasonTrimmed})` : targetCat.fullLabel,
-      source: 'CATEGORY_CHECK',
-      userId,
-      userEmail: email ?? null,
-    });
-
-    if (reasonTrimmed) {
-      newFeedbackRules.push({
-        id: `${Date.now()}_${item.articleNumber}_${Math.random().toString(36).slice(2, 6)}`,
-        articleNumber: item.articleNumber,
-        productTitle: product.title,
-        fromCategory: oldCatName,
-        targetCategoryId: targetCat.id,
-        targetCategoryLabel: targetCat.fullLabel,
-        reason: reasonTrimmed,
-        createdAt: new Date().toISOString(),
-        createdBy: email ?? null,
-      });
+  items: { articleNumber: string; targetCategoryId: string; feedbackReason?: string }[]
+): Promise<{ ok: boolean; updatedCount: number; learnedRulesCount: number; error?: string }> {
+  try {
+    const { userId, email, canApplyCategory } = await getSessionPermissions();
+    if (!userId || !canApplyCategory) {
+      return { ok: false, updatedCount: 0, learnedRulesCount: 0, error: 'Geen rechten om categoriewijzigingen door te voeren.' };
+    }
+    if (!items || items.length === 0) {
+      return { ok: true, updatedCount: 0, learnedRulesCount: 0 };
     }
 
-    await prisma.auditLog
-      .create({
-        data: {
-          userId,
-          action: 'CATEGORY_CHECK_APPLY',
-          entity: 'Product',
-          entityId: item.articleNumber,
-          changes: `Categorie gewijzigd van "${oldCatName}" naar "${targetCat.fullLabel}"${reasonTrimmed ? ` | Reden: ${reasonTrimmed}` : ''
-            }`,
+    const availableCategories = await getAvailableCategoriesForCheckAction();
+    const catById = new Map(availableCategories.map((c) => [c.id, c]));
+
+    let updatedCount = 0;
+    const historyRows: any[] = [];
+    const newFeedbackRules: CategoryFeedbackRule[] = [];
+
+    for (const item of items) {
+      const targetCat = catById.get(item.targetCategoryId);
+      if (!targetCat) continue; // Guardrail: only existing categories allowed
+
+      const product = await prisma.product.findUnique({
+        where: { internalArticleNumber: item.articleNumber },
+        include: {
+          category: { select: { id: true, name: true } },
+          subcategory: { select: { id: true, name: true } },
         },
-      })
-        .catch (() => { });
+      });
+      if (!product) continue;
 
-    updatedCount++;
+      const oldCatName =
+        product.subcategory?.name
+          ? product.category?.name && product.category.name !== product.subcategory.name
+            ? `${product.category.name} › ${product.subcategory.name}`
+            : product.subcategory.name
+          : product.category?.name || 'Geen categorie';
+
+      const newCategoryId = targetCat.parentId ?? targetCat.id;
+      const newSubcategoryId = targetCat.id;
+      const reasonTrimmed = (item.feedbackReason || '').trim();
+
+      const currentCustom: Record<string, any> =
+        product.customData && typeof product.customData === 'object' && !Array.isArray(product.customData)
+          ? { ...(product.customData as Record<string, any>) }
+          : {};
+
+      currentCustom._categoryCheck = {
+        status: 'OK',
+        currentCategory: targetCat.fullLabel,
+        suggestedCategoryId: null,
+        suggestedCategoryName: null,
+        suggestedParentName: null,
+        explanation: reasonTrimmed
+          ? `Ingedeeld in "${targetCat.fullLabel}" (Reden: ${reasonTrimmed}).`
+          : `Ingedeeld in "${targetCat.fullLabel}".`,
+        checkedAt: new Date().toISOString(),
+        checkedCategoryId: newCategoryId,
+        checkedSubcategoryId: newSubcategoryId,
+        dismissed: false,
+      } satisfies ProductCategoryCheck;
+
+      await prisma.product.update({
+        where: { internalArticleNumber: item.articleNumber },
+        data: {
+          categoryId: newCategoryId,
+          subcategoryId: newSubcategoryId,
+          customData: currentCustom,
+          lastEditedByUserId: userId,
+        },
+      });
+
+      historyRows.push({
+        articleNumber: item.articleNumber,
+        fieldKey: 'subcategoryId',
+        fieldLabel: 'Categorie / Productgroep',
+        oldValue: oldCatName,
+        newValue: reasonTrimmed ? `${targetCat.fullLabel} (${reasonTrimmed})` : targetCat.fullLabel,
+        source: 'CATEGORY_CHECK',
+        userId,
+        userEmail: email ?? null,
+      });
+
+      if (reasonTrimmed) {
+        newFeedbackRules.push({
+          id: `${Date.now()}_${item.articleNumber}_${Math.random().toString(36).slice(2, 6)}`,
+          articleNumber: item.articleNumber,
+          productTitle: product.title,
+          fromCategory: oldCatName,
+          targetCategoryId: targetCat.id,
+          targetCategoryLabel: targetCat.fullLabel,
+          reason: reasonTrimmed,
+          createdAt: new Date().toISOString(),
+          createdBy: email ?? null,
+        });
+      }
+
+      await prisma.auditLog
+        .create({
+          data: {
+            userId,
+            action: 'CATEGORY_CHECK_APPLY',
+            entity: 'Product',
+            entityId: item.articleNumber,
+            changes: `Categorie gewijzigd van "${oldCatName}" naar "${targetCat.fullLabel}"${reasonTrimmed ? ` | Reden: ${reasonTrimmed}` : ''
+              }`,
+          },
+        })
+        .catch(() => { });
+
+      updatedCount++;
+    }
+
+    if (historyRows.length > 0) {
+      await prisma.productFieldHistory.createMany({ data: historyRows }).catch(() => { });
+    }
+
+    if (newFeedbackRules.length > 0) {
+      await appendCategoryFeedbackRules(newFeedbackRules);
+    }
+
+    revalidatePath('/categories');
+    revalidatePath('/products');
+    return { ok: true, updatedCount, learnedRulesCount: newFeedbackRules.length };
+  } catch (err: any) {
+    console.error('applyCategorySuggestionsAction error:', err);
+    return {
+      ok: false,
+      updatedCount: 0,
+      learnedRulesCount: 0,
+      error: err?.message || 'Kon categorievoorstellen niet toepassen.',
+    };
   }
-
-  if (historyRows.length > 0) {
-    await prisma.productFieldHistory.createMany({ data: historyRows }).catch(() => { });
-  }
-
-  if (newFeedbackRules.length > 0) {
-    await appendCategoryFeedbackRules(newFeedbackRules);
-  }
-
-  revalidatePath('/categories');
-  revalidatePath('/products');
-  return { ok: true, updatedCount, learnedRulesCount: newFeedbackRules.length };
-} catch (err: any) {
-  console.error('applyCategorySuggestionsAction error:', err);
-  return {
-    ok: false,
-    updatedCount: 0,
-    learnedRulesCount: 0,
-    error: err?.message || 'Kon categorievoorstellen niet toepassen.',
-  };
-}
 }
 
 /**

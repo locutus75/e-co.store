@@ -181,294 +181,330 @@ export default function BatchAnalyzeModal({ products, layout, onClose, onComplet
         }
       }
 
-      for (const product of productsRef.current) {
-        if (cancelRef.current) {
-          updateJob(product.internalArticleNumber, { status: 'skipped' });
-          continue;
-        }
+        const allProducts = productsRef.current;
+        const chunkSize = doFull ? 4 : 5;
 
-        updateJob(product.internalArticleNumber, { status: 'running' });
+        for (let i = 0; i < allProducts.length; i += chunkSize) {
+          const chunk = allProducts.slice(i, i + chunkSize);
 
-        try {
-          let score: number | null = null;
-
-          if (doFull) {
-            const prompt = buildProductPrompt(product, layoutRef.current);
-
-            const qRes = await fetch('/api/ai/query', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ provider, prompt, systemPrompt: SYSTEM_PROMPT, context: 'product-analysis' }),
-            });
-            const qData = await qRes.json();
-            if (!qRes.ok) throw new Error(qData.error ?? 'LLM-fout');
-
-            const raw: string = qData.response;
-            score = parseScore(raw);
-            const jsonMatch = raw.match(/```json\s*([\s\S]*?)\s*```\s*$/);
-            let structured = null;
-            if (jsonMatch) { try { structured = JSON.parse(jsonMatch[1]); } catch { /**/ } }
-
-            const sRes = await fetch('/api/ai/analysis', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                articleNumber: product.internalArticleNumber,
-                response: raw, provider, model: qData.model,
-                inputTokens: qData.usage?.inputTokens ?? 0,
-                outputTokens: qData.usage?.outputTokens ?? 0,
-                costUsd: qData.usage?.costUsd ?? 0,
-                structuredData: structured ? JSON.stringify(structured) : undefined,
-                score,
-              }),
-            });
-            if (!sRes.ok) { const sd = await sRes.json(); throw new Error(sd.error ?? 'Opslaan mislukt'); }
-            updateJob(product.internalArticleNumber, { score });
+          if (cancelRef.current) {
+            for (const p of chunk) {
+              updateJob(p.internalArticleNumber, { status: 'skipped' });
+            }
+            continue;
           }
 
-          if (doEmpco) {
-            // Runs + saves server-side; skipIfCurrent avoids re-checking unchanged products
-            const eRes = await fetch('/api/ai/empco', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ articleNumber: product.internalArticleNumber, skipIfCurrent: skipEmpco }),
-            });
+          for (const p of chunk) {
+            updateJob(p.internalArticleNumber, { status: 'running' });
+          }
+
+            const scoreByArt = new Map<string, number | null>();
+            const empcoByArt = new Map<string, { status?: string | null; issues?: number; skipped?: boolean }>();
+            const errByArt = new Map<string, string>();
+
+                if(doFull) {
+                  try {
+                    const batchItems = chunk.map(p => ({
+                      articleNumber: p.internalArticleNumber,
+                      productText: buildProductPrompt(p, layoutRef.current),
+                    }));
+                    const aRes = await fetch('/api/ai/analysis/batch', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ items: batchItems, provider }),
+                    });
+                    const aData = await aRes.json();
+                    if (!aRes.ok) {
+                      const msg = aData.error ?? 'Analyse-batch mislukt';
+                      for (const p of chunk) errByArt.set(p.internalArticleNumber, msg);
+                    } else {
+                      for (const r of (aData.results ?? [])) {
+                        if (r.ok) scoreByArt.set(r.articleNumber, r.score ?? null);
+                        else errByArt.set(r.articleNumber, r.error ?? 'Analyse mislukt');
+                      }
+                    }
+                  } catch (err: any) {
+                    const msg = err?.message ?? 'Netwerkfout tijdens analyse';
+                    for (const p of chunk) errByArt.set(p.internalArticleNumber, msg);
+                  }
+                }
+
+                  if(doEmpco && !cancelRef.current) {
+                try {
+                  const eRes = await fetch('/api/ai/empco/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      articleNumbers: chunk.map(p => p.internalArticleNumber),
+                      skipIfCurrent: skipEmpco,
+                    }),
+                  });
             const eData = await eRes.json();
-            if (!eRes.ok) throw new Error(`EmpCo: ${eData.error ?? 'check mislukt'}`);
-            updateJob(product.internalArticleNumber, {
-              empcoStatus: eData.check?.status ?? null,
-              empcoIssues: eData.check?.issueCount ?? 0,
-              empcoSkipped: !!eData.skipped,
-            });
+            if (!eRes.ok) {
+              const msg = `EmpCo: ${eData.error ?? 'batch-check mislukt'}`;
+              for (const p of chunk) {
+                if (!errByArt.has(p.internalArticleNumber)) errByArt.set(p.internalArticleNumber, msg);
+              }
+            } else {
+              for (const r of (eData.results ?? [])) {
+                if (r.ok) {
+                  empcoByArt.set(r.articleNumber, {
+                    status: r.status ?? null,
+                    issues: r.issueCount ?? 0,
+                    skipped: !!r.skipped,
+                  });
+                } else if (!errByArt.has(r.articleNumber)) {
+                  errByArt.set(r.articleNumber, `EmpCo: ${r.error ?? 'check mislukt'}`);
+                }
+              }
+            }
+          } catch (err: any) {
+            const msg = `EmpCo: ${err?.message ?? 'Netwerkfout'}`;
+            for (const p of chunk) {
+              if (!errByArt.has(p.internalArticleNumber)) errByArt.set(p.internalArticleNumber, msg);
+            }
           }
-
-          updateJob(product.internalArticleNumber, { status: 'done', score });
-        } catch (err: any) {
-          updateJob(product.internalArticleNumber, { status: 'error', error: err.message ?? 'Onbekende fout' });
         }
-      }
+
+            for(const p of chunk) {
+              const art = p.internalArticleNumber;
+              const err = errByArt.get(art);
+              if (err) {
+                updateJob(art, { status: 'error', error: err });
+              } else {
+                const emp = empcoByArt.get(art);
+                updateJob(art, {
+                  status: 'done',
+                  score: scoreByArt.get(art) ?? null,
+                  empcoStatus: emp?.status ?? null,
+                  empcoIssues: emp?.issues ?? 0,
+                  empcoSkipped: emp?.skipped ?? false,
+                });
+              }
+            }
+          }
 
       setRunning(false);
-      setFinished(true);
-      // Call onComplete via ref — stable, won't trigger re-run
-      onCompleteRef.current();
-    };
+          setFinished(true);
+          // Call onComplete via ref — stable, won't trigger re-run
+          onCompleteRef.current();
+        };
 
-    run();
-  };
+        run();
+      };
 
-  const done = jobs.filter(j => j.status === 'done').length;
-  const errors = jobs.filter(j => j.status === 'error').length;
-  const skipped = jobs.filter(j => j.status === 'skipped').length;
-  const total = jobs.length;
-  const pct = total > 0 ? Math.round(((done + errors + skipped) / total) * 100) : 0;
+      const done = jobs.filter(j => j.status === 'done').length;
+      const errors = jobs.filter(j => j.status === 'error').length;
+      const skipped = jobs.filter(j => j.status === 'skipped').length;
+      const total = jobs.length;
+      const pct = total > 0 ? Math.round(((done + errors + skipped) / total) * 100) : 0;
 
-  const statusIcon = (s: JobStatus) => {
-    if (s === 'pending') return <span style={{ color: '#d1d5db', fontSize: '1rem' }}>◯</span>;
-    if (s === 'running') return (
-      <span style={{
-        display: 'inline-block', width: '13px', height: '13px',
-        border: '2px solid #ddd6fe', borderTopColor: '#7c3aed',
-        borderRadius: '50%', animation: 'batch-spin 0.8s linear infinite', flexShrink: 0,
-      }} />
-    );
-    if (s === 'done') return <span style={{ color: '#16a34a', fontWeight: 700 }}>✓</span>;
-    if (s === 'error') return <span style={{ color: '#dc2626', fontWeight: 700 }}>✕</span>;
-    if (s === 'skipped') return <span style={{ color: '#9ca3af' }}>–</span>;
-  };
+      const statusIcon = (s: JobStatus) => {
+        if (s === 'pending') return <span style={{ color: '#d1d5db', fontSize: '1rem' }}>◯</span>;
+        if (s === 'running') return (
+          <span style={{
+            display: 'inline-block', width: '13px', height: '13px',
+            border: '2px solid #ddd6fe', borderTopColor: '#7c3aed',
+            borderRadius: '50%', animation: 'batch-spin 0.8s linear infinite', flexShrink: 0,
+          }} />
+        );
+        if (s === 'done') return <span style={{ color: '#16a34a', fontWeight: 700 }}>✓</span>;
+        if (s === 'error') return <span style={{ color: '#dc2626', fontWeight: 700 }}>✕</span>;
+        if (s === 'skipped') return <span style={{ color: '#9ca3af' }}>–</span>;
+      };
 
-  const scoreColor = (score: number | null) => {
-    if (score === null) return '#9ca3af';
-    if (score >= 75) return '#16a34a';
-    if (score >= 50) return '#ca8a04';
-    return '#dc2626';
-  };
+      const scoreColor = (score: number | null) => {
+        if (score === null) return '#9ca3af';
+        if (score >= 75) return '#16a34a';
+        if (score >= 50) return '#ca8a04';
+        return '#dc2626';
+      };
 
-  if (typeof document === 'undefined') return null;
+      if (typeof document === 'undefined') return null;
 
-  const isEmpcoOnly = mode === 'empco';
-  const accent = isEmpcoOnly ? '#0f766e' : '#7c3aed';
-  const empcoDone = jobs.filter(j => j.empcoStatus);
-  const empcoFail = empcoDone.filter(j => j.empcoStatus === 'FAIL').length;
-  const empcoWarn = empcoDone.filter(j => j.empcoStatus === 'WARNING').length;
-  const empcoIssueTotal = empcoDone.reduce((s, j) => s + (j.empcoIssues ?? 0), 0);
-  const empcoSkippedCount = empcoDone.filter(j => j.empcoSkipped).length;
-  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+      const isEmpcoOnly = mode === 'empco';
+      const accent = isEmpcoOnly ? '#0f766e' : '#7c3aed';
+      const empcoDone = jobs.filter(j => j.empcoStatus);
+      const empcoFail = empcoDone.filter(j => j.empcoStatus === 'FAIL').length;
+      const empcoWarn = empcoDone.filter(j => j.empcoStatus === 'WARNING').length;
+      const empcoIssueTotal = empcoDone.reduce((s, j) => s + (j.empcoIssues ?? 0), 0);
+      const empcoSkippedCount = empcoDone.filter(j => j.empcoSkipped).length;
+      const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-  return createPortal(
-    <>
-      {/* Backdrop */}
-      <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9960, backdropFilter: 'blur(3px)' }} />
+      return createPortal(
+        <>
+          {/* Backdrop */}
+          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9960, backdropFilter: 'blur(3px)' }} />
 
-      {/* Modal — wider and taller */}
-      <div style={{
-        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-        width: 'min(720px, 96vw)', maxHeight: '90vh',
-        zIndex: 9961, backgroundColor: 'white', borderRadius: '16px',
-        boxShadow: '0 32px 64px rgba(0,0,0,0.25)', overflow: 'hidden',
-        display: 'flex', flexDirection: 'column',
-      }}>
+          {/* Modal — wider and taller */}
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            width: 'min(720px, 96vw)', maxHeight: '90vh',
+            zIndex: 9961, backgroundColor: 'white', borderRadius: '16px',
+            boxShadow: '0 32px 64px rgba(0,0,0,0.25)', overflow: 'hidden',
+            display: 'flex', flexDirection: 'column',
+          }}>
 
-        {/* Header */}
-        <div style={{ padding: '1.25rem 1.6rem', background: isEmpcoOnly ? 'linear-gradient(135deg,#0f766e,#065f46)' : '#7c3aed', display: 'flex', alignItems: 'center', gap: '0.85rem', flexShrink: 0 }}>
-          <span style={{ fontSize: '1.4rem' }}>{isEmpcoOnly ? '⚖️' : '🤖'}</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ color: 'white', fontWeight: 700, fontSize: '1.1rem' }}>{isEmpcoOnly ? 'Batch EmpCo-check' : 'Batch Product Analyse'}</div>
-            <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.82rem' }}>
-              {total} product{total !== 1 ? 'en' : ''} in de wachtrij{started ? ` · ${MODE_INFO[mode].title}` : ''}
+            {/* Header */}
+            <div style={{ padding: '1.25rem 1.6rem', background: isEmpcoOnly ? 'linear-gradient(135deg,#0f766e,#065f46)' : '#7c3aed', display: 'flex', alignItems: 'center', gap: '0.85rem', flexShrink: 0 }}>
+              <span style={{ fontSize: '1.4rem' }}>{isEmpcoOnly ? '⚖️' : '🤖'}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: 'white', fontWeight: 700, fontSize: '1.1rem' }}>{isEmpcoOnly ? 'Batch EmpCo-check' : 'Batch Product Analyse'}</div>
+                <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.82rem' }}>
+                  {total} product{total !== 1 ? 'en' : ''} in de wachtrij{started ? ` · ${MODE_INFO[mode].title}` : ''}
+                </div>
+              </div>
+              {(finished || !started) && (
+                <button onClick={onClose}
+                  style={{ background: 'rgba(255,255,255,0.18)', border: 'none', color: 'white', borderRadius: '8px', padding: '0.4rem 0.9rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
+                  {finished ? 'Sluiten ✕' : 'Annuleren ✕'}
+                </button>
+              )}
+            </div>
+
+            {/* Setup step — choose mode before starting */}
+            {!started && (
+              <div style={{ padding: '1.25rem 1.6rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>Wat wil je uitvoeren?</div>
+                {(Object.keys(MODE_INFO) as BatchMode[]).map(m => {
+                  const info = MODE_INFO[m];
+                  const disabled = m !== 'empco' && !canUseAi;
+                  const selected = mode === m;
+                  const c = m === 'empco' ? '#0f766e' : '#7c3aed';
+                  return (
+                    <label key={m} htmlFor={`batch-mode-${m}`} style={{
+                      display: 'flex', gap: '0.75rem', alignItems: 'flex-start', padding: '0.8rem 1rem',
+                      borderRadius: '10px', border: `2px solid ${selected ? c : '#e2e8f0'}`,
+                      backgroundColor: selected ? (m === 'empco' ? '#f0fdfa' : '#faf5ff') : 'white',
+                      cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
+                      transition: 'all 0.15s',
+                    }}>
+                      <input id={`batch-mode-${m}`} type="radio" name="batch-mode" checked={selected} disabled={disabled}
+                        onChange={() => setMode(m)} style={{ marginTop: '0.2rem', accentColor: c }} />
+                      <span style={{ fontSize: '1.1rem' }}>{info.icon}</span>
+                      <span style={{ flex: 1 }}>
+                        <span style={{ display: 'block', fontWeight: 700, fontSize: '0.9rem', color: '#1e293b' }}>{info.title}</span>
+                        <span style={{ display: 'block', fontSize: '0.78rem', color: '#64748b', marginTop: '0.15rem' }}>
+                          {info.desc}{disabled ? ' (vereist AI-rechten)' : ''}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+                {mode !== 'full' && (
+                  <label htmlFor="batch-skip-current" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.82rem', color: '#334155', marginTop: '0.35rem', cursor: 'pointer' }}>
+                    <input id="batch-skip-current" type="checkbox" checked={skipCurrentEmpco}
+                      onChange={e => setSkipCurrentEmpco(e.target.checked)} style={{ accentColor: '#0f766e' }} />
+                    Producten met een actuele EmpCo-check (tekst ongewijzigd) overslaan
+                  </label>
+                )}
+              </div>
+            )}
+
+            {started && (<>
+              {/* Progress bar */}
+              <div style={{ height: '7px', backgroundColor: isEmpcoOnly ? '#ccfbf1' : '#ede9fe', flexShrink: 0 }}>
+                <div style={{
+                  height: '100%', width: `${pct}%`,
+                  backgroundColor: finished && errors > 0 ? '#f59e0b' : accent,
+                  transition: 'width 0.5s ease',
+                }} />
+              </div>
+
+              {/* Stats */}
+              <div style={{ display: 'flex', gap: '1.25rem', padding: '0.75rem 1.6rem', backgroundColor: isEmpcoOnly ? '#f0fdfa' : '#faf5ff', borderBottom: '1px solid #ede9fe', fontSize: '0.82rem', flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ color: accent, fontWeight: 800, fontSize: '0.95rem' }}>{pct}%</span>
+                <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ {done} geslaagd</span>
+                {errors > 0 && <span style={{ color: '#dc2626', fontWeight: 600 }}>✕ {errors} mislukt</span>}
+                {skipped > 0 && <span style={{ color: '#9ca3af' }}>– {skipped} overgeslagen</span>}
+                {empcoFail > 0 && <span style={{ color: '#b91c1c', fontWeight: 600 }}>⛔ {plural(empcoFail, 'product', 'producten')} met overtreding</span>}
+                {empcoWarn > 0 && <span style={{ color: '#a16207', fontWeight: 600 }}>⚠️ {plural(empcoWarn, 'product', 'producten')} met aandachtspunten</span>}
+                {empcoIssueTotal > 0 && <span style={{ color: '#475569' }}>· {plural(empcoIssueTotal, 'bevinding', 'bevindingen')} in totaal</span>}
+                <span style={{ color: '#9ca3af', marginLeft: 'auto' }}>{done + errors + skipped} / {total}</span>
+              </div>
+            </>)}
+
+            {/* Job log — scrollable, takes remaining height */}
+            {started && (
+              <div ref={logRef} style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+                {jobs.map((job, idx) => (
+                  <div key={job.articleNumber} style={{
+                    display: 'grid',
+                    gridTemplateColumns: '22px 80px 1fr auto auto',
+                    alignItems: 'center', gap: '0.75rem',
+                    padding: '0.6rem 1.6rem',
+                    backgroundColor: job.status === 'running' ? (isEmpcoOnly ? '#f0fdfa' : '#faf5ff') : idx % 2 === 0 ? 'white' : '#fdfcff',
+                    borderBottom: '1px solid #f5f3ff',
+                    transition: 'background-color 0.2s',
+                  }}>
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}>
+                      {statusIcon(job.status)}
+                    </span>
+                    <span style={{ fontSize: '0.73rem', color: isEmpcoOnly ? '#14b8a6' : '#a78bfa', fontFamily: 'monospace', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      #{job.articleNumber}
+                    </span>
+                    <span style={{ fontSize: '0.88rem', color: '#1e1b4b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {job.title}
+                    </span>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: job.status === 'error' ? '#dc2626' : scoreColor(job.score), textAlign: 'right', whiteSpace: 'nowrap', minWidth: isEmpcoOnly ? 0 : '48px' }}>
+                      {job.status === 'done' && job.score !== null ? job.score : ''}
+                      {job.status === 'error' ? <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>Fout: {job.error}</span> : ''}
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', justifyContent: 'flex-end' }}>
+                      {job.empcoStatus && (
+                        <>
+                          {job.empcoSkipped && <span title="Actuele check hergebruikt" style={{ fontSize: '0.65rem', color: '#94a3b8' }}>↺</span>}
+                          <EmpcoBadge state={empcoBadgeState(job.empcoStatus)} issueCount={job.empcoIssues} />
+                        </>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Footer */}
+            <div style={{ padding: '1rem 1.6rem', borderTop: '1px solid #ede9fe', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', flexShrink: 0, gap: '1rem' }}>
+              {!started ? (
+                <>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    {mode === 'empco' ? 'Resultaten worden direct per product opgeslagen.' : 'Analyses worden direct per product opgeslagen.'}
+                  </span>
+                  <button id="batch-start-btn" onClick={startRun}
+                    style={{ padding: '0.55rem 1.4rem', borderRadius: '8px', background: isEmpcoOnly ? 'linear-gradient(135deg,#0f766e,#065f46)' : '#7c3aed', color: 'white', border: 'none', fontSize: '0.88rem', fontWeight: 700, cursor: 'pointer', boxShadow: `0 6px 16px ${accent}55` }}>
+                    ▶ Start ({total})
+                  </button>
+                </>
+              ) : !finished ? (
+                <>
+                  <span style={{ fontSize: '0.85rem', color: accent, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid #ddd6fe', borderTopColor: accent, borderRadius: '50%', animation: 'batch-spin 0.8s linear infinite' }} />
+                    {isEmpcoOnly ? 'Bezig met EmpCo-checks…' : 'Bezig met analyseren…'}
+                  </span>
+                  <button
+                    onClick={() => { cancelRef.current = true; }}
+                    disabled={!running}
+                    style={{ padding: '0.45rem 1rem', borderRadius: '7px', backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', fontSize: '0.82rem', cursor: running ? 'pointer' : 'not-allowed', opacity: running ? 1 : 0.4 }}>
+                    ✕ Annuleren
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span style={{ fontSize: '0.88rem', fontWeight: 600, color: errors === 0 ? '#16a34a' : '#ca8a04' }}>
+                    {errors === 0 ? `✓ Alle ${done} ${isEmpcoOnly ? 'EmpCo-checks' : 'analyses'} opgeslagen!` : `Klaar — ${done} geslaagd${errors > 0 ? `, ${errors} mislukt` : ''}${skipped > 0 ? `, ${skipped} overgeslagen` : ''}`}
+                    {empcoSkippedCount > 0 && <span style={{ fontWeight: 400, color: '#64748b' }}> · {empcoSkippedCount} actuele EmpCo-check{empcoSkippedCount === 1 ? '' : 's'} hergebruikt</span>}
+                  </span>
+                  <button onClick={onClose}
+                    style={{ padding: '0.45rem 1.2rem', borderRadius: '7px', backgroundColor: accent, color: 'white', border: 'none', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}>
+                    Sluiten
+                  </button>
+                </>
+              )}
             </div>
           </div>
-          {(finished || !started) && (
-            <button onClick={onClose}
-              style={{ background: 'rgba(255,255,255,0.18)', border: 'none', color: 'white', borderRadius: '8px', padding: '0.4rem 0.9rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
-              {finished ? 'Sluiten ✕' : 'Annuleren ✕'}
-            </button>
-          )}
-        </div>
 
-        {/* Setup step — choose mode before starting */}
-        {!started && (
-          <div style={{ padding: '1.25rem 1.6rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>Wat wil je uitvoeren?</div>
-            {(Object.keys(MODE_INFO) as BatchMode[]).map(m => {
-              const info = MODE_INFO[m];
-              const disabled = m !== 'empco' && !canUseAi;
-              const selected = mode === m;
-              const c = m === 'empco' ? '#0f766e' : '#7c3aed';
-              return (
-                <label key={m} htmlFor={`batch-mode-${m}`} style={{
-                  display: 'flex', gap: '0.75rem', alignItems: 'flex-start', padding: '0.8rem 1rem',
-                  borderRadius: '10px', border: `2px solid ${selected ? c : '#e2e8f0'}`,
-                  backgroundColor: selected ? (m === 'empco' ? '#f0fdfa' : '#faf5ff') : 'white',
-                  cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
-                  transition: 'all 0.15s',
-                }}>
-                  <input id={`batch-mode-${m}`} type="radio" name="batch-mode" checked={selected} disabled={disabled}
-                    onChange={() => setMode(m)} style={{ marginTop: '0.2rem', accentColor: c }} />
-                  <span style={{ fontSize: '1.1rem' }}>{info.icon}</span>
-                  <span style={{ flex: 1 }}>
-                    <span style={{ display: 'block', fontWeight: 700, fontSize: '0.9rem', color: '#1e293b' }}>{info.title}</span>
-                    <span style={{ display: 'block', fontSize: '0.78rem', color: '#64748b', marginTop: '0.15rem' }}>
-                      {info.desc}{disabled ? ' (vereist AI-rechten)' : ''}
-                    </span>
-                  </span>
-                </label>
-              );
-            })}
-            {mode !== 'full' && (
-              <label htmlFor="batch-skip-current" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.82rem', color: '#334155', marginTop: '0.35rem', cursor: 'pointer' }}>
-                <input id="batch-skip-current" type="checkbox" checked={skipCurrentEmpco}
-                  onChange={e => setSkipCurrentEmpco(e.target.checked)} style={{ accentColor: '#0f766e' }} />
-                Producten met een actuele EmpCo-check (tekst ongewijzigd) overslaan
-              </label>
-            )}
-          </div>
-        )}
-
-        {started && (<>
-          {/* Progress bar */}
-          <div style={{ height: '7px', backgroundColor: isEmpcoOnly ? '#ccfbf1' : '#ede9fe', flexShrink: 0 }}>
-            <div style={{
-              height: '100%', width: `${pct}%`,
-              backgroundColor: finished && errors > 0 ? '#f59e0b' : accent,
-              transition: 'width 0.5s ease',
-            }} />
-          </div>
-
-          {/* Stats */}
-          <div style={{ display: 'flex', gap: '1.25rem', padding: '0.75rem 1.6rem', backgroundColor: isEmpcoOnly ? '#f0fdfa' : '#faf5ff', borderBottom: '1px solid #ede9fe', fontSize: '0.82rem', flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ color: accent, fontWeight: 800, fontSize: '0.95rem' }}>{pct}%</span>
-            <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ {done} geslaagd</span>
-            {errors > 0 && <span style={{ color: '#dc2626', fontWeight: 600 }}>✕ {errors} mislukt</span>}
-            {skipped > 0 && <span style={{ color: '#9ca3af' }}>– {skipped} overgeslagen</span>}
-            {empcoFail > 0 && <span style={{ color: '#b91c1c', fontWeight: 600 }}>⛔ {plural(empcoFail, 'product', 'producten')} met overtreding</span>}
-            {empcoWarn > 0 && <span style={{ color: '#a16207', fontWeight: 600 }}>⚠️ {plural(empcoWarn, 'product', 'producten')} met aandachtspunten</span>}
-            {empcoIssueTotal > 0 && <span style={{ color: '#475569' }}>· {plural(empcoIssueTotal, 'bevinding', 'bevindingen')} in totaal</span>}
-            <span style={{ color: '#9ca3af', marginLeft: 'auto' }}>{done + errors + skipped} / {total}</span>
-          </div>
-        </>)}
-
-        {/* Job log — scrollable, takes remaining height */}
-        {started && (
-          <div ref={logRef} style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-            {jobs.map((job, idx) => (
-              <div key={job.articleNumber} style={{
-                display: 'grid',
-                gridTemplateColumns: '22px 80px 1fr auto auto',
-                alignItems: 'center', gap: '0.75rem',
-                padding: '0.6rem 1.6rem',
-                backgroundColor: job.status === 'running' ? (isEmpcoOnly ? '#f0fdfa' : '#faf5ff') : idx % 2 === 0 ? 'white' : '#fdfcff',
-                borderBottom: '1px solid #f5f3ff',
-                transition: 'background-color 0.2s',
-              }}>
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}>
-                  {statusIcon(job.status)}
-                </span>
-                <span style={{ fontSize: '0.73rem', color: isEmpcoOnly ? '#14b8a6' : '#a78bfa', fontFamily: 'monospace', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  #{job.articleNumber}
-                </span>
-                <span style={{ fontSize: '0.88rem', color: '#1e1b4b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {job.title}
-                </span>
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: job.status === 'error' ? '#dc2626' : scoreColor(job.score), textAlign: 'right', whiteSpace: 'nowrap', minWidth: isEmpcoOnly ? 0 : '48px' }}>
-                  {job.status === 'done' && job.score !== null ? job.score : ''}
-                  {job.status === 'error' ? <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>Fout: {job.error}</span> : ''}
-                </span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', justifyContent: 'flex-end' }}>
-                  {job.empcoStatus && (
-                    <>
-                      {job.empcoSkipped && <span title="Actuele check hergebruikt" style={{ fontSize: '0.65rem', color: '#94a3b8' }}>↺</span>}
-                      <EmpcoBadge state={empcoBadgeState(job.empcoStatus)} issueCount={job.empcoIssues} />
-                    </>
-                  )}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Footer */}
-        <div style={{ padding: '1rem 1.6rem', borderTop: '1px solid #ede9fe', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', flexShrink: 0, gap: '1rem' }}>
-          {!started ? (
-            <>
-              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                {mode === 'empco' ? 'Resultaten worden direct per product opgeslagen.' : 'Analyses worden direct per product opgeslagen.'}
-              </span>
-              <button id="batch-start-btn" onClick={startRun}
-                style={{ padding: '0.55rem 1.4rem', borderRadius: '8px', background: isEmpcoOnly ? 'linear-gradient(135deg,#0f766e,#065f46)' : '#7c3aed', color: 'white', border: 'none', fontSize: '0.88rem', fontWeight: 700, cursor: 'pointer', boxShadow: `0 6px 16px ${accent}55` }}>
-                ▶ Start ({total})
-              </button>
-            </>
-          ) : !finished ? (
-            <>
-              <span style={{ fontSize: '0.85rem', color: accent, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid #ddd6fe', borderTopColor: accent, borderRadius: '50%', animation: 'batch-spin 0.8s linear infinite' }} />
-                {isEmpcoOnly ? 'Bezig met EmpCo-checks…' : 'Bezig met analyseren…'}
-              </span>
-              <button
-                onClick={() => { cancelRef.current = true; }}
-                disabled={!running}
-                style={{ padding: '0.45rem 1rem', borderRadius: '7px', backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', fontSize: '0.82rem', cursor: running ? 'pointer' : 'not-allowed', opacity: running ? 1 : 0.4 }}>
-                ✕ Annuleren
-              </button>
-            </>
-          ) : (
-            <>
-              <span style={{ fontSize: '0.88rem', fontWeight: 600, color: errors === 0 ? '#16a34a' : '#ca8a04' }}>
-                {errors === 0 ? `✓ Alle ${done} ${isEmpcoOnly ? 'EmpCo-checks' : 'analyses'} opgeslagen!` : `Klaar — ${done} geslaagd${errors > 0 ? `, ${errors} mislukt` : ''}${skipped > 0 ? `, ${skipped} overgeslagen` : ''}`}
-                {empcoSkippedCount > 0 && <span style={{ fontWeight: 400, color: '#64748b' }}> · {empcoSkippedCount} actuele EmpCo-check{empcoSkippedCount === 1 ? '' : 's'} hergebruikt</span>}
-              </span>
-              <button onClick={onClose}
-                style={{ padding: '0.45rem 1.2rem', borderRadius: '7px', backgroundColor: accent, color: 'white', border: 'none', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}>
-                Sluiten
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      <style>{`@keyframes batch-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
-    </>,
-    document.body
-  );
-}
+          <style>{`@keyframes batch-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+        </>,
+        document.body
+      );
+    }
