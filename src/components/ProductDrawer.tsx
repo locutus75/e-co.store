@@ -819,43 +819,40 @@ export default function ProductDrawer({ product, isOpen, onClose, fieldPermissio
 
       return (
         <div key={f.id} style={{ gridColumn: `span ${span}`, backgroundColor: f.backgroundColor || 'transparent', padding: f.backgroundColor ? '0.75rem' : '0', borderRadius: 'var(--radius)', color: effectiveTextColor }}>
-          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'inherit', opacity: 0.7, marginBottom: '0.4rem' }}>{f.label}</label>
-          <div className="input" style={{ backgroundColor: 'rgba(0,0,0,0.02)', color: 'inherit', opacity: 0.75, cursor: 'default', border: '1px solid rgba(0,0,0,0.05)', minHeight: '38px', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'inherit', opacity: 0.7, marginBottom: '0.4rem' }}>
-              {f.label}
-              {categoryParts.length > 1 && (
-                <span style={{ marginLeft: '0.4rem', fontSize: '0.72rem', fontWeight: 700, color: '#1d4ed8' }}>
-                  ({categoryParts.length} subcategorieën)
-                </span>
-              )}
-            </label>
-            <div className="input" style={{ backgroundColor: 'rgba(0,0,0,0.02)', color: 'inherit', opacity: 0.85, cursor: 'default', border: '1px solid rgba(0,0,0,0.05)', minHeight: '38px', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', padding: '0.35rem 0.6rem' }}>
-              <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>🔗</span>
-              {displayVal || <span style={{ opacity: 0.4, fontStyle: 'italic' }}>—</span>}
-              {categoryParts.length > 1 ? (
-                categoryParts.map((catName: string) => (
-                  <span
-                    key={catName}
-                    style={{
-                      fontSize: '0.76rem',
-                      fontWeight: 600,
-                      padding: '0.12rem 0.5rem',
-                      borderRadius: '999px',
-                      backgroundColor: '#eff6ff',
-                      color: '#1e40af',
-                      border: '1px solid #bfdbfe',
-                    }}
-                  >
-                    {catName}
-                  </span>
-                ))
-              ) : (
-                displayVal || <span style={{ opacity: 0.4, fontStyle: 'italic' }}>—</span>
-              )}
-            </div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'inherit', opacity: 0.7, marginBottom: '0.4rem' }}>
+                    {f.label}
+                    {categoryParts.length > 1 && (
+                      <span style={{ marginLeft: '0.4rem', fontSize: '0.72rem', fontWeight: 700, color: '#1d4ed8' }}>
+                        ({categoryParts.length} subcategorieën)
+                      </span>
+                    )}
+                  </label>
+                  <div className="input" style={{ backgroundColor: 'rgba(0,0,0,0.02)', color: 'inherit', opacity: 0.85, cursor: 'default', border: '1px solid rgba(0,0,0,0.05)', minHeight: '38px', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', padding: '0.35rem 0.6rem' }}>
+                    <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>🔗</span>
+                    {categoryParts.length > 1 ? (
+                      categoryParts.map((catName: string) => (
+                        <span
+                          key={catName}
+                          style={{
+                            fontSize: '0.76rem',
+                            fontWeight: 600,
+                            padding: '0.12rem 0.5rem',
+                            borderRadius: '999px',
+                            backgroundColor: '#eff6ff',
+                            color: '#1e40af',
+                            border: '1px solid #bfdbfe',
+                          }}
+                        >
+                          {catName}
+                        </span>
+                  ))
+                  ) : (
+                  displayVal || <span style={{ opacity: 0.4, fontStyle: 'italic' }}>—</span>
+            )}
+                </div>
           </div>
           );
-      }
+    }
           // ── Special: article number — show as Google search link when configured ─
           if (f.id === 'FIELD:internalArticleNumber') {
         const googleUrl = buildGoogleSearchUrl(localProductData, layout);
