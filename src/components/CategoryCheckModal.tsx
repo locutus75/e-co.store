@@ -1100,12 +1100,63 @@ export default function CategoryCheckModal({
                         border: '1px solid var(--border)',
                       }}
                     >
-                      <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                        Huidige categorie
-                      </div>
-                      <div style={{ fontWeight: 600, color: 'var(--text)', marginTop: '0.1rem' }}>
-                        {curCatDisplay}
-                      </div>
+                      {(() => {
+                        const rawSub = p.subcategory?.name?.trim() || '';
+                        const subParts = rawSub
+                          ? Array.from(
+                            new Set(
+                              rawSub
+                                .split(',')
+                                .map((s) => s.trim())
+                                .filter((s) => Boolean(s) && s.toLowerCase() !== 'mpluswebshops')
+                            )
+                          )
+                          : [];
+
+                        if (subParts.length > 1) {
+                          return (
+                            <>
+                              <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                                Huidige subcategorieën ({subParts.length})
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.25rem' }}>
+                                {subParts.map((sp) => {
+                                  const matchOpt = availableCategories.find(
+                                    (c) => c.name.toLowerCase() === sp.toLowerCase()
+                                  );
+                                  return (
+                                    <span
+                                      key={sp}
+                                      style={{
+                                        fontSize: '0.75rem',
+                                        fontWeight: 600,
+                                        padding: '0.15rem 0.5rem',
+                                        borderRadius: '999px',
+                                        backgroundColor: '#eff6ff',
+                                        color: '#1e40af',
+                                        border: '1px solid #bfdbfe',
+                                      }}
+                                    >
+                                      {matchOpt ? matchOpt.fullLabel : sp}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </>
+                          );
+                        }
+
+                        return (
+                          <>
+                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                              Huidige categorie
+                            </div>
+                            <div style={{ fontWeight: 600, color: 'var(--text)', marginTop: '0.1rem' }}>
+                              {curCatDisplay}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
 
                     {showEditor && (

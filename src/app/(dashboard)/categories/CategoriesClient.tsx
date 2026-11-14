@@ -58,6 +58,24 @@ function isMplusRoot(name?: string | null): boolean {
   return !name || name.trim().toLowerCase() === 'mpluswebshops';
 }
 
+function getProductSubcategoryParts(p: ProductItem): string[] {
+  const rawSubName =
+    p.subcategory?.name && !isMplusRoot(p.subcategory.name)
+      ? p.subcategory.name.trim()
+      : p.category?.name && !isMplusRoot(p.category.name)
+        ? p.category.name.trim()
+        : '';
+  if (!rawSubName) return [];
+  return Array.from(
+    new Set(
+      rawSubName
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => Boolean(s) && !isMplusRoot(s))
+    )
+  );
+}
+
 function hasActiveCategoryIssue(p: ProductItem): ProductCategoryCheck | null {
   const check = p.customData?._categoryCheck as ProductCategoryCheck | undefined;
   if (!isCategoryCheckValidForProduct(p, check)) return null;
@@ -116,6 +134,7 @@ export default function CategoriesClient({
     totalCategorizedProducts,
     totalSubcategories,
     multiGroupProductCount,
+    subcatParentByLower,
   } = useMemo(() => {
     const subcatMap = new Map<
       string,
@@ -127,10 +146,11 @@ export default function CategoriesClient({
       }
     >();
 
-    // Register existing DB categories (excluding MplusWebshops)
+    // Register existing DB categories (excluding MplusWebshops and composite comma-joined records)
     const catById = new Map(initialCategories.map((c) => [c.id, c]));
     for (const cat of initialCategories) {
       if (isMplusRoot(cat.name)) continue;
+      if (cat.name.includes(',')) continue;
       const hasChildren = initialCategories.some((other) => other.parentId === cat.id && !isMplusRoot(other.name));
       if (!hasChildren) {
         const parentObj = cat.parentId ? catById.get(cat.parentId) : null;
@@ -290,6 +310,11 @@ export default function CategoriesClient({
         return a.parentName.localeCompare(b.parentName);
       });
 
+    const parentLookup = new Map<string, string>();
+    for (const [k, v] of subcatMap.entries()) {
+      parentLookup.set(k, v.parentName);
+    }
+
     return {
       parentGroups: sortedParents,
       uncategorizedProducts: uncategorized,
@@ -298,8 +323,22 @@ export default function CategoriesClient({
       totalCategorizedProducts: categorizedCount,
       totalSubcategories: subcatMap.size,
       multiGroupProductCount: multiGroupCount,
+      subcatParentByLower: parentLookup,
     };
   }, [initialCategories, initialProducts, empcoMap]);
+
+  const matchingSearchProducts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return initialProducts
+      .filter(
+        (p) =>
+          p.internalArticleNumber.toLowerCase().includes(q) ||
+          p.title.toLowerCase().includes(q) ||
+          (p.brand?.name ?? '').toLowerCase().includes(q)
+      )
+      .slice(0, 25);
+  }, [initialProducts, searchQuery]);
 
   // Apply search and filterMode
   const filteredParentGroups = useMemo(() => {
@@ -659,6 +698,131 @@ export default function CategoriesClient({
         </div>
       </div>
 
+      {/* Quick Product Search Results (shows all subcategories per matching product) */}
+      {matchingSearchProducts.length > 0 && (
+        <div
+          className="glass"
+          style={{
+            borderRadius: 'var(--radius-lg)',
+            border: '1px solid #bfdbfe',
+            backgroundColor: '#f8fafc',
+            padding: '0.9rem 1.1rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.55rem',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div style={{ fontSize: '0.86rem', fontWeight: 700, color: '#1e3a8a' }}>
+              🔎 Gevonden producten ({matchingSearchProducts.length}{matchingSearchProducts.length === 25 ? '+' : ''}) — alle gekoppelde subcategorieën
+            </div>
+            <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+              Producten kunnen in meerdere subcategorieën tegelijk staan
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            {matchingSearchProducts.map((p) => {
+              const parts = getProductSubcategoryParts(p);
+              return (
+                <div
+                  key={p.internalArticleNumber}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '0.5rem 0.75rem',
+                    padding: '0.5rem 0.75rem',
+                    backgroundColor: 'var(--surface)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '8px',
+                    fontSize: '0.82rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 700, color: '#0284c7' }}>#{p.internalArticleNumber}</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text)' }}>{p.title}</span>
+                    {p.brand?.name && (
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>({p.brand.name})</span>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                    {parts.length === 0 ? (
+                      <span
+                        style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          padding: '0.15rem 0.5rem',
+                          borderRadius: '999px',
+                          backgroundColor: '#fef3c7',
+                          color: '#92400e',
+                        }}
+                      >
+                        ⚠️ Zonder categorie
+                      </span>
+                    ) : (
+                      parts.map((subName) => {
+                        const pName = subcatParentByLower.get(subName.toLowerCase());
+                        const label =
+                          pName && pName !== 'Overige / Algemeen' ? `${pName} › ${subName}` : subName;
+                        return (
+                          <button
+                            key={subName}
+                            type="button"
+                            onClick={() => {
+                              setExpandedSubcats((prev) => new Set(prev).add(subName));
+                              if (pName) {
+                                setCollapsedParents((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete(pName);
+                                  return next;
+                                });
+                              }
+                            }}
+                            title={`Klik om subcategorie "${subName}" open te klappen`}
+                            style={{
+                              fontSize: '0.73rem',
+                              fontWeight: 600,
+                              padding: '0.18rem 0.55rem',
+                              borderRadius: '999px',
+                              backgroundColor: parts.length > 1 ? '#eff6ff' : '#f1f5f9',
+                              color: parts.length > 1 ? '#1d4ed8' : '#334155',
+                              border: `1px solid ${parts.length > 1 ? '#bfdbfe' : '#cbd5e1'}`,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            🏷️ {label}
+                          </button>
+                        );
+                      })
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => openCategoryCheck([p], `Product #${p.internalArticleNumber}`, false)}
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        padding: '0.18rem 0.5rem',
+                        borderRadius: '6px',
+                        backgroundColor: '#f5f3ff',
+                        color: '#6d28d9',
+                        border: '1px solid #ddd6fe',
+                        cursor: 'pointer',
+                      }}
+                      title="Controleer of wijzig categorie"
+                    >
+                      Check
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Main Category Tree */}
       {filterMode !== 'uncategorized' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -949,255 +1113,301 @@ export default function CategoriesClient({
                               </div>
 
                               {/* Right: Action buttons */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-                                  {sc.products.length > 0 && (
-                                    <button
-                                      type="button"
-                                      className="btn"
-                                      onClick={() =>
-                                        openCategoryCheck(
-                                          sc.products,
-                                          `${pg.parentName} › ${sc.name} (${sc.products.length} producten)`,
-                                          true
-                                        )
-                                      }
-                                      style={{
-                                        padding: '0.35rem 0.65rem',
-                                        fontSize: '0.76rem',
-                                        backgroundColor: '#f5f3ff',
-                                        border: '1px solid #ddd6fe',
-                                        color: '#6d28d9',
-                                        fontWeight: 700,
-                                        whiteSpace: 'nowrap',
-                                        cursor: 'pointer',
-                                      }}
-                                      title="Controleer of alle producten in deze groep in de juiste categorie staan"
-                                    >
-                                      🏷️ Check
-                                    </button>
-                                  )}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                                {sc.products.length > 0 && (
                                   <button
                                     type="button"
                                     className="btn"
-                                    onClick={() => toggleSubcatExpand(sc.name)}
+                                    onClick={() =>
+                                      openCategoryCheck(
+                                        sc.products,
+                                        `${pg.parentName} › ${sc.name} (${sc.products.length} producten)`,
+                                        true
+                                      )
+                                    }
                                     style={{
-                                      padding: '0.35rem 0.7rem',
-                                      fontSize: '0.78rem',
-                                      backgroundColor: 'var(--surface)',
-                                      border: '1px solid var(--border)',
-                                      color: 'var(--text)',
-                                      fontWeight: 600,
+                                      padding: '0.35rem 0.65rem',
+                                      fontSize: '0.76rem',
+                                      backgroundColor: '#f5f3ff',
+                                      border: '1px solid #ddd6fe',
+                                      color: '#6d28d9',
+                                      fontWeight: 700,
                                       whiteSpace: 'nowrap',
+                                      cursor: 'pointer',
                                     }}
+                                    title="Controleer of alle producten in deze groep in de juiste categorie staan"
                                   >
-                                    {isExpanded ? 'Verberg lijst' : 'Toon artikelen'}
+                                    🏷️ Check
                                   </button>
-                                  <Link
-                                    href={`/products?category=${encodeURIComponent(sc.name)}`}
-                                    className="btn"
-                                    style={{
-                                      padding: '0.35rem 0.75rem',
-                                      fontSize: '0.78rem',
-                                      backgroundColor: '#eff6ff',
-                                      border: '1px solid #bfdbfe',
-                                      color: '#1d4ed8',
-                                      fontWeight: 600,
-                                      textDecoration: 'none',
-                                      whiteSpace: 'nowrap',
-                                    }}
-                                  >
-                                    📦 Open in Producten →
-                                  </Link>
+                                )}
+                                <button
+                                  type="button"
+                                  className="btn"
+                                  onClick={() => toggleSubcatExpand(sc.name)}
+                                  style={{
+                                    padding: '0.35rem 0.7rem',
+                                    fontSize: '0.78rem',
+                                    backgroundColor: 'var(--surface)',
+                                    border: '1px solid var(--border)',
+                                    color: 'var(--text)',
+                                    fontWeight: 600,
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {isExpanded ? 'Verberg lijst' : 'Toon artikelen'}
+                                </button>
+                                <Link
+                                  href={`/products?category=${encodeURIComponent(sc.name)}`}
+                                  className="btn"
+                                  style={{
+                                    padding: '0.35rem 0.75rem',
+                                    fontSize: '0.78rem',
+                                    backgroundColor: '#eff6ff',
+                                    border: '1px solid #bfdbfe',
+                                    color: '#1d4ed8',
+                                    fontWeight: 600,
+                                    textDecoration: 'none',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  📦 Open in Producten →
+                                </Link>
+                              </div>
+                            </div>
+
+                            {/* Expanded Product Table */}
+                            {isExpanded && sc.products.length > 0 && (
+                              <div style={{ padding: '0 1.25rem 1rem 2.25rem' }}>
+                                <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'var(--surface)' }}>
+                                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', textAlign: 'left' }}>
+                                    <thead>
+                                      <tr style={{ backgroundColor: 'var(--background)', borderBottom: '1px solid var(--border)' }}>
+                                        <th style={{ padding: '0.5rem 0.75rem' }}>Nummer</th>
+                                        <th style={{ padding: '0.5rem 0.75rem' }}>Merk</th>
+                                        <th style={{ padding: '0.5rem 0.75rem' }}>Titel</th>
+                                        <th style={{ padding: '0.5rem 0.75rem' }}>Categorie-check</th>
+                                        <th style={{ padding: '0.5rem 0.75rem' }}>Prijs</th>
+                                        <th style={{ padding: '0.5rem 0.75rem' }}>Voorraad</th>
+                                        <th style={{ padding: '0.5rem 0.75rem' }}>Status</th>
+                                        <th style={{ padding: '0.5rem 0.75rem' }}>Webshop</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                        {
+                                          (() => {
+                                            const q = searchQuery.trim().toLowerCase();
+                                            const catMatchesQ =
+                                              q &&
+                                              (sc.name.toLowerCase().includes(q) || pg.parentName.toLowerCase().includes(q));
+                                            const visibleProducts =
+                                              q && !catMatchesQ
+                                                ? sc.products.filter(
+                                                  (p) =>
+                                                    p.internalArticleNumber.toLowerCase().includes(q) ||
+                                                    p.title.toLowerCase().includes(q) ||
+                                                    (p.brand?.name ?? '').toLowerCase().includes(q)
+                                                )
+                                                : sc.products;
+                                            return visibleProducts.slice(0, 100).map((p) => {
+                                              const stock = p.customData?.ecoposStock;
+                                              const catIssue = hasActiveCategoryIssue(p);
+                                              const validCheck = isCategoryCheckValidForProduct(p, p.customData?._categoryCheck)
+                                                ? (p.customData._categoryCheck as ProductCategoryCheck)
+                                                : null;
+                                              const subParts = getProductSubcategoryParts(p);
+                                              return (
+                                                <tr key={p.internalArticleNumber} style={{ borderBottom: '1px solid var(--border)' }}>
+                                                  <td style={{ padding: '0.45rem 0.75rem', fontWeight: 700 }}>
+                                                    #{p.internalArticleNumber}
+                                                  </td>
+                                                  <td style={{ padding: '0.45rem 0.75rem', color: 'var(--text-muted)' }}>
+                                                    {p.brand?.name || '—'}
+                                                  </td>
+                                                  <td style={{ padding: '0.45rem 0.75rem', fontWeight: 500 }}>
+                                                    <div>{p.title}</div>
+                                                    {subParts.length > 1 && (
+                                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.25rem', alignItems: 'center' }}>
+                                                        <span style={{ fontSize: '0.68rem', color: '#1d4ed8', fontWeight: 700 }}>
+                                                          📂 In {subParts.length} subcategorieën:
+                                                        </span>
+                                                        {subParts.map((sp) => {
+                                                          const isCurrent = sp.toLowerCase() === sc.name.toLowerCase();
+                                                          const pName = subcatParentByLower.get(sp.toLowerCase());
+                                                          const full = pName && pName !== 'Overige / Algemeen' ? `${pName} › ${sp}` : sp;
+                                                          return (
+                                                            <span
+                                                              key={sp}
+                                                              style={{
+                                                                fontSize: '0.68rem',
+                                                                fontWeight: isCurrent ? 700 : 600,
+                                                                padding: '0.08rem 0.4rem',
+                                                                borderRadius: '999px',
+                                                                backgroundColor: isCurrent ? '#dbeafe' : '#f1f5f9',
+                                                                color: isCurrent ? '#1e40af' : '#475569',
+                                                                border: `1px solid ${isCurrent ? '#93c5fd' : '#cbd5e1'}`,
+                                                              }}
+                                                              title={full}
+                                                            >
+                                                              {full}
+                                                            </span>
+                                                          );
+                                                        })}
+                                                      </div>
+                                                    )}
+                                                  </td>
+                                                  <td style={{ padding: '0.45rem 0.75rem' }}>
+                                                    {catIssue ? (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => openCategoryCheck([p], `Product #${p.internalArticleNumber}`, false)}
+                                                        style={{
+                                                          fontSize: '0.72rem',
+                                                          fontWeight: 700,
+                                                          padding: '0.15rem 0.5rem',
+                                                          borderRadius: '999px',
+                                                          backgroundColor: catIssue.status === 'MISMATCH' ? '#fee2e2' : '#fef3c7',
+                                                          color: catIssue.status === 'MISMATCH' ? '#991b1b' : '#92400e',
+                                                          border: 'none',
+                                                          cursor: 'pointer',
+                                                        }}
+                                                        title={catIssue.explanation}
+                                                      >
+                                                        🏷️ → {catIssue.suggestedCategoryName || 'Zie voorstel'}
+                                                      </button>
+                                                    ) : validCheck ? (
+                                                      <span style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 600 }}>
+                                                        ✅ Klopt
+                                                      </span>
+                                                    ) : (
+                                                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>—</span>
+                                                    )}
+                                                  </td>
+                                                  <td style={{ padding: '0.45rem 0.75rem' }}>
+                                                    {p.basePrice != null ? `€ ${Number(p.basePrice).toFixed(2).replace('.', ',')}` : '—'}
+                                                  </td>
+                                                  <td style={{ padding: '0.45rem 0.75rem' }}>
+                                                    {stock !== undefined && stock !== null ? stock : '—'}
+                                                  </td>
+                                                  <td style={{ padding: '0.45rem 0.75rem' }}>
+                                                    <span
+                                                      style={{
+                                                        fontSize: '0.7rem',
+                                                        fontWeight: 700,
+                                                        padding: '0.15rem 0.45rem',
+                                                        borderRadius: '999px',
+                                                        backgroundColor: 'var(--surface-hover)',
+                                                      }}
+                                                    >
+                                                      {(p.status || 'NEW').toUpperCase()}
+                                                    </span>
+                                                  </td>
+                                                  <td style={{ padding: '0.45rem 0.75rem' }}>
+                                                    {p.webshopActive ? '✅ Ja' : 'Nee'}
+                                                  </td>
+                                                </tr>
+                                              );
+                                          });
+                                        })()}
+                                    </tbody>
+                                  </table>
                                 </div>
                               </div>
-
-                              {/* Expanded Product Table */}
-                              {isExpanded && sc.products.length > 0 && (
-                                <div style={{ padding: '0 1.25rem 1rem 2.25rem' }}>
-                                  <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'var(--surface)' }}>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', textAlign: 'left' }}>
-                                      <thead>
-                                        <tr style={{ backgroundColor: 'var(--background)', borderBottom: '1px solid var(--border)' }}>
-                                          <th style={{ padding: '0.5rem 0.75rem' }}>Nummer</th>
-                                          <th style={{ padding: '0.5rem 0.75rem' }}>Merk</th>
-                                          <th style={{ padding: '0.5rem 0.75rem' }}>Titel</th>
-                                          <th style={{ padding: '0.5rem 0.75rem' }}>Categorie-check</th>
-                                          <th style={{ padding: '0.5rem 0.75rem' }}>Prijs</th>
-                                          <th style={{ padding: '0.5rem 0.75rem' }}>Voorraad</th>
-                                          <th style={{ padding: '0.5rem 0.75rem' }}>Status</th>
-                                          <th style={{ padding: '0.5rem 0.75rem' }}>Webshop</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {sc.products.slice(0, 100).map((p) => {
-                                          const stock = p.customData?.ecoposStock;
-                                          const catIssue = hasActiveCategoryIssue(p);
-                                          const validCheck = isCategoryCheckValidForProduct(p, p.customData?._categoryCheck)
-                                            ? (p.customData._categoryCheck as ProductCategoryCheck)
-                                            : null;
-                                          return (
-                                            <tr key={p.internalArticleNumber} style={{ borderBottom: '1px solid var(--border)' }}>
-                                              <td style={{ padding: '0.45rem 0.75rem', fontWeight: 700 }}>
-                                                #{p.internalArticleNumber}
-                                              </td>
-                                              <td style={{ padding: '0.45rem 0.75rem', color: 'var(--text-muted)' }}>
-                                                {p.brand?.name || '—'}
-                                              </td>
-                                              <td style={{ padding: '0.45rem 0.75rem', fontWeight: 500 }}>
-                                                {p.title}
-                                              </td>
-                                              <td style={{ padding: '0.45rem 0.75rem' }}>
-                                                {catIssue ? (
-                                                  <button
-                                                    type="button"
-                                                    onClick={() => openCategoryCheck([p], `Product #${p.internalArticleNumber}`, false)}
-                                                    style={{
-                                                      fontSize: '0.72rem',
-                                                      fontWeight: 700,
-                                                      padding: '0.15rem 0.5rem',
-                                                      borderRadius: '999px',
-                                                      backgroundColor: catIssue.status === 'MISMATCH' ? '#fee2e2' : '#fef3c7',
-                                                      color: catIssue.status === 'MISMATCH' ? '#991b1b' : '#92400e',
-                                                      border: 'none',
-                                                      cursor: 'pointer',
-                                                    }}
-                                                    title={catIssue.explanation}
-                                                  >
-                                                    🏷️ → {catIssue.suggestedCategoryName || 'Zie voorstel'}
-                                                  </button>
-                                                ) : validCheck ? (
-                                                  <span style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 600 }}>
-                                                    ✅ Klopt
-                                                  </span>
-                                                ) : (
-                                                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>—</span>
-                                                )}
-                                              </td>
-                                              <td style={{ padding: '0.45rem 0.75rem' }}>
-                                                {p.basePrice != null ? `€ ${Number(p.basePrice).toFixed(2).replace('.', ',')}` : '—'}
-                                              </td>
-                                              <td style={{ padding: '0.45rem 0.75rem' }}>
-                                                {stock !== undefined && stock !== null ? stock : '—'}
-                                              </td>
-                                              <td style={{ padding: '0.45rem 0.75rem' }}>
-                                                <span
-                                                  style={{
-                                                    fontSize: '0.7rem',
-                                                    fontWeight: 700,
-                                                    padding: '0.15rem 0.45rem',
-                                                    borderRadius: '999px',
-                                                    backgroundColor: 'var(--surface-hover)',
-                                                  }}
-                                                >
-                                                  {(p.status || 'NEW').toUpperCase()}
-                                                </span>
-                                              </td>
-                                              <td style={{ padding: '0.45rem 0.75rem' }}>
-                                                {p.webshopActive ? '✅ Ja' : 'Nee'}
-                                              </td>
-                                            </tr>
-                                          );
-                                        })}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                            );
-                      })}
+                            )}
                           </div>
-                        )
-                      }
+                        );
+                      })}
+                    </div>
+                  )
+                  }
                 </div>
-                  );
+              );
             })
           )}
-                </div>
-              )
-            }
-
-      {/* Uncategorized Products Section */ }
-      {(filterMode === 'uncategorized' || (filterMode === 'all' && uncategorizedProducts.length > 0)) && (
-                <div
-                  className="glass"
-                  style={{
-                    borderRadius: 'var(--radius-lg)',
-                    border: '1px solid #fcd34d',
-                    backgroundColor: '#fffbeb',
-                    padding: '1.1rem 1.25rem',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '1rem',
-                  }}
-                >
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#92400e' }}>
-                      ⚠️ Producten zonder categorie ({uncategorizedProducts.length})
-                    </h3>
-                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.82rem', color: '#b45309' }}>
-                      Deze producten zijn nog niet aan een productgroep gekoppeld. Gebruik de Categorie-check om ze automatisch in een bestaande categorie in te delen.
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                    {uncategorizedProducts.length > 0 && (
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() =>
-                          openCategoryCheck(
-                            uncategorizedProducts,
-                            `Producten zonder categorie (${uncategorizedProducts.length})`,
-                            true
-                          )
-                        }
-                        style={{
-                          padding: '0.45rem 0.9rem',
-                          fontSize: '0.84rem',
-                          fontWeight: 700,
-                          backgroundColor: '#7c3aed',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: 'var(--radius)',
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        🏷️ Categorie voorstellen voor {uncategorizedProducts.length} producten
-                      </button>
-                    )}
-                    <Link
-                      href="/products?category=UNCATEGORIZED"
-                      className="btn"
-                      style={{
-                        padding: '0.45rem 0.9rem',
-                        fontSize: '0.84rem',
-                        fontWeight: 700,
-                        backgroundColor: '#d97706',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: 'var(--radius)',
-                        textDecoration: 'none',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      📦 Bekijk in Producten →
-                    </Link>
-                  </div>
-                </div>
-              )}
-
-          {/* Category Check Modal */}
-          <CategoryCheckModal
-            isOpen={checkModalOpen}
-            onClose={() => setCheckModalOpen(false)}
-            products={checkModalProducts}
-            titleLabel={checkModalTitle}
-            autoStartUnchecked={checkModalAutoStart}
-            onComplete={() => router.refresh()}
-          />
         </div>
-      );
+      )
+      }
+
+      {/* Uncategorized Products Section */}
+      {(filterMode === 'uncategorized' || (filterMode === 'all' && uncategorizedProducts.length > 0)) && (
+        <div
+          className="glass"
+          style={{
+            borderRadius: 'var(--radius-lg)',
+            border: '1px solid #fcd34d',
+            backgroundColor: '#fffbeb',
+            padding: '1.1rem 1.25rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '1rem',
+          }}
+        >
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#92400e' }}>
+              ⚠️ Producten zonder categorie ({uncategorizedProducts.length})
+            </h3>
+            <p style={{ margin: '0.25rem 0 0', fontSize: '0.82rem', color: '#b45309' }}>
+              Deze producten zijn nog niet aan een productgroep gekoppeld. Gebruik de Categorie-check om ze automatisch in een bestaande categorie in te delen.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+            {uncategorizedProducts.length > 0 && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() =>
+                  openCategoryCheck(
+                    uncategorizedProducts,
+                    `Producten zonder categorie (${uncategorizedProducts.length})`,
+                    true
+                  )
+                }
+                style={{
+                  padding: '0.45rem 0.9rem',
+                  fontSize: '0.84rem',
+                  fontWeight: 700,
+                  backgroundColor: '#7c3aed',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 'var(--radius)',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                🏷️ Categorie voorstellen voor {uncategorizedProducts.length} producten
+              </button>
+            )}
+            <Link
+              href="/products?category=UNCATEGORIZED"
+              className="btn"
+              style={{
+                padding: '0.45rem 0.9rem',
+                fontSize: '0.84rem',
+                fontWeight: 700,
+                backgroundColor: '#d97706',
+                color: 'white',
+                border: 'none',
+                borderRadius: 'var(--radius)',
+                textDecoration: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              📦 Bekijk in Producten →
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Category Check Modal */}
+      <CategoryCheckModal
+        isOpen={checkModalOpen}
+        onClose={() => setCheckModalOpen(false)}
+        products={checkModalProducts}
+        titleLabel={checkModalTitle}
+        autoStartUnchecked={checkModalAutoStart}
+        onComplete={() => router.refresh()}
+      />
+    </div>
+  );
 }

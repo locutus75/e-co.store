@@ -274,6 +274,13 @@ ${feedbackRules
       const shortDesc = (p.shortDescription || p.seoTitle || '').slice(0, 220);
       const longDesc = (p.longDescription || '').slice(0, 250);
 
+      const currentSubcategories = subName
+        ? subName
+            .split(',')
+            .map((s) => s.trim())
+            .filter((s) => Boolean(s) && !isMplusRoot(s))
+        : [];
+
       return {
         articleNumber: p.internalArticleNumber,
         title: p.title,
@@ -283,6 +290,7 @@ ${feedbackRules
         shortDescription: shortDesc,
         longDescription: longDesc,
         currentCategory: currentCategoryLabel,
+        currentSubcategories,
         currentSubcategoryRaw: subName,
       };
     });
