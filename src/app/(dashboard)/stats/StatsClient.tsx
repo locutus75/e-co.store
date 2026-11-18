@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import AiUsageDashboard from '@/components/AiUsageDashboard';
+import UserProductActivityPanel from '@/components/UserProductActivityPanel';
 import { LlmStatsResult } from '@/app/actions/llm';
 
 const SEGMENTS = [
@@ -228,6 +229,23 @@ export default function StatsClient({ users, initialAiStats }: { users: any[]; i
         )}
       </div>
       
+      <div className="glass" style={{ padding: '2rem', borderRadius: 'var(--radius-lg)' }}>
+        <div style={{ marginBottom: '1rem' }}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>
+            🔎 Productactiviteit &amp; Wijzigingen
+          </h2>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '0.25rem 0 0' }}>
+            Zoek op artikelnummer (bijv. 9919) om te zien wanneer en wat {selectedUserId ? 'deze gebruiker' : 'teamleden'} bij een product hebben gewijzigd.
+          </p>
+        </div>
+        <UserProductActivityPanel
+          userId={selectedUserId || undefined}
+          userEmail={users.find((u) => u.id === selectedUserId)?.email}
+          showUserColumn={!selectedUserId}
+          maxHeight="460px"
+        />
+      </div>
+
       <div className="glass" style={{ padding: '2.5rem', borderRadius: 'var(--radius-lg)' }}>
         <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>Hoe werkt de statistiek?</h2>
         <div style={{ color: 'var(--text-muted)', lineHeight: '1.6' }}>

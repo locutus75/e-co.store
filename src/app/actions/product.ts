@@ -634,23 +634,32 @@ async function assertProductLock(internalId: string) {
             });
             return f?.label ?? k;
           };
-          const norm = (v: any) => (v == null || v === '' ? null : v);
-          const isTextish = (v: any) => v == null || typeof v === 'string';
+          const normVal = (v: any): string | null => {
+            if (v == null || v === '') return null;
+            if (typeof v === 'boolean') return v ? 'Ja' : 'Nee';
+            if (typeof v === 'number') return String(v);
+            if (typeof v === 'string') return v;
+            return null;
+          };
+          const isTrackable = (v: any) =>
+            v == null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean';
           const pushIfChanged = (formKey: string, oldV: any, newV: any) => {
-            if (!isTextish(oldV) || !isTextish(newV)) return;
-            if (norm(oldV) === norm(newV)) return;
+            if (!isTrackable(oldV) || !isTrackable(newV)) return;
+            const oNorm = normVal(oldV);
+            const nNorm = normVal(newV);
+            if (oNorm === nNorm) return;
             historyRows.push({
               articleNumber: internalId,
               fieldKey: formKey,
               fieldLabel: labelOf(formKey),
-              oldValue: norm(oldV),
-              newValue: norm(newV),
+              oldValue: oNorm,
+              newValue: nNorm,
               source: empcoFields.has(formKey) ? 'EMPCO' : restoreFields.has(formKey) ? 'RESTORE' : 'MANUAL',
               userId: editorId ?? null,
               userEmail: (session?.user as any)?.email ?? null,
             });
           };
-          const skip = new Set(['lastEditedByUserId', 'customData', 'status', 'readyForImport']);
+          const skip = new Set(['lastEditedByUserId', 'customData']);
           for (const [k, v] of Object.entries(data)) {
             if (skip.has(k) || /Id$/.test(k)) continue;
             pushIfChanged(k, existing[k], v);

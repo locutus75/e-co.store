@@ -2,6 +2,7 @@
 import React, { useState, useTransition } from 'react';
 import { createUserAction, deleteUserAction, updateUserAction } from '@/app/actions/user';
 import ConfirmationModal from '@/components/ConfirmationModal';
+import UserProductActivityPanel from '@/components/UserProductActivityPanel';
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -99,6 +100,7 @@ export default function AdminClient({ users, availableRoles }: { users: any[], a
   const [previewColor, setPreviewColor] = useState('#6366f1');
   const [previewEmail, setPreviewEmail] = useState('');
   const [userToDelete, setUserToDelete] = useState<{ id: string, email: string } | null>(null);
+  const [activityUser, setActivityUser] = useState<{ id: string, email: string } | null>(null);
 
   const openCreateModal = () => {
     setEditingUser(null);
@@ -194,6 +196,12 @@ export default function AdminClient({ users, availableRoles }: { users: any[], a
                 </td>
                 <td style={{ padding: '1.25rem', color: 'var(--text-muted)' }}>{new Date(u.createdAt).toLocaleDateString('nl-NL')}</td>
                 <td style={{ padding: '1.25rem', textAlign: 'right', display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => setActivityUser({ id: u.id, email: u.email })}
+                    style={{ background: 'transparent', border: 'none', color: '#0f766e', cursor: 'pointer', fontWeight: 600, opacity: 0.9 }}
+                    disabled={isPending}
+                    title="Bekijk productwijzigingen en zoek op artikelnummer"
+                  >📋 Activiteit</button>
                   <button
                     onClick={() => openEditModal(u)}
                     style={{ background: 'transparent', border: 'none', color: '#3b82f6', cursor: 'pointer', fontWeight: 600, opacity: 0.8 }}
@@ -325,6 +333,72 @@ export default function AdminClient({ users, availableRoles }: { users: any[], a
         onConfirm={confirmDeleteUser}
         onCancel={() => setUserToDelete(null)}
       />
+
+      {activityUser && (
+        <>
+          <div
+            onClick={() => setActivityUser(null)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.4)',
+              zIndex: 110,
+              backdropFilter: 'blur(2px)',
+            }}
+          />
+          <div
+            className="glass"
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: 'min(960px, 94vw)',
+              maxHeight: '88vh',
+              backgroundColor: 'var(--surface)',
+              padding: '1.75rem',
+              borderRadius: 'var(--radius-lg)',
+              zIndex: 111,
+              boxShadow: '0 24px 48px rgba(0,0,0,0.18)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1rem',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: 'var(--text)' }}>
+                  📋 Productactiviteit — {activityUser.email}
+                </h2>
+                <p style={{ margin: '0.2rem 0 0', fontSize: '0.84rem', color: 'var(--text-muted)' }}>
+                  Zoek op artikelnummer om te zien wanneer en wat deze gebruiker aan een product heeft gewijzigd.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActivityUser(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1.35rem',
+                  cursor: 'pointer',
+                  color: 'var(--text-muted)',
+                  padding: '0.25rem',
+                }}
+                title="Sluiten"
+              >
+                ✕
+              </button>
+            </div>
+
+            <UserProductActivityPanel
+              userId={activityUser.id}
+              userEmail={activityUser.email}
+              maxHeight="62vh"
+            />
+          </div>
+        </>
+      )}
 
     </div>
   );
