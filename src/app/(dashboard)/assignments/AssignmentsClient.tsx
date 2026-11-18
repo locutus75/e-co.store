@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from 'react';
+import UserProductActivityPanel from '@/components/UserProductActivityPanel';
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   NEW:   { bg: 'var(--primary)', text: 'white' },
@@ -47,18 +48,10 @@ export default function AssignmentsClient({ usersWithAssignments }: { usersWithA
   const openUserPanel = async (userId: string, email: string) => {
     setActivePanel({ userId, email });
     setPanelTab('activity');
-    setPanelLoading(true);
     setPanelError('');
-    setActivityLogs([]);
-    setActivitySkip(0);
-    setHasMoreActivity(true);
-    
-    // Fetch first batch of activity
-    await fetchActivity(userId, 0);
+    setPanelLoading(false);
     // Fetch stats in background
     fetchStats(userId);
-    
-    setPanelLoading(false);
   };
 
   const fetchActivity = async (userId: string, skip: number) => {
@@ -188,7 +181,7 @@ export default function AssignmentsClient({ usersWithAssignments }: { usersWithA
           />
           {/* Panel */}
           <div style={{
-            position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(480px, 95vw)',
+            position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(640px, 95vw)',
             backgroundColor: 'var(--surface)', zIndex: 50,
             boxShadow: '-10px 0 30px rgba(0,0,0,0.1)',
             display: 'flex', flexDirection: 'column',
@@ -248,53 +241,11 @@ export default function AssignmentsClient({ usersWithAssignments }: { usersWithA
                 </div>
               )}
               {panelTab === 'activity' && (
-                <>
-                  {!panelLoading && !panelError && activityLogs.length === 0 && (
-                    <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                      Geen bewerkingen gevonden voor deze gebruiker.
-                    </div>
-                  )}
-                  {activityLogs.map((log, idx) => {
-                    const actionColors: any = {
-                      UPDATE: { bg: 'var(--primary)', label: 'BEWERKT' },
-                      STATUS_CHANGE: { bg: '#3b82f6', label: 'STATUS' },
-                      ASSIGN: { bg: 'var(--color-mustard)', label: 'TOEGEWEZEN' },
-                    };
-                    const action = actionColors[log.action] || { bg: 'var(--text-muted)', label: log.action };
-                    
-                    return (
-                      <div key={log.id} style={{
-                        padding: '0.85rem 1rem',
-                        backgroundColor: idx % 2 === 0 ? 'var(--background)' : 'transparent',
-                        borderRadius: 'var(--radius)',
-                        border: '1px solid var(--border)',
-                        display: 'flex', flexDirection: 'column', gap: '0.3rem',
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-                          <span style={{ fontWeight: 600, color: 'var(--text)', fontSize: '0.9rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            #{log.entityId}
-                          </span>
-                          <span style={{ padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 800, backgroundColor: action.bg, color: 'white', flexShrink: 0 }}>
-                            {action.label}
-                          </span>
-                        </div>
-                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                          🕐 {new Date(log.timestamp).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                    );
-                  })}
-                  {hasMoreActivity && (
-                    <button 
-                      className="btn" 
-                      onClick={loadMoreActivity}
-                      disabled={loadingMore}
-                      style={{ marginTop: '1rem', width: '100%', padding: '0.75rem', fontSize: '0.85rem' }}
-                    >
-                      {loadingMore ? 'Laden...' : 'Laad meer'}
-                    </button>
-                  )}
-                </>
+                <UserProductActivityPanel
+                  userId={activePanel.userId}
+                  userEmail={activePanel.email}
+                  maxHeight="calc(100vh - 210px)"
+                />
               )}
 
               {panelTab === 'stats' && (

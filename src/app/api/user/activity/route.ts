@@ -82,8 +82,10 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const requestedUserId = url.searchParams.get('userId')?.trim() || '';
     const articleQuery = url.searchParams.get('articleNumber')?.trim() || '';
-    const limitParam = parseInt(url.searchParams.get('limit') || '100', 10);
+    const limitParam = parseInt(url.searchParams.get('limit') || url.searchParams.get('take') || '100', 10);
     const limit = Math.min(Math.max(Number.isNaN(limitParam) ? 100 : limitParam, 10), 250);
+    const skipParam = parseInt(url.searchParams.get('skip') || '0', 10);
+    const skip = Math.max(Number.isNaN(skipParam) ? 0 : skipParam, 0);
 
     // Non-admins can only view their own activity
     const effectiveUserId = isAdmin ? requestedUserId || undefined : currentUserId;
@@ -144,9 +146,9 @@ export async function GET(req: NextRequest) {
     const products =
       articleSet.size > 0
         ? await prisma.product.findMany({
-            where: { internalArticleNumber: { in: Array.from(articleSet) } },
-            select: { internalArticleNumber: true, title: true },
-          })
+          where: { internalArticleNumber: { in: Array.from(articleSet) } },
+          select: { internalArticleNumber: true, title: true },
+        })
         : [];
     const titleByArt = new Map(products.map((p) => [p.internalArticleNumber, p.title]));
 
@@ -218,9 +220,18 @@ export async function GET(req: NextRequest) {
 
     items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
+    const sliced = items.slice(skip, skip + limit);
     return NextResponse.json({
-      items: items.slice(0, limit),
+      items: sliced,
       total: items.length,
+      logs: sliced.map((it) => ({
+        id: it.id,
+        entityId: it.articleNumber,
+        action: it.action,
+        timestamp: it.timestamp,
+        changes: it.summary ?? (it.fieldLabel ? `${it.fieldLabel}: ${it.oldValue ?? '(leeg)'} → ${it.newValue ?? '(leeg)'}` : null),
+      })),
+      totalCount: items.length,
     });
   } catch (err: any) {
     console.error('[user-activity] Error:', err);

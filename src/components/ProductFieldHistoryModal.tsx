@@ -5,13 +5,13 @@ import { getFieldHistoryAction } from '@/app/actions/empco';
 import { EmpcoModalShell, EmpcoSpinner } from './EmpcoCheck';
 
 const SOURCE_META: Record<string, { label: string; color: string; bg: string }> = {
-  EMPCO:           { label: '⚖️ EmpCo',           color: '#0f766e', bg: '#ccfbf1' },
-  BRAND_EMPCO:     { label: '⚖️ Merk-EmpCo',      color: '#0f766e', bg: '#ccfbf1' },
-  RESTORE:         { label: '↺ Hersteld',         color: '#1d4ed8', bg: '#dbeafe' },
-  MANUAL:          { label: '✎ Handmatig',        color: '#475569', bg: '#e2e8f0' },
-  CATEGORY_CHECK:  { label: '🏷️ Categorie-check', color: '#6d28d9', bg: '#ede9fe' },
-  FORMATTING_RULE: { label: '✨ Tekstregel',      color: '#7e22ce', bg: '#f3e8ff' },
-  ECOPOS:          { label: '🔄 EcoPos',          color: '#0369a1', bg: '#e0f2fe' },
+  EMPCO: { label: '⚖️ EmpCo', color: '#0f766e', bg: '#ccfbf1' },
+  BRAND_EMPCO: { label: '⚖️ Merk-EmpCo', color: '#0f766e', bg: '#ccfbf1' },
+  RESTORE: { label: '↺ Hersteld', color: '#1d4ed8', bg: '#dbeafe' },
+  MANUAL: { label: '✎ Handmatig', color: '#475569', bg: '#e2e8f0' },
+  CATEGORY_CHECK: { label: '🏷️ Categorie-check', color: '#6d28d9', bg: '#ede9fe' },
+  FORMATTING_RULE: { label: '✨ Tekstregel', color: '#7e22ce', bg: '#f3e8ff' },
+  ECOPOS: { label: '🔄 EcoPos', color: '#0369a1', bg: '#e0f2fe' },
 };
 
 interface Props {
